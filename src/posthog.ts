@@ -169,16 +169,23 @@ export async function getSearchQuality(weekStart: string, weekEnd: string) {
 }
 
 export async function getPlatformDistribution(weekStart: string, weekEnd: string) {
+  const PLATFORMS = ['chatgpt', 'claude', 'gemini', 'deepseek', 'perplexity', 'grok', 'mistral', 'generic'] as const;
+
   const [searchRows, clickRows] = await Promise.all([
     runQuery(`
       SELECT
-        coalesce(nullIf(properties.platform_source, ''), 'unknown') AS platform,
-        count() AS cnt
+        sum(JSONExtractInt(properties.results_by_platform, 'chatgpt'))    AS chatgpt,
+        sum(JSONExtractInt(properties.results_by_platform, 'claude'))     AS claude,
+        sum(JSONExtractInt(properties.results_by_platform, 'gemini'))     AS gemini,
+        sum(JSONExtractInt(properties.results_by_platform, 'deepseek'))   AS deepseek,
+        sum(JSONExtractInt(properties.results_by_platform, 'perplexity')) AS perplexity,
+        sum(JSONExtractInt(properties.results_by_platform, 'grok'))       AS grok,
+        sum(JSONExtractInt(properties.results_by_platform, 'mistral'))    AS mistral,
+        sum(JSONExtractInt(properties.results_by_platform, 'generic'))    AS generic
       FROM events
       WHERE event = 'search_performed'
         AND toDate(timestamp) >= toDate('${weekStart}')
         AND toDate(timestamp) <= toDate('${weekEnd}')
-      GROUP BY platform
     `),
     runQuery(`
       SELECT
@@ -192,7 +199,22 @@ export async function getPlatformDistribution(weekStart: string, weekEnd: string
     `),
   ]);
 
-  function toRatios(rows: unknown[][]): Record<string, number> {
+  function searchRowToRatios(row: unknown[]): Record<string, number> {
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (let i = 0; i < PLATFORMS.length; i++) {
+      const cnt = Number(row[i]) || 0;
+      counts[PLATFORMS[i]] = cnt;
+      total += cnt;
+    }
+    const ratios: Record<string, number> = {};
+    for (const [platform, cnt] of Object.entries(counts)) {
+      ratios[platform] = total > 0 ? round(cnt / total) : 0;
+    }
+    return ratios;
+  }
+
+  function clickRowsToRatios(rows: unknown[][]): Record<string, number> {
     const counts: Record<string, number> = {};
     let total = 0;
     for (const row of rows) {
@@ -209,8 +231,8 @@ export async function getPlatformDistribution(weekStart: string, weekEnd: string
   }
 
   return {
-    searches: toRatios(searchRows),
-    clicks: toRatios(clickRows),
+    searches: searchRowToRatios(searchRows[0] ?? []),
+    clicks: clickRowsToRatios(clickRows),
   };
 }
 
