@@ -1,8 +1,67 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AnalysisResult, HistoricalInsight, MetricsSnapshot } from './types.js';
-import { SYSTEM_PROMPT, buildUserPrompt } from './prompts/analysis-prompt.js';
+import { SYSTEM_PROMPT } from './prompts/analysis-prompt.js';
 
 const MODEL = 'claude-sonnet-4-6';
+
+const ANALYSIS_TOOL: Anthropic.Tool = {
+  name: 'submit_analysis',
+  description: 'Submit the weekly product analysis result.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: '2-3 sentence executive summary' },
+      findings: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            metric: { type: 'string' },
+            observation: { type: 'string' },
+            severity: { type: 'string', enum: ['info', 'watch', 'concern', 'critical'] },
+          },
+          required: ['metric', 'observation', 'severity'],
+        },
+      },
+      action_items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            action: { type: 'string' },
+            rationale: { type: 'string' },
+            priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+          },
+          required: ['action', 'rationale', 'priority'],
+        },
+      },
+      open_threads: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            thread: { type: 'string' },
+            first_flagged: { type: 'string' },
+            current_status: { type: 'string' },
+          },
+          required: ['thread', 'first_flagged', 'current_status'],
+        },
+      },
+      resolved_threads: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            thread: { type: 'string' },
+            resolution: { type: 'string' },
+          },
+          required: ['thread', 'resolution'],
+        },
+      },
+    },
+    required: ['summary', 'findings', 'action_items', 'open_threads', 'resolved_threads'],
+  },
+};
 
 export async function analyseMetrics(
   metrics: MetricsSnapshot,
@@ -12,13 +71,14 @@ export async function analyseMetrics(
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required');
 
   const client = new Anthropic({ apiKey });
-  const userPrompt = buildUserPrompt(history, metrics);
 
   console.log('Running analysis via Claude…');
 
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
+    tools: [ANALYSIS_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_analysis' },
     system: [
       {
         type: 'text',
@@ -32,41 +92,24 @@ export async function analyseMetrics(
         content: [
           {
             type: 'text',
-            // Cache the historical context — it's the same across any retries for this week's run
             text: `PREVIOUS 6 WEEKS OF ANALYSIS:\n${JSON.stringify(history, null, 2)}`,
             cache_control: { type: 'ephemeral' },
           },
           {
             type: 'text',
-            text: `THIS WEEK'S METRICS:\n${JSON.stringify(metrics, null, 2)}\n\nReturn a JSON object with this exact shape:\n${JSON.stringify(
-              {
-                summary: '2-3 sentence executive summary',
-                findings: [{ metric: '...', observation: '...', severity: 'info|watch|concern|critical' }],
-                action_items: [{ action: '...', rationale: '...', priority: 'high|medium|low' }],
-                open_threads: [{ thread: '...', first_flagged: 'YYYY-MM-DD', current_status: '...' }],
-                resolved_threads: [{ thread: '...', resolution: '...' }],
-              },
-              null,
-              2,
-            )}\n\nReturn only the JSON object, no preamble or markdown fencing.`,
+            text: `THIS WEEK'S METRICS:\n${JSON.stringify(metrics, null, 2)}`,
           },
         ],
       },
     ],
   });
 
-  // Suppress unused variable warning — userPrompt is used only in dry-run context by callers
-  void userPrompt;
-
-  const raw = response.content[0]?.type === 'text' ? response.content[0].text : '';
-
-  let result: AnalysisResult;
-  try {
-    result = JSON.parse(raw) as AnalysisResult;
-  } catch {
-    console.error('Failed to parse Claude response as JSON. Raw response:\n', raw);
-    throw new Error('Claude returned invalid JSON');
+  const toolUse = response.content.find((b) => b.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new Error('Claude did not call submit_analysis tool');
   }
+
+  const result = toolUse.input as AnalysisResult;
 
   const usage = response.usage as { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
   console.log(
