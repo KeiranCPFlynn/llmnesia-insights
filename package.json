@@ -4,18 +4,30 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/index.ts",
-    "start": "tsx src/index.ts"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "pipeline": "tsx src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
     "@google-analytics/data": "^6.0.0",
     "@supabase/supabase-js": "^2.47.0",
     "dotenv": "^17.4.2",
-    "resend": "^4.0.0"
+    "next": "^15.1.0",
+    "openai": "^4.104.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.1.0",
+    "recharts": "^2.15.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }

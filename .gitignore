@@ -9,6 +9,9 @@ node_modules/
 # Build output
 dist/
 build/
+.next/
+next-env.d.ts
+.vercel/
 
 # TypeScript
 *.tsbuildinfo
