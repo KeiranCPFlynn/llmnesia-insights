@@ -256,7 +256,7 @@ export async function getEmailCaptureRate(weekStart: string, weekEnd: string) {
   return { wau, identified, rate: wau > 0 ? round(identified / wau) : 0 };
 }
 
-export async function collectMetrics(weekStart: string, weekEnd: string): Promise<MetricsSnapshot> {
+export async function collectMetrics(weekStart: string, weekEnd: string): Promise<Omit<MetricsSnapshot, 'ga4'>> {
   console.log(`Fetching PostHog metrics for ${weekStart} → ${weekEnd}…`);
 
   const [installs, activation, retention, engagement, search_quality, platforms, email_capture] =

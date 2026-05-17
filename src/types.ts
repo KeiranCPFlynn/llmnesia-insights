@@ -1,3 +1,18 @@
+export interface GA4PropertyMetrics {
+  property: 'website' | 'extension';
+  users: { total: number; new_users: number; returning: number };
+  sessions: number;
+  acquisition: Record<string, number>;
+  top_pages: Array<{ path: string; views: number }>;
+  geo: Record<string, number>;
+  devices: Record<string, number>;
+}
+
+export interface GA4Metrics {
+  website: GA4PropertyMetrics;
+  extension?: GA4PropertyMetrics;
+}
+
 export interface MetricsSnapshot {
   week_start: string;
   week_end: string;
@@ -20,6 +35,7 @@ export interface MetricsSnapshot {
     clicks: Record<string, number>;
   };
   email_capture: { wau: number; identified: number; rate: number };
+  ga4: GA4Metrics;
 }
 
 export interface Finding {

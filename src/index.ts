@@ -1,4 +1,8 @@
+import { config } from 'dotenv';
+config({ override: true });
+
 import { collectMetrics } from './posthog.js';
+import { collectGA4Metrics } from './ga4.js';
 import { getRecentInsights, insertInsight } from './supabase.js';
 import { analyseMetrics } from './analyse.js';
 import { sendEmail } from './email.js';
@@ -43,10 +47,12 @@ async function main() {
 
   console.log(`\nLLMnesia insights — ${weekStart} → ${weekEnd}${dryRun ? ' [DRY RUN]' : ''}\n`);
 
-  const [metrics, history] = await Promise.all([
+  const [posthogMetrics, ga4, history] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
+    collectGA4Metrics(weekStart, weekEnd),
     getRecentInsights(6),
   ]);
+  const metrics = { ...posthogMetrics, ga4 };
 
   if (dryRun) {
     console.log('\n— Metrics snapshot —\n', JSON.stringify(metrics, null, 2));

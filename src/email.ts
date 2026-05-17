@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import type { AnalysisResult, MetricsSnapshot, Thread } from './types.js';
+import type { AnalysisResult, GA4PropertyMetrics, MetricsSnapshot, Thread } from './types.js';
 
 const TO = 'freelymoving@gmail.com';
 
@@ -59,6 +59,70 @@ function platformTable(platforms: MetricsSnapshot['platforms']): string {
     )
     .join('');
   return `<table style="border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:3px 12px 3px 0;">Platform</th><th style="padding:3px 8px;">Searches</th><th style="padding:3px 0;">Clicks</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function ga4PropertySection(label: string, p: GA4PropertyMetrics): string {
+  const overviewRows = [
+    ['Sessions', p.sessions],
+    ['Total users', p.users.total],
+    ['New users', p.users.new_users],
+    ['Returning users', p.users.returning],
+  ];
+  const overviewTable = `<table style="border-collapse:collapse;font-size:14px;">${overviewRows
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:3px 12px 3px 0;color:#6b7280;white-space:nowrap;">${k}</td><td style="padding:3px 0;">${v}</td></tr>`,
+    )
+    .join('')}</table>`;
+
+  const acqRows = Object.entries(p.acquisition)
+    .sort(([, a], [, b]) => b - a)
+    .map(
+      ([ch, sessions]) =>
+        `<tr><td style="padding:3px 12px 3px 0;">${ch}</td><td style="padding:3px 0;">${sessions}</td></tr>`,
+    )
+    .join('');
+  const acqTable =
+    acqRows.length > 0
+      ? `<p style="margin:12px 0 4px;font-weight:600;font-size:13px;">Acquisition channels</p><table style="border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:3px 12px 3px 0;">Channel</th><th style="text-align:left;padding:3px 0;">Sessions</th></tr></thead><tbody>${acqRows}</tbody></table>`
+      : '';
+
+  const pageRows = p.top_pages
+    .slice(0, 5)
+    .map(
+      ({ path, views }) =>
+        `<tr><td style="padding:3px 12px 3px 0;font-family:monospace;font-size:12px;">${path}</td><td style="padding:3px 0;">${views}</td></tr>`,
+    )
+    .join('');
+  const pagesTable =
+    pageRows.length > 0
+      ? `<p style="margin:12px 0 4px;font-weight:600;font-size:13px;">Top pages</p><table style="border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:3px 12px 3px 0;">Page</th><th style="text-align:left;padding:3px 0;">Views</th></tr></thead><tbody>${pageRows}</tbody></table>`
+      : '';
+
+  const geoRows = Object.entries(p.geo)
+    .slice(0, 5)
+    .map(
+      ([country, sessions]) =>
+        `<tr><td style="padding:3px 12px 3px 0;">${country}</td><td style="padding:3px 0;">${sessions}</td></tr>`,
+    )
+    .join('');
+  const geoTable =
+    geoRows.length > 0
+      ? `<p style="margin:12px 0 4px;font-weight:600;font-size:13px;">Top countries</p><table style="border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:3px 12px 3px 0;">Country</th><th style="text-align:left;padding:3px 0;">Sessions</th></tr></thead><tbody>${geoRows}</tbody></table>`
+      : '';
+
+  const deviceRows = Object.entries(p.devices)
+    .map(
+      ([device, sessions]) =>
+        `<tr><td style="padding:3px 12px 3px 0;text-transform:capitalize;">${device}</td><td style="padding:3px 0;">${sessions}</td></tr>`,
+    )
+    .join('');
+  const deviceTable =
+    deviceRows.length > 0
+      ? `<p style="margin:12px 0 4px;font-weight:600;font-size:13px;">Devices</p><table style="border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:3px 12px 3px 0;">Device</th><th style="text-align:left;padding:3px 0;">Sessions</th></tr></thead><tbody>${deviceRows}</tbody></table>`
+      : '';
+
+  return `<h3 style="font-size:14px;font-weight:600;margin:0 0 8px;color:#374151;">${label}</h3>${overviewTable}${acqTable}${pagesTable}${geoTable}${deviceTable}`;
 }
 
 function section(title: string, body: string): string {
@@ -143,6 +207,20 @@ export function buildEmailHtml(
     }
 
     ${section('Metrics snapshot', metricsTable(metrics) + '<br>' + platformTable(metrics.platforms))}
+
+    ${section(
+      'GA4 — Website (llmnesia.com)',
+      ga4PropertySection('llmnesia.com', metrics.ga4.website),
+    )}
+
+    ${
+      metrics.ga4.extension
+        ? section(
+            'GA4 — Extension listing (Chrome Web Store)',
+            ga4PropertySection('Chrome Web Store', metrics.ga4.extension),
+          )
+        : ''
+    }
 
     <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
       Raw snapshot: <pre style="font-size:11px;overflow-x:auto;">${JSON.stringify(metrics, null, 2)}</pre>

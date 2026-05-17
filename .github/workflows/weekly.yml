@@ -13,6 +13,8 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
+      - name: Write GA4 credentials
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > /tmp/ga4-key.json
       - run: npx tsx src/index.ts
         env:
           POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
@@ -22,3 +24,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/ga4-key.json
+          GA4_PROPERTY_ID_WEBSITE: ${{ secrets.GA4_PROPERTY_ID_WEBSITE }}
+          GA4_PROPERTY_ID_EXTENSION: ${{ secrets.GA4_PROPERTY_ID_EXTENSION }}

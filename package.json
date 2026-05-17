@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx --env-file=.env src/index.ts",
-    "start": "tsx --env-file=.env src/index.ts"
+    "dev": "tsx src/index.ts",
+    "start": "tsx src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
+    "@google-analytics/data": "^6.0.0",
     "@supabase/supabase-js": "^2.47.0",
+    "dotenv": "^17.4.2",
     "resend": "^4.0.0"
   },
   "devDependencies": {
