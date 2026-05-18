@@ -1,8 +1,28 @@
+import './env.js';
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
+import { OAuth2Client } from 'google-auth-library';
 import type { GA4Metrics, GA4PropertyMetrics } from './types.js';
 
-function makeClient(): BetaAnalyticsDataClient {
-  return new BetaAnalyticsDataClient(); // uses GOOGLE_APPLICATION_CREDENTIALS
+/** Website property: service account via GOOGLE_APPLICATION_CREDENTIALS. */
+function makeServiceClient(): BetaAnalyticsDataClient {
+  return new BetaAnalyticsDataClient();
+}
+
+/**
+ * Extension property (`529666179`) is a Chrome-Web-Store-auto-managed GA4
+ * account that Google administers — a service account can never be added to
+ * it. It's read as the founder's own Google account via an OAuth refresh
+ * token instead. Returns null if OAuth isn't configured (extension skipped).
+ */
+function makeOAuthClient(): BetaAnalyticsDataClient | null {
+  const clientId = process.env.GA4_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GA4_OAUTH_CLIENT_SECRET;
+  const refreshToken = process.env.GA4_OAUTH_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  const authClient = new OAuth2Client({ clientId, clientSecret });
+  authClient.setCredentials({ refresh_token: refreshToken });
+  return new BetaAnalyticsDataClient({ authClient: authClient as never });
 }
 
 function getPropertyIds(): { website: string; extension: string | undefined } {
@@ -22,6 +42,7 @@ async function fetchProperty(
   label: 'website' | 'extension',
   weekStart: string,
   weekEnd: string,
+  opts: { storeInstalls?: boolean } = {},
 ): Promise<GA4PropertyMetrics> {
   const property = `properties/${propertyId}`;
   const dateRanges = [{ startDate: weekStart, endDate: weekEnd }];
@@ -88,7 +109,7 @@ async function fetchProperty(
     devicesMap[row.dimensionValues?.[0]?.value ?? 'unknown'] = int(row.metricValues?.[0]?.value);
   }
 
-  return {
+  const result: GA4PropertyMetrics = {
     property: label,
     users: { total: totalUsers, new_users: newUsers, returning: Math.max(0, totalUsers - newUsers) },
     sessions,
@@ -97,16 +118,37 @@ async function fetchProperty(
     geo: geoMap,
     devices: devicesMap,
   };
+
+  if (opts.storeInstalls) {
+    const [installs] = await client.runReport({
+      property,
+      dateRanges,
+      metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }],
+      dimensionFilter: {
+        filter: { fieldName: 'eventName', stringFilter: { value: 'install' } },
+      },
+    });
+    const row = installs.rows?.[0];
+    result.store_installs = {
+      events: int(row?.metricValues?.[0]?.value),
+      users: int(row?.metricValues?.[1]?.value),
+    };
+  }
+
+  return result;
 }
 
 export async function collectGA4Metrics(weekStart: string, weekEnd: string): Promise<GA4Metrics> {
-  const client = makeClient();
   const ids = getPropertyIds();
+  const serviceClient = makeServiceClient();
+  const oauthClient = makeOAuthClient();
 
   const [website, extension] = await Promise.all([
-    fetchProperty(client, ids.website, 'website', weekStart, weekEnd),
-    ids.extension
-      ? fetchProperty(client, ids.extension, 'extension', weekStart, weekEnd)
+    fetchProperty(serviceClient, ids.website, 'website', weekStart, weekEnd),
+    ids.extension && oauthClient
+      ? fetchProperty(oauthClient, ids.extension, 'extension', weekStart, weekEnd, {
+          storeInstalls: true,
+        })
       : Promise.resolve(undefined),
   ]);
 

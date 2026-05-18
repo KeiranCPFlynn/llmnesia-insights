@@ -19,7 +19,10 @@ The metrics now include Google Analytics 4 data (under the \`ga4\` key) for two 
 - Cross-reference website sessions with extension installs from PostHog: if sessions are high but installs are low, the website isn't converting visitors.
 - Top pages on the website show what content or flows are drawing people in before they install.
 - Extension listing page sessions are a proxy for intent-to-install traffic. A large drop-off from listing sessions to actual installs (PostHog \`extension_installed\`) signals a weak store listing.
+- The extension GA4 property includes \`store_installs\` — the Chrome Web Store \`install\` event, i.e. people who actually installed from the store. This is DIFFERENT from PostHog \`extension_installed\`, which fires on in-product first run. Compare them: if store installs meaningfully exceed in-product installs, people are installing but never opening/using it (a first-run or onboarding problem), not an acquisition problem.
 - Geo and device data reveal audience shape — flag if a geography is growing unexpectedly or if mobile traffic is rising despite the product being desktop-only.
+
+\`version_adoption\` (PostHog, source "PostHog") is daily and weekly unique users per extension version. Use it to judge rollouts: after a fix or release, its version should climb day-over-day in \`daily\` while older versions decay. If users are stuck on an old version, an update isn't propagating (a real problem to flag). Crucially, correlate it with other metrics — if e.g. zero-result rate or a crash-y behaviour improves exactly as a new version takes over, the fix worked; if a metric worsened the same week a new version rolled out, suspect the release. When a metric moves, check whether a version transition explains it before attributing it to user behaviour.
 
 Always reference previous weeks' open threads. For each one, decide: still open, resolved, or evolved. Continuity matters more than novelty.`;
 

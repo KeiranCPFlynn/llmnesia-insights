@@ -1,5 +1,4 @@
-import { config } from 'dotenv';
-config({ override: true });
+import './env.js';
 
 import { runPipeline } from './pipeline.js';
 

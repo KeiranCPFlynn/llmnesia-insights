@@ -6,6 +6,12 @@ export interface GA4PropertyMetrics {
   top_pages: Array<{ path: string; views: number }>;
   geo: Record<string, number>;
   devices: Record<string, number>;
+  /**
+   * Extension property only — the Chrome Web Store `install` event (a real
+   * store install, distinct from PostHog `extension_installed` which fires on
+   * in-product first run).
+   */
+  store_installs?: { events: number; users: number };
 }
 
 export interface GA4Metrics {
@@ -35,6 +41,16 @@ export interface MetricsSnapshot {
     clicks: Record<string, number>;
   };
   email_capture: { wau: number; identified: number; rate: number };
+  /**
+   * Daily unique users per extension version (from PostHog
+   * `properties.extension_version`). `daily` is day-by-day for tracking a
+   * rollout (a fix's version should climb while old versions decay);
+   * `weekly` is the week's unique users per version.
+   */
+  version_adoption: {
+    weekly: Array<{ version: string; users: number }>;
+    daily: Array<{ date: string; version: string; users: number }>;
+  };
   ga4: GA4Metrics;
 }
 

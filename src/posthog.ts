@@ -1,3 +1,4 @@
+import './env.js';
 import type { MetricsSnapshot } from './types.js';
 
 const BASE_URL = 'https://eu.posthog.com';
@@ -256,19 +257,76 @@ export async function getEmailCaptureRate(weekStart: string, weekEnd: string) {
   return { wau, identified, rate: wau > 0 ? round(identified / wau) : 0 };
 }
 
+/**
+ * Daily and weekly unique users per extension version. Every extension event
+ * carries `properties.extension_version` (set from the manifest), so this
+ * shows a rollout propagating: after a fix ships, its version should climb
+ * while older versions decay. Use it to judge whether a fix actually reached
+ * users and to correlate metric changes with version transitions.
+ */
+export async function getVersionAdoption(
+  weekStart: string,
+  weekEnd: string,
+): Promise<MetricsSnapshot['version_adoption']> {
+  const [dailyRows, weeklyRows] = await Promise.all([
+    runQuery(`
+      SELECT
+        toDate(timestamp) AS day,
+        coalesce(nullIf(properties.extension_version, ''), 'unknown') AS version,
+        uniq(properties.anonymous_install_id) AS users
+      FROM events
+      WHERE toDate(timestamp) >= toDate('${weekStart}')
+        AND toDate(timestamp) <= toDate('${weekEnd}')
+      GROUP BY day, version
+      ORDER BY day ASC, users DESC
+    `),
+    runQuery(`
+      SELECT
+        coalesce(nullIf(properties.extension_version, ''), 'unknown') AS version,
+        uniq(properties.anonymous_install_id) AS users
+      FROM events
+      WHERE toDate(timestamp) >= toDate('${weekStart}')
+        AND toDate(timestamp) <= toDate('${weekEnd}')
+      GROUP BY version
+      ORDER BY users DESC
+    `),
+  ]);
+
+  return {
+    daily: dailyRows.map((r) => ({
+      date: String(r[0]).slice(0, 10),
+      version: String(r[1]),
+      users: Number(r[2]),
+    })),
+    weekly: weeklyRows.map((r) => ({
+      version: String(r[0]),
+      users: Number(r[1]),
+    })),
+  };
+}
+
 export async function collectMetrics(weekStart: string, weekEnd: string): Promise<Omit<MetricsSnapshot, 'ga4'>> {
   console.log(`Fetching PostHog metrics for ${weekStart} → ${weekEnd}…`);
 
-  const [installs, activation, retention, engagement, search_quality, platforms, email_capture] =
-    await Promise.all([
-      getWeeklyInstalls(weekStart, weekEnd),
-      getActivationRate(weekStart, weekEnd),
-      getRetention(weekStart, weekEnd),
-      getEngagement(weekStart, weekEnd),
-      getSearchQuality(weekStart, weekEnd),
-      getPlatformDistribution(weekStart, weekEnd),
-      getEmailCaptureRate(weekStart, weekEnd),
-    ]);
+  const [
+    installs,
+    activation,
+    retention,
+    engagement,
+    search_quality,
+    platforms,
+    email_capture,
+    version_adoption,
+  ] = await Promise.all([
+    getWeeklyInstalls(weekStart, weekEnd),
+    getActivationRate(weekStart, weekEnd),
+    getRetention(weekStart, weekEnd),
+    getEngagement(weekStart, weekEnd),
+    getSearchQuality(weekStart, weekEnd),
+    getPlatformDistribution(weekStart, weekEnd),
+    getEmailCaptureRate(weekStart, weekEnd),
+    getVersionAdoption(weekStart, weekEnd),
+  ]);
 
   return {
     week_start: weekStart,
@@ -280,5 +338,6 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     search_quality,
     platforms,
     email_capture,
+    version_adoption,
   };
 }
