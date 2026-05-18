@@ -54,7 +54,7 @@ Copy `.env.example` to `.env` and fill in:
 | Variable | Where to find it |
 |---|---|
 | `POSTHOG_PROJECT_ID` | PostHog → Project settings → Project ID |
-| `POSTHOG_API_KEY` | PostHog → Project settings → Personal API keys (read-only is fine) |
+| `POSTHOG_API_KEY` | PostHog → Project settings → **Personal** API keys (starts `phx_`, read-only is fine). The query API rejects *project* keys (`phc_`). `.env` is authoritative — `src/env.ts` loads it with `override: true`, so a stray `phc_` exported in your shell can't shadow it. |
 | `SUPABASE_URL` | Supabase → Project settings → API → Project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase → Project settings → API → service_role key |
 | `ANTHROPIC_API_KEY` | console.anthropic.com (required for the Claude provider) |
@@ -66,11 +66,47 @@ Copy `.env.example` to `.env` and fill in:
 | `STRATEGY_MODEL` | Optional — override the strategist model (default `gpt-5.5`) |
 | `STRATEGY_PROVIDER` | Optional — default provider for the `/strategy` PM: `openai` (default), `claude` or `deepseek` |
 | `STRATEGY_REASONING_EFFORT` | Optional — GPT-5.x reasoning spend / cost lever: `minimal`, `low`, `medium` (default), `high` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Absolute path to the GA4 service-account JSON, **outside this repo** |
-| `GA4_PROPERTY_ID_WEBSITE` | Numeric GA4 property ID for llmnesia.com |
-| `GA4_PROPERTY_ID_EXTENSION` | Optional — GA4 property ID for the Web Store listing |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Absolute path to the GA4 service-account JSON, **outside this repo**. Used for the **website** property only. |
+| `GA4_PROPERTY_ID_WEBSITE` | Numeric GA4 property ID for llmnesia.com (read via the service account) |
+| `GA4_PROPERTY_ID_EXTENSION` | Optional — GA4 property ID for the Chrome Web Store listing. Read via OAuth, **not** the service account — see §2b. Leave blank to skip. |
+| `GA4_OAUTH_CLIENT_ID` / `GA4_OAUTH_CLIENT_SECRET` / `GA4_OAUTH_REFRESH_TOKEN` | Only for the extension property — see §2b. Leave blank to skip it. |
 | `DASHBOARD_PASSWORD` | Password to view the dashboard once deployed. **Leave blank to disable the gate locally.** |
 | `RUN_SECRET` | Shared secret the weekly cron uses to authorise `/api/run` |
+
+### 2b. GA4 extension property (Chrome Web Store) — optional
+
+The website property is read with the service account. The **extension** property
+is different: when you "Enable GA4" from the Chrome Web Store dev dashboard,
+Google auto-creates a property it administers itself — **a service account can
+never be added to it**. It's read as your own Google account via OAuth instead.
+Skip this whole section (leave the four extension vars blank) if you don't need
+Chrome Web Store install counts or per-version user data.
+
+One-time setup:
+
+1. In the **same Google Cloud project** as the service account:
+   - **APIs & Services → OAuth consent screen**: External, then **Publish**
+     ("In production"). Leaving it in "Testing" makes the refresh token expire
+     after 7 days and the weekly cron will break.
+   - **APIs & Services → Credentials → Create OAuth client ID → Desktop app**.
+     Copy the Client ID and Client secret.
+   - Confirm the **Google Analytics Data API** is enabled.
+2. Put `GA4_PROPERTY_ID_EXTENSION`, `GA4_OAUTH_CLIENT_ID`, and
+   `GA4_OAUTH_CLIENT_SECRET` in `.env`.
+3. Run the consent helper and approve read-only Analytics as the Google account
+   that can see the property:
+
+   ```bash
+   npx tsx scripts/ga4-oauth-consent.ts
+   ```
+
+4. Paste the printed token into `.env` as `GA4_OAUTH_REFRESH_TOKEN`.
+
+This surfaces `ga4.extension.store_installs` (the Chrome Web Store `install`
+event — real store installs, distinct from PostHog `extension_installed` which
+fires on in-product first run). Note: that property cannot provide uninstalls
+(the CWS GA4 integration never emits one) or extension version — version data
+comes from PostHog instead (`version_adoption`).
 
 ### 3. Install & run
 
@@ -112,7 +148,7 @@ npm run pipeline -- --provider=deepseek   # use DeepSeek instead of Claude (defa
 ## Deploying to Vercel
 
 1. Import the repo into Vercel.
-2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` won't work as a file path on Vercel** — instead set the GA4 credentials another way (e.g. switch `src/ga4.ts` to read a `GOOGLE_CREDENTIALS_JSON` env var), or accept that GA4 metrics are skipped in the hosted run.
+2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` won't work as a file path on Vercel** — so the *website* GA4 property needs the credentials supplied another way (e.g. switch `src/ga4.ts` to read a `GOOGLE_CREDENTIALS_JSON` env var) or it's skipped in the hosted run. The *extension* property is unaffected: it's OAuth/token-based (`GA4_OAUTH_*`), so it works on Vercel as-is. (`.env` override is a no-op there — there's no `.env` file, so the platform env vars stand.)
 3. Set `DASHBOARD_PASSWORD` and `RUN_SECRET` (and optionally Vercel's built-in `CRON_SECRET`).
 4. Deploy. [vercel.json](vercel.json) registers a weekly cron (`Mon 07:00 UTC → /api/run`) and sets the function `maxDuration` to 300s.
 
