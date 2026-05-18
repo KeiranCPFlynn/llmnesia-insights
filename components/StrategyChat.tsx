@@ -23,9 +23,17 @@ function RevisionCard({
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const elapsed = useElapsed(saving);
   const r = revision.recommendation;
+
+  async function copyPrompt() {
+    if (!r.handoff.coding_agent_prompt) return;
+    await navigator.clipboard.writeText(r.handoff.coding_agent_prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function apply() {
     if (saving) return;
@@ -54,6 +62,30 @@ function RevisionCard({
       </div>
       <p className="mt-1 text-sm font-medium text-violet-100">{r.title}</p>
       <p className="mt-1 text-sm text-violet-100/90">{r.recommendation}</p>
+
+      {r.handoff.coding_agent_prompt && (
+        <div className="mt-3">
+          <button
+            onClick={copyPrompt}
+            className="rounded-md border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-900/70"
+          >
+            {copied
+              ? '✓ Copied — paste into Claude Code / Codex'
+              : `Copy coding-agent prompt${
+                  r.target_repo !== 'none' ? ` · ${r.target_repo}` : ''
+                }`}
+          </button>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-violet-300/80 hover:text-violet-200">
+              Preview prompt
+            </summary>
+            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-neutral-950 p-3 text-xs leading-relaxed text-neutral-300">
+              {r.handoff.coding_agent_prompt}
+            </pre>
+          </details>
+        </div>
+      )}
+
       <div className="mt-3 flex gap-2">
         <button
           onClick={apply}

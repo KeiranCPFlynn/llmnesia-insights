@@ -122,10 +122,22 @@ export interface Revision {
   resolved_threads: ResolvedThread[];
 }
 
+export interface ChatAttachment {
+  /** Original filename, shown as a chip and labelled to the model. */
+  name: string;
+  /** Raw text content (CSV/TSV/JSON/TXT/MD) the API can't fetch itself. */
+  content: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   ts: string;
+  /**
+   * User-attached text files (e.g. GA4 CSV exports). Persisted in the saved
+   * transcript and re-sent on every turn so the model keeps the data in context.
+   */
+  attachments?: ChatAttachment[];
 }
 
 // --- PM / revenue strategist (second-stage business brain) ---

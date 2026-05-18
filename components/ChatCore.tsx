@@ -3,9 +3,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ChatMessage } from '../src/types.js';
+import type { ChatAttachment, ChatMessage } from '../src/types.js';
 import { ProviderSelect, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
+
+/** GA4 exports are tiny; this is a generous guard against pasting a huge file. */
+const MAX_FILE_BYTES = 1_000_000;
+const ACCEPT = '.csv,.tsv,.txt,.json,.md,text/csv,text/plain,application/json';
 
 export const MD_CLASS =
   'space-y-2 [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 ' +
@@ -66,11 +70,13 @@ export function ChatCore<E>({
   const [open, setOpen] = useState(defaultOpen || initialChat.length > 0);
   const [messages, setMessages] = useState<ChatMessage[]>(initialChat);
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [extra, setExtra] = useState<E | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const sendElapsed = useElapsed(busy);
 
   useEffect(() => {
@@ -83,17 +89,37 @@ export function ChatCore<E>({
     el.style.height = `${Math.min(el.scrollHeight, 208)}px`;
   }
 
+  async function addFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setError(null);
+    const picked: ChatAttachment[] = [];
+    for (const f of Array.from(list)) {
+      if (f.size > MAX_FILE_BYTES) {
+        setError(`"${f.name}" is too large (max 1 MB).`);
+        continue;
+      }
+      picked.push({ name: f.name, content: await f.text() });
+    }
+    if (picked.length) setAttachments((a) => [...a, ...picked]);
+  }
+
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if ((!text && attachments.length === 0) || busy) return;
     setError(null);
     setExtra(null);
     const next: ChatMessage[] = [
       ...messages,
-      { role: 'user', content: text, ts: new Date().toISOString() },
+      {
+        role: 'user',
+        content: text,
+        ts: new Date().toISOString(),
+        ...(attachments.length ? { attachments } : {}),
+      },
     ];
     setMessages(next);
     setInput('');
+    setAttachments([]);
     if (taRef.current) taRef.current.style.height = 'auto';
     setBusy(true);
     try {
@@ -154,7 +180,22 @@ export function ChatCore<E>({
               }`}
             >
               {m.role === 'user' ? (
-                m.content
+                <>
+                  {m.content && <div className="whitespace-pre-wrap">{m.content}</div>}
+                  {m.attachments?.length ? (
+                    <div className={`flex flex-wrap gap-1.5 ${m.content ? 'mt-2' : ''}`}>
+                      {m.attachments.map((a, j) => (
+                        <span
+                          key={j}
+                          className="rounded bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-100"
+                          title={`${a.content.length.toLocaleString()} chars`}
+                        >
+                          📎 {a.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <div className={MD_CLASS}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
@@ -176,32 +217,73 @@ export function ChatCore<E>({
         {error && <div className="text-sm text-rose-400">{error}</div>}
       </div>
 
-      <div className="flex items-end gap-2 border-t border-neutral-800 p-3">
-        <textarea
-          ref={taRef}
-          value={input}
-          rows={3}
-          onChange={(e) => {
-            setInput(e.target.value);
-            grow(e.target);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          placeholder={placeholder}
-          disabled={busy}
-          className="max-h-52 flex-1 resize-none rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-[15px] leading-relaxed outline-none focus:border-neutral-500 disabled:opacity-50"
-        />
-        <button
-          onClick={send}
-          disabled={busy || !input.trim()}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-        >
-          Send
-        </button>
+      <div className="space-y-2 border-t border-neutral-800 p-3">
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {attachments.map((a, i) => (
+              <span
+                key={i}
+                className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-200"
+              >
+                📎 {a.name}
+                <button
+                  onClick={() => setAttachments((as) => as.filter((_, j) => j !== i))}
+                  disabled={busy}
+                  className="text-neutral-500 hover:text-neutral-200 disabled:opacity-50"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept={ACCEPT}
+            className="hidden"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            title="Attach CSV / text file (e.g. a GA4 export)"
+            className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+          >
+            📎
+          </button>
+          <textarea
+            ref={taRef}
+            value={input}
+            rows={3}
+            onChange={(e) => {
+              setInput(e.target.value);
+              grow(e.target);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={placeholder}
+            disabled={busy}
+            className="max-h-52 flex-1 resize-none rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-[15px] leading-relaxed outline-none focus:border-neutral-500 disabled:opacity-50"
+          />
+          <button
+            onClick={send}
+            disabled={busy || (!input.trim() && attachments.length === 0)}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

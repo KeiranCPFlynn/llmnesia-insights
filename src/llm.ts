@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import type { ChatMessage } from './types.js';
 
 /**
  * Provider-agnostic LLM call used by the weekly analysis, the chat panel and
@@ -111,6 +112,26 @@ export interface LlmResponse {
   text: string;
   toolCall: { name: string; input: Record<string, unknown> } | null;
   modelUsed: string;
+}
+
+/**
+ * Convert a persisted chat transcript into provider-agnostic LlmMessages.
+ * Each user attachment becomes its own labelled, fenced text block — the Claude
+ * path sends them as separate content blocks, the OpenAI-compat path joins them
+ * with blank lines, so a GA4 CSV the API can't fetch reaches every provider as
+ * plain text.
+ */
+export function chatToLlmMessages(messages: ChatMessage[]): LlmMessage[] {
+  return messages.map((m) => {
+    const blocks: LlmTextBlock[] = [];
+    if (m.content.trim()) blocks.push({ text: m.content });
+    for (const a of m.attachments ?? []) {
+      blocks.push({ text: `Attached file "${a.name}":\n\`\`\`\n${a.content}\n\`\`\`` });
+    }
+    // Never emit a message with no content blocks (Anthropic rejects it).
+    if (blocks.length === 0) blocks.push({ text: m.content });
+    return { role: m.role, blocks };
+  });
 }
 
 export async function callLlm(req: LlmRequest): Promise<LlmResponse> {

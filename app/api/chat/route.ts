@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getHistoryBefore, getInsightByWeek, saveChat } from '../../../src/supabase.js';
 import type { ChatMessage } from '../../../src/types.js';
-import { callLlm, resolveProvider, type LlmTool } from '../../../src/llm.js';
+import { callLlm, chatToLlmMessages, resolveProvider, type LlmTool } from '../../../src/llm.js';
 import { isAuthorized } from '../../../lib/session';
 
 export const runtime = 'nodejs';
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       tools: [SUGGEST_TOOL],
       toolChoice: 'auto',
       system: [{ text: systemPrompt(insight, history), cache: true }],
-      messages: messages.map((m) => ({ role: m.role, blocks: [{ text: m.content }] })),
+      messages: chatToLlmMessages(messages),
     });
 
     const suggestion = response.toolCall
