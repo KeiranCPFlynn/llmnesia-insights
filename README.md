@@ -66,7 +66,8 @@ Copy `.env.example` to `.env` and fill in:
 | `STRATEGY_MODEL` | Optional — override the strategist model (default `gpt-5.5`) |
 | `STRATEGY_PROVIDER` | Optional — default provider for the `/strategy` PM: `openai` (default), `claude` or `deepseek` |
 | `STRATEGY_REASONING_EFFORT` | Optional — GPT-5.x reasoning spend / cost lever: `minimal`, `low`, `medium` (default), `high` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Absolute path to the GA4 service-account JSON, **outside this repo**. Used for the **website** property only. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | **Local only** — absolute path to the GA4 service-account JSON, **outside this repo**. Website property only. |
+| `GOOGLE_CREDENTIALS_JSON` | **Vercel** — the entire contents of that key JSON (Vercel has no file path). Takes precedence over the path above. |
 | `GA4_PROPERTY_ID_WEBSITE` | Numeric GA4 property ID for llmnesia.com (read via the service account) |
 | `GA4_PROPERTY_ID_EXTENSION` | Optional — GA4 property ID for the Chrome Web Store listing. Read via OAuth, **not** the service account — see §2b. Leave blank to skip. |
 | `GA4_OAUTH_CLIENT_ID` / `GA4_OAUTH_CLIENT_SECRET` / `GA4_OAUTH_REFRESH_TOKEN` | Only for the extension property — see §2b. Leave blank to skip it. |
@@ -148,7 +149,7 @@ npm run pipeline -- --provider=deepseek   # use DeepSeek instead of Claude (defa
 ## Deploying to Vercel
 
 1. Import the repo into Vercel.
-2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` won't work as a file path on Vercel** — so the *website* GA4 property needs the credentials supplied another way (e.g. switch `src/ga4.ts` to read a `GOOGLE_CREDENTIALS_JSON` env var) or it's skipped in the hosted run. The *extension* property is unaffected: it's OAuth/token-based (`GA4_OAUTH_*`), so it works on Vercel as-is. (`.env` override is a no-op there — there's no `.env` file, so the platform env vars stand.)
+2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` is a local file path and won't resolve on Vercel** (no `/Users` — the error is `ENOENT … lstat '/Users'`). Instead set **`GOOGLE_CREDENTIALS_JSON`** to the entire contents of the key file; `src/ga4.ts` parses it and uses it inline (it takes precedence over the path). The *extension* property is unaffected — it's OAuth/token-based (`GA4_OAUTH_*`) and works on Vercel as-is. (`.env` override is a no-op there — there's no `.env` file, so the platform env vars stand.)
 3. Set `DASHBOARD_PASSWORD` and `RUN_SECRET` (and optionally Vercel's built-in `CRON_SECRET`).
 4. Deploy. [vercel.json](vercel.json) registers a weekly cron (`Mon 07:00 UTC → /api/run`) and sets the function `maxDuration` to 300s.
 

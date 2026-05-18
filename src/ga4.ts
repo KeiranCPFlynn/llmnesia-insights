@@ -3,9 +3,24 @@ import { BetaAnalyticsDataClient } from '@google-analytics/data';
 import { OAuth2Client } from 'google-auth-library';
 import type { GA4Metrics, GA4PropertyMetrics } from './types.js';
 
-/** Website property: service account via GOOGLE_APPLICATION_CREDENTIALS. */
+/**
+ * Website property: service account.
+ *
+ * Locally, `GOOGLE_APPLICATION_CREDENTIALS` (a file path) is used by the
+ * client automatically. On Vercel there is no such file (the filesystem is
+ * `/var/task`, no `/Users`), so set `GOOGLE_CREDENTIALS_JSON` to the entire
+ * contents of the key file instead — it's parsed and passed inline.
+ */
 function makeServiceClient(): BetaAnalyticsDataClient {
-  return new BetaAnalyticsDataClient();
+  const json = process.env.GOOGLE_CREDENTIALS_JSON;
+  if (json) {
+    const credentials = JSON.parse(json) as {
+      client_email: string;
+      private_key: string;
+    };
+    return new BetaAnalyticsDataClient({ credentials });
+  }
+  return new BetaAnalyticsDataClient(); // uses GOOGLE_APPLICATION_CREDENTIALS file
 }
 
 /**
