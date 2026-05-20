@@ -319,6 +319,60 @@ export default async function Page({
         </section>
       )}
 
+      {/* Conversion funnel — the website's actual job. Rates matter more than
+          raw counts: low CTA rate = site doesn't sell; low click→install rate
+          = store listing leaks. */}
+      {ga4?.website?.conversions && (() => {
+        const conv = ga4.website.conversions;
+        const prevConv = pm?.ga4?.website?.conversions;
+        const sessions = ga4.website.sessions;
+        const prevSessions = pm?.ga4?.website?.sessions;
+        const storeInstalls = ga4.extension?.store_installs?.events;
+        const prevStoreInstalls = pm?.ga4?.extension?.store_installs?.events;
+
+        const rate = (n?: number, d?: number) =>
+          n != null && d != null && d > 0 ? n / d : undefined;
+
+        const cta = conv.install_click;
+        const prevCta = prevConv?.install_click;
+        const ctaRate = rate(cta, sessions);
+        const prevCtaRate = rate(prevCta, prevSessions);
+        const clickToInstall = rate(storeInstalls, cta);
+        const prevClickToInstall = rate(prevStoreInstalls, prevCta);
+
+        return (
+          <section className="mb-10">
+            <SectionTitle source="GA4">How well it converts</SectionTitle>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StatCard
+                label="CTA click rate"
+                value={pct(ctaRate)}
+                d={delta(ctaRate, prevCtaRate)}
+              />
+              <StatCard
+                label="Click → install"
+                value={pct(clickToInstall)}
+                d={delta(clickToInstall, prevClickToInstall)}
+              />
+              <StatCard
+                label="Install CTA clicks"
+                value={num(cta)}
+                d={delta(cta, prevCta)}
+              />
+              <StatCard
+                label="Email signups"
+                value={num(conv.email_signup)}
+                d={delta(conv.email_signup, prevConv?.email_signup)}
+              />
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+              Funnel: sessions → install CTA click → Chrome Web Store install.
+              {conv.contact_submit ? ` · ${num(conv.contact_submit)} contact submits` : ''}
+            </p>
+          </section>
+        );
+      })()}
+
       {/* Trends */}
       <section className="mb-10">
         <SectionTitle source="PostHog">Trends over {insights.length} weeks</SectionTitle>

@@ -57,7 +57,7 @@ async function fetchProperty(
   label: 'website' | 'extension',
   weekStart: string,
   weekEnd: string,
-  opts: { storeInstalls?: boolean } = {},
+  opts: { storeInstalls?: boolean; conversionEvents?: string[] } = {},
 ): Promise<GA4PropertyMetrics> {
   const property = `properties/${propertyId}`;
   const dateRanges = [{ startDate: weekStart, endDate: weekEnd }];
@@ -150,6 +150,30 @@ async function fetchProperty(
     };
   }
 
+  if (opts.conversionEvents && opts.conversionEvents.length > 0) {
+    const [events] = await client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: 'eventName' }],
+      metrics: [{ name: 'eventCount' }],
+      dimensionFilter: {
+        filter: {
+          fieldName: 'eventName',
+          inListFilter: { values: opts.conversionEvents },
+        },
+      },
+    });
+    // Seed with zeros so a missing event reads as "0 this week" not "missing".
+    const conv: Record<string, number> = Object.fromEntries(
+      opts.conversionEvents.map((n) => [n, 0]),
+    );
+    for (const row of events.rows ?? []) {
+      const name = row.dimensionValues?.[0]?.value;
+      if (name) conv[name] = int(row.metricValues?.[0]?.value);
+    }
+    result.conversions = conv;
+  }
+
   return result;
 }
 
@@ -159,7 +183,9 @@ export async function collectGA4Metrics(weekStart: string, weekEnd: string): Pro
   const oauthClient = makeOAuthClient();
 
   const [website, extension] = await Promise.all([
-    fetchProperty(serviceClient, ids.website, 'website', weekStart, weekEnd),
+    fetchProperty(serviceClient, ids.website, 'website', weekStart, weekEnd, {
+      conversionEvents: ['install_click', 'email_signup', 'contact_submit'],
+    }),
     ids.extension && oauthClient
       ? fetchProperty(oauthClient, ids.extension, 'extension', weekStart, weekEnd, {
           storeInstalls: true,

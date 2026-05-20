@@ -7,6 +7,14 @@ export interface GA4PropertyMetrics {
   geo: Record<string, number>;
   devices: Record<string, number>;
   /**
+   * Website property only — counts of named conversion events the site emits
+   * via `trackEvent` (install_click, email_signup, contact_submit). Missing
+   * keys = zero. Use install_click as the mid-funnel CTA conversion: pair with
+   * `sessions` for CTA click rate, and with the extension property's
+   * `store_installs` for click-to-install drop.
+   */
+  conversions?: Record<string, number>;
+  /**
    * Extension property only — the Chrome Web Store `install` event (a real
    * store install, distinct from PostHog `extension_installed` which fires on
    * in-product first run).

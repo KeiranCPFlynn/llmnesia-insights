@@ -227,10 +227,15 @@ async function callOpenAICompatible(
     ...req.messages.map((m) => ({ role: m.role, content: join(m.blocks) })),
   ];
 
+  // gpt-5.5 rejects `reasoning_effort` + function tools on /v1/chat/completions
+  // (it requires /v1/responses for that combo). The forced-tool path uses JSON
+  // mode — no function tools — so reasoning_effort is safe there.
+  const includeReasoningEffort = cfg.reasoningEffort && forcedTool;
+
   const response = await client.chat.completions.create({
     model: cfg.model,
     [cfg.tokenParam]: req.maxTokens ?? cfg.maxTokensDefault,
-    ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+    ...(includeReasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
     messages,
     ...(forcedTool
       ? { response_format: { type: 'json_object' as const } }
