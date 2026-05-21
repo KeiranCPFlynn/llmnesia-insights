@@ -11,12 +11,12 @@ export function PageNav({ week }: { week: string }) {
   const cls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium ${
       active
-        ? 'bg-neutral-800 text-neutral-100'
-        : 'text-neutral-400 hover:text-neutral-200'
+        ? 'bg-neutral-100 text-neutral-950 shadow-sm'
+        : 'text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200'
     }`;
 
   return (
-    <nav className="flex gap-1 rounded-lg border border-neutral-800 bg-neutral-900/50 p-1">
+    <nav className="flex gap-1 rounded-lg border border-neutral-800/80 bg-neutral-950/70 p-1 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
       <Link href={`/?week=${week}`} className={cls(!onStrategy)}>
         Insights
       </Link>

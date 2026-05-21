@@ -96,10 +96,10 @@ function RecommendationCard({
 
   return (
     <li
-      className={`rounded-xl border p-5 ${
+      className={`rounded-lg border p-5 shadow-[0_12px_34px_rgba(0,0,0,0.16)] ${
         top
-          ? 'border-emerald-700/70 bg-emerald-950/20'
-          : 'border-neutral-800 bg-neutral-900/50'
+          ? 'border-emerald-500/35 bg-emerald-500/10'
+          : 'border-neutral-800/80 bg-neutral-900/70'
       }`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -142,7 +142,7 @@ function RecommendationCard({
         <div className="mt-4">
           <button
             onClick={copyPrompt}
-            className="rounded-md border border-emerald-700 bg-emerald-900/40 px-3.5 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-900/70"
+            className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
           >
             {copied
               ? '✓ Copied — paste into Claude Code / Codex'
@@ -159,7 +159,7 @@ function RecommendationCard({
         </div>
       )}
       {rec.handoff.founder_steps && rec.handoff.founder_steps.length > 0 && (
-        <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/50 p-4">
+        <div className="mt-4 rounded-lg border border-neutral-800/80 bg-neutral-950/45 p-4">
           <div className="text-sm font-semibold text-neutral-300">Your steps</div>
           <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[15px] leading-relaxed text-neutral-300">
             {rec.handoff.founder_steps.map((s, i) => (
@@ -174,14 +174,14 @@ function RecommendationCard({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Optional note / outcome…"
-          className="min-w-[12rem] flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+          className="min-w-[12rem] flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm outline-none placeholder:text-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10"
         />
         {(['accepted', 'deferred', 'rejected', 'shipped'] as const).map((s) => (
           <button
             key={s}
             onClick={() => decide(s)}
             disabled={busy}
-            className="rounded-md border border-neutral-700 px-3.5 py-2 text-sm capitalize text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-md border border-neutral-700 px-3.5 py-2 text-sm capitalize text-neutral-200 hover:bg-neutral-800/80 disabled:opacity-50"
           >
             {s === 'shipped' ? 'Mark shipped' : s}
           </button>
@@ -344,7 +344,7 @@ export function StrategyPanel({
           <button
             onClick={generate}
             disabled={working}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-500 disabled:opacity-50 disabled:shadow-none"
           >
             {working ? 'Working…' : strategy ? 'Regenerate' : 'Generate PM strategy'}
           </button>
@@ -352,7 +352,7 @@ export function StrategyPanel({
       </div>
 
       {working && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
+        <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
           <ProgressBar
             seconds={shown}
             label={`${label(provider)} is thinking through the strategy (reasoning model — a few minutes)${
@@ -367,7 +367,7 @@ export function StrategyPanel({
       {error && <div className="text-base text-rose-400">{error}</div>}
 
       {!strategy && !working && (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-5 py-8 text-center">
+        <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-5 py-8 text-center shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
           <p className="text-base text-neutral-300">No strategy yet for this week.</p>
           <p className="mx-auto mt-2 max-w-xl text-[15px] leading-relaxed text-neutral-500">
             Generate one — the PM reads the project brief, this week’s analysis, prior theses
@@ -378,7 +378,7 @@ export function StrategyPanel({
 
       {strategy && (
         <>
-          <section className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-6">
+          <section className="rounded-lg border border-emerald-500/35 bg-[linear-gradient(135deg,rgba(16,185,129,0.14),rgba(23,23,23,0.72))] p-6 shadow-[0_16px_42px_rgba(0,0,0,0.2)]">
             <div className="text-xs font-bold uppercase tracking-widest text-emerald-400">
               This week’s thesis
             </div>
@@ -387,7 +387,7 @@ export function StrategyPanel({
             </p>
           </section>
 
-          <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
+          <section className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-6 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
             <h3 className="mb-3 text-base font-bold text-neutral-100">
               Monetization plan (design-ahead)
             </h3>
@@ -430,7 +430,7 @@ export function StrategyPanel({
           </section>
 
           {strategy.experiments.length > 0 && (
-            <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
+            <section className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-6 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
               <h3 className="mb-3 text-base font-bold text-neutral-100">Experiments</h3>
               <ul className="space-y-2 text-[15px] leading-relaxed text-neutral-200">
                 {strategy.experiments.map((e, i) => (
@@ -444,7 +444,7 @@ export function StrategyPanel({
           )}
 
           {strategy.risks.length > 0 && (
-            <section className="rounded-xl border border-amber-800/60 bg-amber-950/20 p-6">
+            <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-6 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
               <h3 className="mb-3 text-base font-bold text-amber-300">Risks</h3>
               <ul className="list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-amber-100">
                 {strategy.risks.map((r, i) => (

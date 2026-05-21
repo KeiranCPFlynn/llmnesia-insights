@@ -12,16 +12,16 @@ import type { DataSource } from '../src/types.js';
 export const dynamic = 'force-dynamic';
 
 const SEVERITY: Record<string, string> = {
-  critical: 'bg-rose-950 text-rose-300 border-rose-800',
-  concern: 'bg-amber-950 text-amber-300 border-amber-800',
-  watch: 'bg-sky-950 text-sky-300 border-sky-800',
-  info: 'bg-neutral-800 text-neutral-300 border-neutral-700',
+  critical: 'bg-rose-500/12 text-rose-200 border-rose-500/40',
+  concern: 'bg-amber-500/12 text-amber-200 border-amber-500/40',
+  watch: 'bg-sky-500/12 text-sky-200 border-sky-500/40',
+  info: 'bg-neutral-800/80 text-neutral-300 border-neutral-700',
 };
 
 const PRIORITY: Record<string, string> = {
-  high: 'bg-rose-950 text-rose-300 border-rose-800',
-  medium: 'bg-amber-950 text-amber-300 border-amber-800',
-  low: 'bg-neutral-800 text-neutral-300 border-neutral-700',
+  high: 'bg-rose-500/12 text-rose-200 border-rose-500/40',
+  medium: 'bg-amber-500/12 text-amber-200 border-amber-500/40',
+  low: 'bg-neutral-800/80 text-neutral-300 border-neutral-700',
 };
 
 function StatCard({
@@ -35,24 +35,31 @@ function StatCard({
 }) {
   const color =
     d?.dir === 'up'
-      ? 'text-emerald-400'
+      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
       : d?.dir === 'down'
-        ? 'text-rose-400'
-        : 'text-neutral-500';
+        ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+        : 'border-neutral-700 bg-neutral-800/70 text-neutral-400';
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-neutral-100">{value}</div>
-      {d?.label && <div className={`mt-1 text-xs ${color}`}>{d.label} vs prev week</div>}
+    <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-semibold leading-none text-neutral-50">{value}</div>
+      {d?.label && (
+        <div className={`mt-3 inline-flex rounded-full border px-2 py-0.5 text-[11px] ${color}`}>
+          {d.label} vs prev week
+        </div>
+      )}
     </div>
   );
 }
 
 function SectionTitle({ children, source }: { children: React.ReactNode; source?: DataSource }) {
   return (
-    <div className="mb-3 flex items-center gap-2">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{children}</h2>
+    <div className="mb-3 flex items-center gap-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">{children}</h2>
       {source && <SourceBadge source={source} />}
+      <div className="h-px flex-1 bg-neutral-800/80" />
     </div>
   );
 }
@@ -108,11 +115,11 @@ export default async function Page({
     );
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
       <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">LLMnesia Insights</h1>
-          <p className="text-sm text-neutral-500">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-50">LLMnesia Insights</h1>
+          <p className="mt-1 text-sm text-neutral-500">
             Week of {formatWeek(current.week_start)} → {formatWeek(current.week_end)} ·{' '}
             {insights.length} weeks tracked
           </p>
@@ -121,7 +128,7 @@ export default async function Page({
           <div className="flex items-center gap-3">
             <Link
               href={`/strategy?week=${current.week_start}`}
-              className="rounded-md border border-violet-800 bg-violet-950/40 px-3 py-1.5 text-sm font-medium text-violet-200 hover:bg-violet-900/40"
+              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.04)] hover:bg-emerald-500/15"
             >
               Strategy{openRecs > 0 ? ` · ${openRecs} open` : ''} →
             </Link>
@@ -132,10 +139,17 @@ export default async function Page({
       </header>
 
       {/* Hero — the one thing to take away */}
-      <section className="mb-8 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
-        <p className="text-lg font-medium leading-relaxed text-neutral-100">{headline}</p>
+      <section className="mb-8 rounded-lg border border-neutral-800/80 bg-[linear-gradient(135deg,rgba(23,23,23,0.92),rgba(6,78,59,0.18))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+          Current readout
+        </div>
+        <p className="max-w-4xl text-xl font-semibold leading-relaxed text-neutral-50">
+          {headline}
+        </p>
         {showSummary && (
-          <p className="mt-3 text-sm leading-relaxed text-neutral-400">{showSummary}</p>
+          <p className="mt-3 max-w-4xl text-sm leading-relaxed text-neutral-400">
+            {showSummary}
+          </p>
         )}
       </section>
 
@@ -155,10 +169,10 @@ export default async function Page({
         }) =>
           items.length === 0 ? null : (
             <section
-              className={`mb-4 rounded-lg border p-4 ${
+              className={`mb-4 rounded-lg border p-4 shadow-[0_10px_28px_rgba(0,0,0,0.14)] ${
                 tone === 'amber'
-                  ? 'border-amber-900 bg-amber-950/30'
-                  : 'border-sky-900 bg-sky-950/30'
+                  ? 'border-amber-500/25 bg-amber-500/10'
+                  : 'border-sky-500/25 bg-sky-500/10'
               }`}
             >
               <h2
@@ -223,7 +237,7 @@ export default async function Page({
             {attentionFindings.map((f, i) => (
               <li
                 key={`f${i}`}
-                className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4"
+                className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.16)]"
               >
                 <div className="mb-1 flex flex-wrap items-center gap-2">
                   <span
@@ -240,7 +254,7 @@ export default async function Page({
             {highActions.map((a, i) => (
               <li
                 key={`a${i}`}
-                className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4"
+                className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.16)]"
               >
                 <div className="mb-1 flex flex-wrap items-center gap-2">
                   <span
@@ -380,8 +394,8 @@ export default async function Page({
       </section>
 
       {/* Everything else — present but tucked away */}
-      <details className="mb-10 rounded-lg border border-neutral-800 bg-neutral-900/30">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300">
+      <details className="mb-10 rounded-lg border border-neutral-800/80 bg-neutral-900/50 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300 hover:bg-neutral-900/70">
           Full analysis ({current.findings.length} findings, {current.action_items.length} actions
           {current.open_threads.length ? `, ${current.open_threads.length} open threads` : ''})
         </summary>
@@ -392,7 +406,10 @@ export default async function Page({
             </h3>
             <ul className="space-y-2">
               {current.findings.map((f, i) => (
-                <li key={i} className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-3">
+                <li
+                  key={i}
+                  className="rounded-lg border border-neutral-800/80 bg-neutral-950/40 p-3"
+                >
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[11px] capitalize ${SEVERITY[f.severity] ?? SEVERITY.info}`}
@@ -414,7 +431,10 @@ export default async function Page({
             </h3>
             <ul className="space-y-2">
               {sorted(current.action_items).map((a, i) => (
-                <li key={i} className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-3">
+                <li
+                  key={i}
+                  className="rounded-lg border border-neutral-800/80 bg-neutral-950/40 p-3"
+                >
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[11px] capitalize ${PRIORITY[a.priority] ?? PRIORITY.low}`}
@@ -438,7 +458,7 @@ export default async function Page({
                 {current.open_threads.map((t, i) => (
                   <li
                     key={i}
-                    className="rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2 text-sm"
+                    className="rounded-lg border border-neutral-800/80 bg-neutral-950/40 px-3 py-2 text-sm"
                   >
                     <span className="text-neutral-200">{t.thread}</span>{' '}
                     <span className="text-neutral-500">
@@ -455,8 +475,8 @@ export default async function Page({
       {/* Revision history — every pre-correction version of the report, kept
           for the audit trail. Read-only. */}
       {(current.revisions?.length ?? 0) > 0 && (
-        <details className="mb-10 rounded-lg border border-neutral-800 bg-neutral-900/30">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300">
+        <details className="mb-10 rounded-lg border border-neutral-800/80 bg-neutral-900/50 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300 hover:bg-neutral-900/70">
             Revision history ({current.revisions!.length} prior version
             {current.revisions!.length === 1 ? '' : 's'} — before chat-driven corrections)
           </summary>
@@ -466,7 +486,7 @@ export default async function Page({
               return (
                 <div
                   key={i}
-                  className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4"
+                  className="rounded-lg border border-neutral-800/80 bg-neutral-950/40 p-4"
                 >
                   <div className="mb-2 text-xs text-neutral-500">
                     Superseded {new Date(r.revised_at).toLocaleString('en-GB')} · model{' '}

@@ -92,12 +92,12 @@ export function Toolbar({
 
         {running ? (
           <>
-            <span className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-300">
+            <span className="rounded-md border border-neutral-700 bg-neutral-900/80 px-4 py-2 text-sm font-medium text-neutral-300">
               Running… {mm}:{ss}
             </span>
             <button
               onClick={cancel}
-              className="rounded-md border border-rose-700 px-3 py-2 text-sm font-medium text-rose-300 hover:bg-rose-950/50"
+              className="rounded-md border border-rose-500/40 px-3 py-2 text-sm font-medium text-rose-200 hover:bg-rose-500/10"
             >
               Cancel
             </button>
@@ -106,13 +106,13 @@ export function Toolbar({
           <>
             <button
               onClick={runNow}
-              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500"
+              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(225,29,72,0.22)] hover:bg-rose-500"
             >
               Confirm — run analysis ({estimate})
             </button>
             <button
               onClick={() => setConfirming(false)}
-              className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800"
+              className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/80"
             >
               Back
             </button>
@@ -123,7 +123,7 @@ export function Toolbar({
               setMsg(null);
               setConfirming(true);
             }}
-            className="rounded-md border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-950/50"
+            className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
           >
             Run analysis now
           </button>

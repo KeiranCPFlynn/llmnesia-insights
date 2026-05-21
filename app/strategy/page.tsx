@@ -33,11 +33,11 @@ export default async function StrategyPage({
   const { weeks, current } = selectWeek(insights, week);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
       <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">LLMnesia Strategy</h1>
-          <p className="text-sm text-neutral-500">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-50">LLMnesia Strategy</h1>
+          <p className="mt-1 text-sm text-neutral-500">
             Revenue & growth PM · week of {formatWeek(current.week_start)} →{' '}
             {formatWeek(current.week_end)}
           </p>
@@ -53,7 +53,7 @@ export default async function StrategyPage({
       </header>
 
       <section className="mb-10">
-        <h2 className="mb-3 text-base font-semibold text-neutral-300">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
           Discuss the strategy with the PM
         </h2>
         <StrategyChat

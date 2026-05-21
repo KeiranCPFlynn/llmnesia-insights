@@ -54,14 +54,18 @@ export function TrendCharts({ data }: { data: TrendPoint[] }) {
       {CHARTS.map((c) => (
         <div
           key={c.title}
-          className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4"
+          className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.16)]"
         >
-          <div className="mb-3 flex items-baseline justify-between">
-            <h3 className="text-sm font-medium text-neutral-200">{c.title}</h3>
-            <div className="flex gap-2 text-[11px] text-neutral-500">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <h3 className="text-sm font-semibold text-neutral-100">{c.title}</h3>
+            <div className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-[11px] text-neutral-500">
               {c.series.map((s) => (
-                <span key={String(s.key)} style={{ color: s.color }}>
-                  ● {s.label}
+                <span key={String(s.key)} className="inline-flex items-center gap-1">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: s.color }}
+                  />
+                  <span style={{ color: s.color }}>{s.label}</span>
                 </span>
               ))}
             </div>
@@ -84,10 +88,11 @@ export function TrendCharts({ data }: { data: TrendPoint[] }) {
               />
               <Tooltip
                 contentStyle={{
-                  background: '#0b0c0e',
-                  border: '1px solid #404040',
+                  background: '#0b0f12',
+                  border: '1px solid rgba(115,115,115,0.45)',
                   borderRadius: 8,
                   fontSize: 12,
+                  boxShadow: '0 16px 32px rgba(0,0,0,0.28)',
                 }}
                 labelFormatter={(w) => `Week of ${formatWeek(String(w))}`}
                 formatter={(v: number, n) => [`${v}${c.unit}`, n]}

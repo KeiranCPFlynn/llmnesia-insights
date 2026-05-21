@@ -138,7 +138,7 @@ export function ChatCore<E>({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-neutral-800 bg-neutral-900/50 px-4 py-3 text-sm text-neutral-300 hover:bg-neutral-900"
+        className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-4 py-3 text-sm text-neutral-300 shadow-[0_10px_30px_rgba(0,0,0,0.16)] hover:border-neutral-700 hover:bg-neutral-900"
       >
         {collapsedLabel}
       </button>
@@ -146,9 +146,9 @@ export function ChatCore<E>({
   }
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/50">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-semibold text-neutral-200">{title}</h2>
+    <div className="overflow-hidden rounded-lg border border-neutral-800/80 bg-neutral-900/70 shadow-[0_16px_42px_rgba(0,0,0,0.22)]">
+      <div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-950/45 px-4 py-3">
+        <h2 className="text-sm font-semibold text-neutral-100">{title}</h2>
         <div className="flex items-center gap-3">
           <ProviderSelect
             provider={provider}
@@ -159,7 +159,7 @@ export function ChatCore<E>({
           />
           <button
             onClick={() => setOpen(false)}
-            className="text-xs text-neutral-500 hover:text-neutral-300"
+            className="rounded px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-800/80 hover:text-neutral-300"
           >
             Hide
           </button>
@@ -168,15 +168,17 @@ export function ChatCore<E>({
 
       <div ref={scrollRef} className="max-h-[28rem] space-y-3 overflow-y-auto p-4">
         {messages.length === 0 && (
-          <p className="text-base leading-relaxed text-neutral-400">{emptyHint}</p>
+          <p className="rounded-lg border border-dashed border-neutral-800 bg-neutral-950/35 p-4 text-base leading-relaxed text-neutral-400">
+            {emptyHint}
+          </p>
         )}
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
             <div
-              className={`max-w-[85%] rounded-lg px-3.5 py-2.5 text-[15px] leading-relaxed ${
+              className={`max-w-[85%] rounded-lg px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_6px_18px_rgba(0,0,0,0.14)] ${
                 m.role === 'user'
-                  ? 'whitespace-pre-wrap bg-emerald-700/40 text-emerald-50'
-                  : 'bg-neutral-800 text-neutral-100'
+                  ? 'whitespace-pre-wrap bg-emerald-600/25 text-emerald-50 ring-1 ring-emerald-500/20'
+                  : 'bg-neutral-800/90 text-neutral-100 ring-1 ring-neutral-700/50'
               }`}
             >
               {m.role === 'user' ? (
@@ -217,7 +219,7 @@ export function ChatCore<E>({
         {error && <div className="text-sm text-rose-400">{error}</div>}
       </div>
 
-      <div className="space-y-2 border-t border-neutral-800 p-3">
+      <div className="space-y-2 border-t border-neutral-800/80 bg-neutral-950/30 p-3">
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {attachments.map((a, i) => (
@@ -254,7 +256,7 @@ export function ChatCore<E>({
             onClick={() => fileRef.current?.click()}
             disabled={busy}
             title="Attach CSV / text file (e.g. a GA4 export)"
-            className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/80 disabled:opacity-50"
           >
             📎
           </button>
@@ -274,12 +276,12 @@ export function ChatCore<E>({
             }}
             placeholder={placeholder}
             disabled={busy}
-            className="max-h-52 flex-1 resize-none rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-[15px] leading-relaxed outline-none focus:border-neutral-500 disabled:opacity-50"
+            className="max-h-52 flex-1 resize-none rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-[15px] leading-relaxed outline-none placeholder:text-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 disabled:opacity-50"
           />
           <button
             onClick={send}
             disabled={busy || (!input.trim() && attachments.length === 0)}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-[0_8px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-500 disabled:opacity-50 disabled:shadow-none"
           >
             Send
           </button>
