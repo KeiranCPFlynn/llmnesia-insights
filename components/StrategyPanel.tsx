@@ -227,6 +227,12 @@ export function StrategyPanel({
   const pollStop = useRef(true);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  useEffect(() => {
+    setStrategy(initialStrategy);
+    setDecisions(initialDecisions);
+    if (initialStrategy) localStorage.removeItem(pendingKey(week));
+  }, [week, initialStrategy, initialDecisions]);
+
   function stopPoll() {
     pollStop.current = true;
     if (pollTimer.current) clearTimeout(pollTimer.current);

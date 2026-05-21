@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getInsightByWeek, saveStrategyChat } from '../../../../src/supabase.js';
 import { readBrief } from '../../../../src/brief.js';
-import type { ChatMessage } from '../../../../src/types.js';
+import type { ChatMessage, StrategyRecommendation } from '../../../../src/types.js';
 import { callLlm, chatToLlmMessages, resolveProvider, type LlmTool } from '../../../../src/llm.js';
 import { isAuthorized } from '../../../../lib/session';
 
@@ -65,6 +65,45 @@ const REVISE_TOOL: LlmTool = {
   },
 };
 
+type StrategyRevision = {
+  replaces_id?: string;
+  recommendation: Omit<StrategyRecommendation, 'id'>;
+};
+
+function formatRevisionReply(text: string, revision: StrategyRevision | null): string {
+  if (!revision) return text || 'No response.';
+
+  const r = revision.recommendation;
+  const lines = [
+    text ||
+      (revision.replaces_id
+        ? "I've drafted a revised recommendation. Review it below, then apply it if it's right."
+        : "I've drafted a new recommendation. Review it below, then add it to the strategy if it's right."),
+    `### ${r.title}`,
+    `**Area:** ${r.area}${r.target_repo !== 'none' ? ` · **Repo:** ${r.target_repo}` : ''}`,
+    r.recommendation,
+    `**Why:** ${r.rationale}`,
+    `**Expected impact:** ${r.expected_impact}`,
+    `**Effort:** ${r.effort} · **Confidence:** ${r.confidence}`,
+  ];
+
+  if (r.metrics_to_watch?.length) {
+    lines.push(`**Metrics to watch:** ${r.metrics_to_watch.join(', ')}`);
+  }
+
+  if (r.handoff?.coding_agent_prompt) {
+    lines.push(`#### Coding-agent prompt\n\n\`\`\`text\n${r.handoff.coding_agent_prompt.trim()}\n\`\`\``);
+  }
+
+  if (r.handoff?.founder_steps?.length) {
+    lines.push(
+      `#### Founder steps\n\n${r.handoff.founder_steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}`,
+    );
+  }
+
+  return lines.join('\n\n');
+}
+
 function systemPrompt(
   insight: NonNullable<Awaited<ReturnType<typeof getInsightByWeek>>>,
   brief: string,
@@ -120,15 +159,8 @@ export async function POST(req: Request) {
       messages: chatToLlmMessages(messages),
     });
 
-    const revision = response.toolCall
-      ? (response.toolCall.input as { replaces_id?: string; recommendation: unknown })
-      : null;
-
-    const reply =
-      response.text.trim() ||
-      (revision
-        ? "I've drafted a revised recommendation — review it below and apply if it's right."
-        : 'No response.');
+    const revision = response.toolCall ? (response.toolCall.input as StrategyRevision) : null;
+    const reply = formatRevisionReply(response.text.trim(), revision);
 
     const assistantMsg: ChatMessage = {
       role: 'assistant',
