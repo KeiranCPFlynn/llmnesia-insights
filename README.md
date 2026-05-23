@@ -47,6 +47,103 @@ create index on public.weekly_insights (week_start desc);
 > alter table public.weekly_insights add column if not exists strategy_chat jsonb not null default '[]';
 > ```
 
+### 1b. Traffic Growth Planner schema (`/growth`)
+
+The Growth Planner (Google Search Console + opportunity detection + weekly
+action plan) lives in its own tables, **NOT** as more jsonb on
+`weekly_insights` — GSC data is row-per-query-per-day and multi-site, so it
+needs proper relational storage. Run this block once before opening `/growth`:
+
+```sql
+create table if not exists public.sites (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  root_url text not null,
+  gsc_property text not null,
+  sitemap_url text,
+  brief_override text,
+  enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (gsc_property)
+);
+
+create table if not exists public.gsc_rows (
+  site_id uuid not null references public.sites(id) on delete cascade,
+  query text not null,
+  page text not null,
+  date date not null,
+  country text not null default 'zzz',
+  device text not null default 'all',
+  clicks integer not null default 0,
+  impressions integer not null default 0,
+  ctr double precision not null default 0,
+  position double precision not null default 0,
+  synced_at timestamptz not null default now(),
+  primary key (site_id, query, page, date, country, device)
+);
+create index if not exists gsc_rows_site_date on public.gsc_rows (site_id, date desc);
+create index if not exists gsc_rows_site_query on public.gsc_rows (site_id, query);
+create index if not exists gsc_rows_site_page on public.gsc_rows (site_id, page);
+
+create table if not exists public.growth_opportunities (
+  id uuid primary key default gen_random_uuid(),
+  site_id uuid not null references public.sites(id) on delete cascade,
+  week_start date not null,
+  type text not null,
+  target_query text,
+  target_page text,
+  evidence jsonb not null,
+  score double precision not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists growth_opps_site_week on public.growth_opportunities (site_id, week_start desc);
+
+create table if not exists public.growth_plans (
+  site_id uuid not null references public.sites(id) on delete cascade,
+  week_start date not null,
+  plan jsonb not null,
+  model_used text not null,
+  generated_at timestamptz not null default now(),
+  primary key (site_id, week_start)
+);
+
+create table if not exists public.growth_actions (
+  id uuid primary key default gen_random_uuid(),
+  site_id uuid not null references public.sites(id) on delete cascade,
+  week_start date not null,
+  recommendation_id uuid,
+  opportunity_id uuid,
+  action_type text not null,
+  target_query text,
+  target_page text,
+  suggested_title text,
+  brief jsonb,
+  status text not null default 'planned',
+  status_updated_at timestamptz not null default now(),
+  published_url text,
+  follow_up_date date,
+  note text,
+  created_at timestamptz not null default now()
+);
+create index if not exists growth_actions_site_status on public.growth_actions (site_id, status);
+create index if not exists growth_actions_recommendation on public.growth_actions (recommendation_id);
+
+-- Sites seed. The gsc_property string MUST match exactly what Search Console
+-- shows (top-left dropdown). Use `sc-domain:example.com` for a Domain property
+-- (the modern default), or `https://example.com/` for a URL-prefix property
+-- (note the trailing slash — must match GSC verbatim).
+insert into public.sites (name, root_url, gsc_property, sitemap_url) values
+  ('LLMnesia',   'https://llmnesia.com',   'sc-domain:llmnesia.com',   'https://llmnesia.com/sitemap.xml'),
+  ('LunaCradle', 'https://lunacradle.com', 'sc-domain:lunacradle.com', 'https://lunacradle.com/sitemap.xml')
+on conflict (gsc_property) do nothing;
+```
+
+> Run as-is. If a later sync returns "property not found", that site's GSC
+> entry is URL-prefix instead of Domain — update just that row in the `sites`
+> table (e.g. `update public.sites set gsc_property = 'https://llmnesia.com/' where name = 'LLMnesia';`).
+> Changing the `gsc_property` value is safe: existing `gsc_rows` reference the
+> row's `id`, not the property string.
+
 ### 2. Environment variables
 
 Copy `.env.example` to `.env` and fill in:
@@ -71,6 +168,8 @@ Copy `.env.example` to `.env` and fill in:
 | `GA4_PROPERTY_ID_WEBSITE` | Numeric GA4 property ID for llmnesia.com (read via the service account) |
 | `GA4_PROPERTY_ID_EXTENSION` | Optional — GA4 property ID for the Chrome Web Store listing. Read via OAuth, **not** the service account — see §2b. Leave blank to skip. |
 | `GA4_OAUTH_CLIENT_ID` / `GA4_OAUTH_CLIENT_SECRET` / `GA4_OAUTH_REFRESH_TOKEN` | Only for the extension property — see §2b. Leave blank to skip it. |
+| `GSC_OAUTH_CLIENT_ID` / `GSC_OAUTH_CLIENT_SECRET` / `GSC_OAUTH_REFRESH_TOKEN` | Google Search Console for the Traffic Growth Planner — see §2c. Leave blank to disable `/growth`. |
+| `GROWTH_PROVIDER` | Optional — default provider for the `/growth` plan + briefs: `claude` (default), `openai` or `deepseek`. Falls back to `LLM_PROVIDER`. |
 | `DASHBOARD_PASSWORD` | Password to view the dashboard once deployed. **Leave blank to disable the gate locally.** |
 | `RUN_SECRET` | Shared secret the weekly cron uses to authorise `/api/run` |
 
@@ -109,6 +208,39 @@ fires on in-product first run). Note: that property cannot provide uninstalls
 (the CWS GA4 integration never emits one) or extension version — version data
 comes from PostHog instead (`version_adoption`).
 
+### 2c. Google Search Console (Traffic Growth Planner — `/growth`) — optional
+
+`/growth` reads GSC data via OAuth (a service account would need to be added
+to every GSC property manually — OAuth gives access to every property the
+signing-in account already owns, which is the multi-site default). Skip this
+section if you don't need `/growth`.
+
+One-time setup:
+
+1. In the **same Google Cloud project** as the GA4 OAuth client:
+   - **APIs & Services → Library** — enable the **Google Search Console API**.
+   - **APIs & Services → Credentials → Create OAuth client ID → Desktop app**.
+     You can reuse the GA4 desktop client by re-running consent with the GSC
+     scope, or create a separate one — the script just needs *some* client id
+     + secret it can drive the consent loop with.
+   - The OAuth consent screen must already be **published** ("In production")
+     from the GA4 setup (otherwise the refresh token expires in 7 days).
+2. Put `GSC_OAUTH_CLIENT_ID` and `GSC_OAUTH_CLIENT_SECRET` in `.env`.
+3. Run the consent helper and sign in as the Google account that owns the GSC
+   properties for your sites:
+
+   ```bash
+   npx tsx scripts/gsc-oauth-consent.ts
+   ```
+
+4. Paste the printed token into `.env` as `GSC_OAUTH_REFRESH_TOKEN`.
+
+Then run the migration block in §1b above to create `sites`, `gsc_rows`,
+`growth_opportunities`, `growth_plans`, `growth_actions`. Edit the `insert
+into public.sites` block in that SQL to match the GSC properties for your
+real sites (use `sc-domain:example.com` for Domain properties, or the full
+`https://example.com/` URL for URL-prefix properties — match GSC exactly).
+
 ### 3. Install & run
 
 ```bash
@@ -124,6 +256,49 @@ With `DASHBOARD_PASSWORD` blank the dashboard is open (fine for local). Set it b
 - **Week selector** — top right, jump to any past week.
 - **Run analysis now** — runs the full pipeline for the current week and refreshes. Takes ~1 minute (PostHog + GA4 + the selected LLM).
 - **Model selector** — next to "Run analysis now" and in the chat panel: choose **Claude** or **DeepSeek**. The choice is remembered in your browser and controls the weekly run, the chat, and report regeneration after a correction. The weekly Vercel Cron run uses the `LLM_PROVIDER` env default.
+
+## The Traffic Growth Planner (`/growth`)
+
+A multi-site SEO/content planner that answers **"what are the highest-leverage
+traffic actions this week?"** It combines Google Search Console (queries,
+pages, impressions, clicks, position) with the existing GA4 data and your
+prior action history, and proposes a **balanced** weekly plan — not just
+"10 new posts".
+
+How it works:
+
+- **Site switcher** — every row in `public.sites` shows up as a pill in the
+  page header. The data model is multi-site from day 1; adding LunaCradle or
+  any other property is just another row.
+- **GSC sync** — manual on first run (the **Backfill 16 months** button) and
+  then a **Sync last 7 days** button to catch up the rolling window. No cron
+  yet; sync before generating the weekly plan.
+- **Opportunity queues** (deterministic — pure rules over the data, no LLM):
+  - **Near-wins** — already ranks page 2–3 with real impressions: push to page 1.
+  - **High-impression, low-CTR** — page 1 listings that under-click vs benchmark.
+  - **Content gaps** — real demand but no page ranks well: new content.
+  - **Declining pages** — losing clicks vs the prior 28 days.
+  - **Proven traffic expanders** — pages already pulling consistent clicks.
+  Each opportunity shows the raw GSC numbers it was built from and a
+  transparent 0–100 score — no opaque AI ranking.
+- **Weekly plan** — one LLM call (`GROWTH_PROVIDER`, default Claude) composes
+  a balanced plan over the top 25 ranked opportunities + your project brief
+  + prior plans + in-flight actions. The plan declares a one-line thesis, a
+  balance object (create / improve / link / fix / distribute / measure), and
+  5–10 ranked recommendations — each with action type, target, why,
+  expected impact, effort/confidence, source-data line, and the next concrete
+  step.
+- **Action board** — accepting a recommendation (or an opportunity directly)
+  materialises a row in `growth_actions` with a status workflow:
+  `idea → planned → briefed → drafted → published → updated → monitoring →
+  completed` (plus `ignored`). Each card lets you set status, paste the
+  published URL, add notes, and click **Generate brief** for a tight,
+  decision-ready content brief.
+
+Runs entirely on owned data — no paid keyword or SERP APIs needed for v1.
+Schema (`sites`, `gsc_rows`, `growth_opportunities`, `growth_plans`,
+`growth_actions`) lives in §1b above and must be applied manually before
+opening `/growth`.
 
 ## The Strategy page (`/strategy`)
 

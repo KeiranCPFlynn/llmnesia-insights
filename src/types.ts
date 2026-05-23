@@ -243,3 +243,203 @@ export interface HistoricalInsight {
   action_items: ActionItem[];
   open_threads: Thread[];
 }
+
+// --- Traffic Growth Planner ---
+
+/**
+ * A property the planner tracks. Sites are configured in Supabase (the `sites`
+ * table) rather than in code so adding LunaCradle / a new site is just a row
+ * insert. `gsc_property` is the verified Search Console property string
+ * (e.g. `sc-domain:llmnesia.com` for a Domain property, or
+ * `https://llmnesia.com/` for a URL-prefix property).
+ */
+export interface Site {
+  id: string;
+  name: string;
+  root_url: string;
+  gsc_property: string;
+  sitemap_url?: string | null;
+  /** Optional per-site override for the project brief that grounds the LLM. */
+  brief_override?: string | null;
+  enabled: boolean;
+  created_at?: string;
+}
+
+/**
+ * One row of GSC `searchAnalytics` data — query × page × date × country × device.
+ * Append-only; the sync upserts on the full PK. CTR and position are stored
+ * verbatim so we can compute trends without recomputing from clicks/impressions
+ * (which can drop to zero for a row that previously had data).
+ */
+export interface GSCRow {
+  site_id: string;
+  query: string;
+  page: string;
+  date: string;
+  country: string;
+  device: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  synced_at?: string;
+}
+
+export type GrowthOpportunityType =
+  | 'near_win'
+  | 'low_ctr'
+  | 'gap'
+  | 'declining'
+  | 'proven_expander';
+
+/**
+ * Why an opportunity was surfaced — the verbatim numbers the score is built
+ * from. Rendered in the UI so a human can sanity-check the recommendation
+ * rather than trust an opaque score.
+ */
+export interface GrowthOpportunityEvidence {
+  /** Rolling window (last 28d ending `as_of`) the detector saw. */
+  window_days: number;
+  as_of: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  position: number;
+  /** Same numbers from the prior window (when relevant — e.g. declining). */
+  prior?: {
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    position: number;
+  };
+  /**
+   * Human-readable bullets explaining *why* this passed the detector
+   * (e.g. "position 14.2, 312 impressions in 28d, current page ranks weakly").
+   */
+  reasons: string[];
+}
+
+export interface GrowthOpportunity {
+  id: string;
+  site_id: string;
+  week_start: string;
+  type: GrowthOpportunityType;
+  target_query?: string | null;
+  target_page?: string | null;
+  evidence: GrowthOpportunityEvidence;
+  /** 0–100 transparent weighted score. Higher = more leverage. */
+  score: number;
+  created_at?: string;
+}
+
+export type GrowthActionType =
+  | 'create'
+  | 'improve'
+  | 'title_meta'
+  | 'add_section'
+  | 'internal_link'
+  | 'fix_indexing'
+  | 'refresh'
+  | 'supporting_cluster'
+  | 'distribute'
+  | 'monitor';
+
+export type GrowthActionStatus =
+  | 'idea'
+  | 'planned'
+  | 'briefed'
+  | 'drafted'
+  | 'published'
+  | 'updated'
+  | 'ignored'
+  | 'completed'
+  | 'monitoring';
+
+/**
+ * One recommended action inside a weekly plan. The LLM produces these; humans
+ * accept them, which materialises a `growth_actions` row tied back via `id`.
+ */
+export interface GrowthRecommendation {
+  id: string;
+  action_type: GrowthActionType;
+  /** When set, ties this back to a detected opportunity for traceability. */
+  opportunity_id?: string | null;
+  target_query?: string | null;
+  target_page?: string | null;
+  title: string;
+  /** What the founder should do, concretely. */
+  recommendation: string;
+  /** Why this is worth doing — tied to the evidence. */
+  rationale: string;
+  /** Which numbers should move and roughly how much. */
+  expected_impact: string;
+  effort: 'S' | 'M' | 'L';
+  confidence: 'low' | 'medium' | 'high';
+  /** Short summary of the GSC/GA4 data behind the call. */
+  source_data: string;
+  /** Concrete next step (e.g. "Draft H2 on X", "Add link from /a to /b"). */
+  next_step: string;
+}
+
+/** Counts of each action type the plan asked for — e.g. balance check. */
+export interface GrowthPlanBalance {
+  create: number;
+  improve: number;
+  link: number;
+  fix: number;
+  distribute: number;
+  measure: number;
+}
+
+export interface GrowthPlan {
+  thesis: string;
+  balance: GrowthPlanBalance;
+  recommendations: GrowthRecommendation[];
+  risks: string[];
+  experiments: { hypothesis: string; measure: string }[];
+  model_used: string;
+  generated_at: string;
+}
+
+/**
+ * A materialised recommendation — created when the founder accepts a plan
+ * item. The action is what carries the workflow status, published URL, and
+ * post-publishing performance follow-up.
+ */
+export interface GrowthAction {
+  id: string;
+  site_id: string;
+  week_start: string;
+  /** Recommendation this was created from (null = free-form action). */
+  recommendation_id?: string | null;
+  opportunity_id?: string | null;
+  action_type: GrowthActionType;
+  target_query?: string | null;
+  target_page?: string | null;
+  suggested_title?: string | null;
+  /** Lazily filled by /api/growth/brief — null until "Generate brief" clicked. */
+  brief?: GrowthBrief | null;
+  status: GrowthActionStatus;
+  status_updated_at: string;
+  published_url?: string | null;
+  follow_up_date?: string | null;
+  /** Free-form founder note (why ignored, draft URL, etc.). */
+  note?: string | null;
+  created_at?: string;
+}
+
+/** Lightweight content brief generated on demand for one recommendation. */
+export interface GrowthBrief {
+  primary_query: string;
+  supporting_queries: string[];
+  suggested_title: string;
+  search_intent: string;
+  format: string;
+  angle: string;
+  sections: string[];
+  internal_links: { from?: string; to?: string; anchor?: string }[];
+  related_pages: string[];
+  reason: string;
+  model_used: string;
+  generated_at: string;
+}
