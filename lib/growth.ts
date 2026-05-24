@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type {
+  GSCRow,
   GrowthAction,
   GrowthOpportunity,
   GrowthOpportunityType,
@@ -46,6 +47,177 @@ export interface GrowthPageData {
   lastSyncedAt: string | null;
   /** Total gsc_rows for this site (0 = never synced). */
   rowCount: number;
+  gscDigest: GscDigest;
+}
+
+export interface GscDailyPoint {
+  date: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface GscTopRow {
+  label: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface GscDigest {
+  startDate: string | null;
+  endDate: string | null;
+  rowsUsed: number;
+  totals: {
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+    queries: number;
+    pages: number;
+  };
+  daily: GscDailyPoint[];
+  topQueries: GscTopRow[];
+  topPages: GscTopRow[];
+}
+
+const EMPTY_GSC_DIGEST: GscDigest = {
+  startDate: null,
+  endDate: null,
+  rowsUsed: 0,
+  totals: {
+    clicks: 0,
+    impressions: 0,
+    ctr: 0,
+    position: 0,
+    queries: 0,
+    pages: 0,
+  },
+  daily: [],
+  topQueries: [],
+  topPages: [],
+};
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function weightedPosition(rows: Pick<GSCRow, 'position' | 'impressions'>[]) {
+  const impressionWeight = rows.reduce((sum, r) => sum + (r.impressions ?? 0), 0);
+  if (impressionWeight > 0) {
+    return (
+      rows.reduce((sum, r) => sum + (r.position ?? 0) * (r.impressions ?? 0), 0) /
+      impressionWeight
+    );
+  }
+  return rows.length
+    ? rows.reduce((sum, r) => sum + (r.position ?? 0), 0) / rows.length
+    : 0;
+}
+
+function topRows(
+  rows: GSCRow[],
+  key: 'query' | 'page',
+  limit = 8,
+): GscTopRow[] {
+  const grouped = new Map<string, GSCRow[]>();
+  for (const row of rows) {
+    const label = row[key];
+    if (!label) continue;
+    const existing = grouped.get(label);
+    if (existing) existing.push(row);
+    else grouped.set(label, [row]);
+  }
+
+  return [...grouped.entries()]
+    .map(([label, items]) => {
+      const clicks = items.reduce((sum, r) => sum + (r.clicks ?? 0), 0);
+      const impressions = items.reduce((sum, r) => sum + (r.impressions ?? 0), 0);
+      return {
+        label,
+        clicks,
+        impressions,
+        ctr: impressions > 0 ? clicks / impressions : 0,
+        position: weightedPosition(items),
+      };
+    })
+    .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks)
+    .slice(0, limit);
+}
+
+async function getGscDigest(siteId: string): Promise<GscDigest> {
+  const supabase = getClient();
+  const { data: latest, error: latestError } = await supabase
+    .from('gsc_rows')
+    .select('date')
+    .eq('site_id', siteId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latestError) throw new Error(`gsc latest date failed: ${latestError.message}`);
+
+  const endDate = (latest as { date?: string } | null)?.date;
+  if (!endDate) return EMPTY_GSC_DIGEST;
+
+  const start = new Date(`${endDate}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - 89);
+  const startDate = isoDate(start);
+
+  const { data, error } = await supabase
+    .from('gsc_rows')
+    .select('date,query,page,clicks,impressions,ctr,position,country,device,site_id')
+    .eq('site_id', siteId)
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date', { ascending: true })
+    .range(0, 19999);
+  if (error) throw new Error(`gsc digest fetch failed: ${error.message}`);
+
+  const rows = ((data as GSCRow[]) ?? []).filter((r) => r.date);
+  if (rows.length === 0) return { ...EMPTY_GSC_DIGEST, startDate, endDate };
+
+  const clicks = rows.reduce((sum, r) => sum + (r.clicks ?? 0), 0);
+  const impressions = rows.reduce((sum, r) => sum + (r.impressions ?? 0), 0);
+  const queries = new Set(rows.map((r) => r.query).filter(Boolean)).size;
+  const pages = new Set(rows.map((r) => r.page).filter(Boolean)).size;
+
+  const byDate = new Map<string, GSCRow[]>();
+  for (const row of rows) {
+    const existing = byDate.get(row.date);
+    if (existing) existing.push(row);
+    else byDate.set(row.date, [row]);
+  }
+
+  const daily = [...byDate.entries()].map(([date, items]) => {
+    const dayClicks = items.reduce((sum, r) => sum + (r.clicks ?? 0), 0);
+    const dayImpressions = items.reduce((sum, r) => sum + (r.impressions ?? 0), 0);
+    return {
+      date,
+      clicks: dayClicks,
+      impressions: dayImpressions,
+      ctr: dayImpressions > 0 ? dayClicks / dayImpressions : 0,
+      position: weightedPosition(items),
+    };
+  });
+
+  return {
+    startDate,
+    endDate,
+    rowsUsed: rows.length,
+    totals: {
+      clicks,
+      impressions,
+      ctr: impressions > 0 ? clicks / impressions : 0,
+      position: weightedPosition(rows),
+      queries,
+      pages,
+    },
+    daily,
+    topQueries: topRows(rows, 'query'),
+    topPages: topRows(rows, 'page'),
+  };
 }
 
 /**
@@ -59,7 +231,7 @@ export async function getGrowthPageData(
   weekStart: string,
 ): Promise<GrowthPageData | null> {
   const supabase = getClient();
-  const [siteRes, sitesRes, planRes, oppsRes, actionsRes, syncRes, countRes] = await Promise.all([
+  const [siteRes, sitesRes, planRes, oppsRes, actionsRes, syncRes, countRes, digest] = await Promise.all([
     supabase.from('sites').select('*').eq('id', siteId).maybeSingle(),
     supabase
       .from('sites')
@@ -91,6 +263,7 @@ export async function getGrowthPageData(
       .limit(1)
       .maybeSingle(),
     supabase.from('gsc_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
+    getGscDigest(siteId),
   ]);
 
   if (siteRes.error) throw new Error(`site fetch failed: ${siteRes.error.message}`);
@@ -106,6 +279,7 @@ export async function getGrowthPageData(
     actions: (actionsRes.data as GrowthAction[]) ?? [],
     lastSyncedAt: ((syncRes.data as { synced_at: string } | null)?.synced_at) ?? null,
     rowCount: countRes.count ?? 0,
+    gscDigest: digest,
   };
 }
 

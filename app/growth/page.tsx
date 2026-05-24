@@ -11,6 +11,7 @@ import {
 import { PageNav } from '../../components/PageNav';
 import { SiteSwitch } from '../../components/SiteSwitch';
 import { GrowthSyncToolbar } from '../../components/GrowthDashboard';
+import { GSCDataVisuals } from '../../components/GSCDataVisuals';
 import { WeeklyPlan } from '../../components/WeeklyPlan';
 import { OpportunityList } from '../../components/OpportunityList';
 import { ActionCard } from '../../components/ActionCard';
@@ -137,6 +138,16 @@ export default async function GrowthPage({
           lastSyncedAt={data.lastSyncedAt}
           rowCount={data.rowCount}
         />
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Imported GSC data{' '}
+          <span className="ml-2 font-normal text-neutral-500">
+            clicks, impressions, CTR and ranking context
+          </span>
+        </h2>
+        <GSCDataVisuals digest={data.gscDigest} />
       </section>
 
       <section className="mb-10">
