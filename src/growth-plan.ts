@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { callLlm, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
 import { GROWTH_PLAN_SYSTEM_PROMPT } from './prompts/growth-prompt.js';
+import type { SiteScale } from './growth.js';
 import type {
   GrowthAction,
   GrowthOpportunity,
@@ -78,6 +79,29 @@ const PLAN_TOOL: LlmTool = {
               description: '1 line summarizing the GSC/GA4 numbers behind the call.',
             },
             next_step: { type: 'string' },
+            target_repo: {
+              type: 'string',
+              description:
+                "Repo folder name to open in Claude Code / Codex (e.g. 'llmnesia-site njs'). Use the `repo` value supplied for this site. Use 'none' for ops-only / measure / distribute actions with no code change.",
+            },
+            handoff: {
+              type: 'object',
+              description:
+                'One-click handoff for the founder. Provide coding_agent_prompt for code changes; founder_steps for ops/manual work; either or both may be present.',
+              properties: {
+                coding_agent_prompt: {
+                  type: 'string',
+                  description:
+                    "Self-contained prompt to paste into Claude Code / Codex with the target repo open. Name the repo, state the goal, the concrete change (file paths if known from the GSC data — e.g. the page URL maps to a content file path), and acceptance criteria. Must stand alone; the agent has not seen this plan. Omit when no code is involved.",
+                },
+                founder_steps: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description:
+                    "Ordered checklist of non-code steps (e.g. 'Submit updated sitemap in Search Console', 'Tweet linking to the new post'). Omit when the work is purely code.",
+                },
+              },
+            },
           },
           required: [
             'action_type',
@@ -89,6 +113,8 @@ const PLAN_TOOL: LlmTool = {
             'confidence',
             'source_data',
             'next_step',
+            'target_repo',
+            'handoff',
           ],
         },
       },
@@ -150,6 +176,8 @@ export interface GrowthPlanInputs {
   brief: string;
   opportunities: GrowthOpportunity[];
   ga4Digest?: unknown;
+  /** Total impressions/clicks/queries in window — tells the LLM "small site" vs "big site". */
+  siteScale?: SiteScale;
   priorPlans: { week_start: string; thesis: string }[];
   priorActions: Pick<GrowthAction, 'site_id' | 'week_start' | 'action_type' | 'status' | 'target_query' | 'target_page' | 'published_url'>[];
   provider?: LlmProvider | string | null;
@@ -179,7 +207,12 @@ export async function generateGrowthPlan(
           {
             text:
               `SITE: ${inputs.site.name} (${inputs.site.root_url})\n` +
+              `SITE REPO (use for target_repo and in coding_agent_prompt): ${inputs.site.repo ? `"${inputs.site.repo}"` : '(unknown — use "<your-site-repo>")'}\n` +
               `WEEK: ${inputs.weekStart}\n\n` +
+              `SITE SCALE (rolling 90 days):\n${JSON.stringify(inputs.siteScale ?? null)}\n` +
+              (inputs.siteScale?.is_small_site
+                ? `↑ This is a SMALL / EARLY-STAGE site. Recommendations should favour creating new content and improving page-1 CTR over tactics that need volume to measure.\n\n`
+                : '\n') +
               `RANKED OPPORTUNITY CANDIDATES (top ${opportunityDigest.length}, deterministic detectors — do NOT invent extras):\n` +
               `${JSON.stringify(opportunityDigest)}\n\n` +
               `GA4 TRAFFIC DIGEST (this site, optional context):\n${JSON.stringify(inputs.ga4Digest ?? null)}\n\n` +

@@ -298,7 +298,15 @@ function RecommendationCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const top = rank === 1;
+
+  async function copyPrompt() {
+    if (!rec.handoff?.coding_agent_prompt) return;
+    await navigator.clipboard.writeText(rec.handoff.coding_agent_prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function accept() {
     if (busy || accepted || accepting) return;
@@ -397,6 +405,37 @@ function RecommendationCard({
         <span className="font-semibold text-neutral-400">Next step: </span>
         {rec.next_step}
       </p>
+
+      {rec.handoff?.coding_agent_prompt && (
+        <div className="mt-4">
+          <button
+            onClick={copyPrompt}
+            className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
+          >
+            {copied
+              ? '✓ Copied — paste into Claude Code / Codex'
+              : `Copy coding-agent prompt${rec.target_repo && rec.target_repo !== 'none' ? ` · ${rec.target_repo}` : ''}`}
+          </button>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-sm text-neutral-500 hover:text-neutral-300">
+              Preview prompt
+            </summary>
+            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-neutral-950 p-4 text-sm leading-relaxed text-neutral-300">
+              {rec.handoff.coding_agent_prompt}
+            </pre>
+          </details>
+        </div>
+      )}
+      {rec.handoff?.founder_steps && rec.handoff.founder_steps.length > 0 && (
+        <div className="mt-4 rounded-lg border border-neutral-800/80 bg-neutral-950/45 p-4">
+          <div className="text-sm font-semibold text-neutral-300">Your steps</div>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[15px] leading-relaxed text-neutral-300">
+            {rec.handoff.founder_steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2 border-t border-neutral-800 pt-4">
         {accepted ? (

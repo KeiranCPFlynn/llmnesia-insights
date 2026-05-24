@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server';
 import { isAuthorized } from '../../../../lib/session';
 import { readBrief } from '../../../../src/brief.js';
 import { getSiteById } from '../../../../src/gsc.js';
-import { ensureOpportunities } from '../../../../src/growth.js';
+import { ensureOpportunities, getSiteScale } from '../../../../src/growth.js';
 import {
   generateGrowthPlan,
   getGrowthPlan,
@@ -58,9 +58,11 @@ export async function POST(req: Request) {
       const supabase = getSupabase();
 
       // Ensure opportunities exist for the week (compute on demand if missing),
-      // then pull prior plans + recent actions for continuity.
-      const [opportunities, brief, priorPlans, actionsRes] = await Promise.all([
-        ensureOpportunities({ siteId, weekStart }),
+      // pull prior plans + recent actions for continuity, and compute the
+      // site-scale digest so the LLM knows whether this is an established or
+      // early-stage site.
+      const [opportunities, brief, priorPlans, actionsRes, siteScale] = await Promise.all([
+        ensureOpportunities({ siteId, weekStart, force: true }),
         readBrief(),
         getPriorPlans(siteId, weekStart, 4),
         supabase
@@ -69,6 +71,7 @@ export async function POST(req: Request) {
           .eq('site_id', siteId)
           .order('status_updated_at', { ascending: false })
           .limit(40),
+        getSiteScale(siteId),
       ]);
       if (actionsRes.error) throw new Error(`growth_actions fetch failed: ${actionsRes.error.message}`);
       const priorActions =
@@ -98,6 +101,7 @@ export async function POST(req: Request) {
         brief: site.brief_override?.trim() || brief,
         opportunities,
         ga4Digest,
+        siteScale,
         priorPlans,
         priorActions,
         provider,

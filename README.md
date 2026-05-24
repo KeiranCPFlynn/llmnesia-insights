@@ -62,10 +62,18 @@ create table if not exists public.sites (
   gsc_property text not null,
   sitemap_url text,
   brief_override text,
+  -- Code repo this site's content lives in. Used in handoff prompts so the
+  -- LLM can name the right repo for the founder to open in Claude Code /
+  -- Codex (e.g. "llmnesia-site njs"). Plain text — name it however the
+  -- folder is on disk.
+  repo text,
   enabled boolean not null default true,
   created_at timestamptz not null default now(),
   unique (gsc_property)
 );
+
+-- Existing-DB migration for the new column:
+alter table public.sites add column if not exists repo text;
 
 create table if not exists public.gsc_rows (
   site_id uuid not null references public.sites(id) on delete cascade,
@@ -132,10 +140,14 @@ create index if not exists growth_actions_recommendation on public.growth_action
 -- shows (top-left dropdown). Use `sc-domain:example.com` for a Domain property
 -- (the modern default), or `https://example.com/` for a URL-prefix property
 -- (note the trailing slash — must match GSC verbatim).
-insert into public.sites (name, root_url, gsc_property, sitemap_url) values
-  ('LLMnesia',   'https://llmnesia.com',   'sc-domain:llmnesia.com',   'https://llmnesia.com/sitemap.xml'),
-  ('LunaCradle', 'https://lunacradle.com', 'sc-domain:lunacradle.com', 'https://lunacradle.com/sitemap.xml')
+insert into public.sites (name, root_url, gsc_property, sitemap_url, repo) values
+  ('LLMnesia',   'https://llmnesia.com',   'sc-domain:llmnesia.com',   'https://llmnesia.com/sitemap.xml',   'llmnesia-site njs'),
+  ('LunaCradle', 'https://lunacradle.com', 'sc-domain:lunacradle.com', 'https://lunacradle.com/sitemap.xml', 'lunacradle')
 on conflict (gsc_property) do nothing;
+
+-- Backfill repo for sites already seeded before the `repo` column existed:
+update public.sites set repo = 'llmnesia-site njs' where name = 'LLMnesia'   and repo is null;
+update public.sites set repo = 'lunacradle'        where name = 'LunaCradle' and repo is null;
 ```
 
 > Run as-is. If a later sync returns "property not found", that site's GSC

@@ -28,9 +28,27 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-const WINDOW_DAYS = 28;
+/**
+ * Detection window. 90 days is the right size for small/young sites: a
+ * 28-day slice would have single-digit impressions on most queries and
+ * surface nothing actionable. For a busy site the same thresholds still
+ * fire — the volume score sorts them out.
+ */
+const WINDOW_DAYS = 90;
 /** GSC data lags ~2 days; ignore the most recent two to avoid jagged trends. */
 const LAG_DAYS = 2;
+
+/**
+ * Threshold floors — tuned for indie / early-stage sites. With single-digit
+ * impressions per query, requiring ≥ 30/50 (the canonical "established site"
+ * floors) suppresses real signal. The score still penalises low volume via
+ * `volumeScore`, so big sites just rank theirs higher.
+ */
+const T_NEAR_WIN_MIN_IMP = 2;
+const T_LOW_CTR_MIN_IMP = 3;
+const T_GAP_MIN_IMP = 3;
+const T_DECLINING_MIN_PRIOR_CLICKS = 3;
+const T_PROVEN_EXPANDER_MIN_CLICKS = 5;
 
 /** Rolling window the detectors operate on, ending ~2 days ago. */
 export function detectionWindow(now: Date = new Date()): {
@@ -220,7 +238,7 @@ function detectNearWins(ctx: DetectorContext): GrowthOpportunity[] {
   const out: GrowthOpportunity[] = [];
   for (const [query, agg] of ctx.byQuery) {
     if (agg.position < 11 || agg.position > 30) continue;
-    if (agg.impressions < 30) continue;
+    if (agg.impressions < T_NEAR_WIN_MIN_IMP) continue;
     const top = ctx.topPage.get(query);
     const positionScore = ((30 - agg.position) / 19) * 100; // tighter ⇒ higher
     const score = volumeScore(agg.impressions) * 0.5 + positionScore * 0.5;
@@ -246,7 +264,7 @@ function detectLowCTR(ctx: DetectorContext): GrowthOpportunity[] {
   const out: GrowthOpportunity[] = [];
   for (const [query, agg] of ctx.byQuery) {
     if (agg.position > 10) continue;
-    if (agg.impressions < 50) continue;
+    if (agg.impressions < T_LOW_CTR_MIN_IMP) continue;
     const expected = expectedCTR(agg.position);
     if (agg.ctr >= expected * 0.6) continue;
     const top = ctx.topPage.get(query);
@@ -274,7 +292,7 @@ function detectLowCTR(ctx: DetectorContext): GrowthOpportunity[] {
 function detectGaps(ctx: DetectorContext): GrowthOpportunity[] {
   const out: GrowthOpportunity[] = [];
   for (const [query, agg] of ctx.byQuery) {
-    if (agg.impressions < 50) continue;
+    if (agg.impressions < T_GAP_MIN_IMP) continue;
     if (agg.position <= 20) continue;
     const top = ctx.topPage.get(query);
     const positionGap = clamp(agg.position - 20);
@@ -303,7 +321,7 @@ function detectDeclining(ctx: DetectorContext): GrowthOpportunity[] {
   const out: GrowthOpportunity[] = [];
   for (const [page, agg] of ctx.byPage) {
     const prior = ctx.byPagePrior.get(page);
-    if (!prior || prior.clicks < 5) continue;
+    if (!prior || prior.clicks < T_DECLINING_MIN_PRIOR_CLICKS) continue;
     if (agg.clicks >= prior.clicks * 0.7) continue;
     const drop = (prior.clicks - agg.clicks) / prior.clicks;
     const score = volumeScore(prior.impressions) * 0.4 + drop * 100 * 0.6;
@@ -329,7 +347,7 @@ function detectDeclining(ctx: DetectorContext): GrowthOpportunity[] {
 function detectProvenExpanders(ctx: DetectorContext): GrowthOpportunity[] {
   const out: GrowthOpportunity[] = [];
   for (const [page, agg] of ctx.byPage) {
-    if (agg.clicks < 50) continue;
+    if (agg.clicks < T_PROVEN_EXPANDER_MIN_CLICKS) continue;
     const prior = ctx.byPagePrior.get(page);
     // Skip declining pages — those go in the declining queue, not here.
     if (prior && agg.clicks < prior.clicks * 0.85) continue;
@@ -393,14 +411,68 @@ export async function computeOpportunities(opts: {
     ...detectProvenExpanders(ctx),
   ].sort((a, b) => b.score - a.score);
 
+  // Wipe-then-insert (not upsert) so detector tweaks don't leave stale rows
+  // from prior definitions sitting alongside the fresh ones. `growth_actions`
+  // carries its own copy of target_query / target_page / action_type, so a
+  // dangling `growth_actions.opportunity_id` is just an unused soft pointer.
+  const { error: delErr } = await supabase
+    .from('growth_opportunities')
+    .delete()
+    .eq('site_id', opts.siteId)
+    .eq('week_start', opts.weekStart);
+  if (delErr) throw new Error(`growth_opportunities delete failed: ${delErr.message}`);
+
   if (opportunities.length > 0) {
-    const { error: upErr } = await supabase
+    const { error: insErr } = await supabase
       .from('growth_opportunities')
-      .upsert(opportunities, { onConflict: 'id' });
-    if (upErr) throw new Error(`growth_opportunities upsert failed: ${upErr.message}`);
+      .insert(opportunities);
+    if (insErr) throw new Error(`growth_opportunities insert failed: ${insErr.message}`);
   }
 
   return opportunities;
+}
+
+/** Summary used in the LLM prompt + UI hints — how much data this site has. */
+export interface SiteScale {
+  total_impressions: number;
+  total_clicks: number;
+  unique_queries: number;
+  unique_pages: number;
+  /** True when the site is in early-stage territory: most queries get 1-handful of impressions. */
+  is_small_site: boolean;
+}
+
+export function summariseSiteScale(rows: GSCRow[]): SiteScale {
+  const queries = new Set<string>();
+  const pages = new Set<string>();
+  let imps = 0;
+  let clicks = 0;
+  for (const r of rows) {
+    queries.add(r.query);
+    pages.add(r.page);
+    imps += r.impressions;
+    clicks += r.clicks;
+  }
+  return {
+    total_impressions: imps,
+    total_clicks: clicks,
+    unique_queries: queries.size,
+    unique_pages: pages.size,
+    is_small_site: imps < 500, // < ~5 imps/day across whole site = "young / early"
+  };
+}
+
+export async function getSiteScale(siteId: string): Promise<SiteScale> {
+  const { current } = detectionWindow();
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('gsc_rows')
+    .select('query, page, clicks, impressions')
+    .eq('site_id', siteId)
+    .gte('date', current.startDate)
+    .lte('date', current.endDate);
+  if (error) throw new Error(`gsc_rows scale fetch failed: ${error.message}`);
+  return summariseSiteScale((data as GSCRow[]) ?? []);
 }
 
 export async function getOpportunities(
@@ -418,12 +490,40 @@ export async function getOpportunities(
   return (data as GrowthOpportunity[]) ?? [];
 }
 
-/** Ensure opportunities exist for the (site, week); compute if missing. */
+/**
+ * Ensure opportunities are up to date for (site, week). Recomputes when:
+ *   - none exist yet, OR
+ *   - the newest gsc_rows.synced_at is later than the oldest stored
+ *     opportunity (meaning data has landed since we last detected), OR
+ *   - the caller explicitly forces it.
+ * Detection is cheap (pure SQL + JS) so being eager here is fine.
+ */
 export async function ensureOpportunities(opts: {
   siteId: string;
   weekStart: string;
+  force?: boolean;
 }): Promise<GrowthOpportunity[]> {
+  if (opts.force) return computeOpportunities(opts);
+
   const existing = await getOpportunities(opts.siteId, opts.weekStart);
-  if (existing.length > 0) return existing;
-  return computeOpportunities(opts);
+  if (existing.length === 0) return computeOpportunities(opts);
+
+  // Recompute if a sync has landed since these were detected.
+  const supabase = getSupabase();
+  const { data: latest } = await supabase
+    .from('gsc_rows')
+    .select('synced_at')
+    .eq('site_id', opts.siteId)
+    .order('synced_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const oldestCreated = existing
+    .map((o) => o.created_at ?? '')
+    .filter(Boolean)
+    .sort()[0];
+  const latestSync = (latest as { synced_at?: string } | null)?.synced_at ?? '';
+  if (latestSync && oldestCreated && latestSync > oldestCreated) {
+    return computeOpportunities(opts);
+  }
+  return existing;
 }

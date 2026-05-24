@@ -261,6 +261,13 @@ export interface Site {
   sitemap_url?: string | null;
   /** Optional per-site override for the project brief that grounds the LLM. */
   brief_override?: string | null;
+  /**
+   * Code repo this site's content lives in (folder name on disk, e.g.
+   * "llmnesia-site njs"). Surfaced to the LLM so handoff prompts can name
+   * the right repo for the founder to open in Claude Code / Codex. Null
+   * means the LLM should leave the repo as `<your-site-repo>` in prompts.
+   */
+  repo?: string | null;
   enabled: boolean;
   created_at?: string;
 }
@@ -355,6 +362,13 @@ export type GrowthActionStatus =
   | 'completed'
   | 'monitoring';
 
+export interface GrowthHandoff {
+  /** Tool-agnostic, repo-targeted prompt to paste into Claude Code / Codex. */
+  coding_agent_prompt?: string;
+  /** Non-code steps the founder does themselves (e.g. submit a sitemap). */
+  founder_steps?: string[];
+}
+
 /**
  * One recommended action inside a weekly plan. The LLM produces these; humans
  * accept them, which materialises a `growth_actions` row tied back via `id`.
@@ -379,6 +393,18 @@ export interface GrowthRecommendation {
   source_data: string;
   /** Concrete next step (e.g. "Draft H2 on X", "Add link from /a to /b"). */
   next_step: string;
+  /**
+   * Repo to open for code work (folder name on disk, e.g. "llmnesia-site
+   * njs"), or "none" for ops-only work. Comes from `sites.repo` so it stays
+   * site-aware.
+   */
+  target_repo?: string | null;
+  /**
+   * One-click handoff: a self-contained coding-agent prompt and/or a founder
+   * checklist. Render the prompt as a Copy button + preview; render the
+   * checklist as an ordered list.
+   */
+  handoff?: GrowthHandoff;
 }
 
 /** Counts of each action type the plan asked for — e.g. balance check. */
