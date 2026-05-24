@@ -162,6 +162,7 @@ export async function syncSite(
       log(`[gsc:${site.name}]   ${c.startDate}…${c.endDate}: 0 rows`);
       continue;
     }
+    const syncedAt = new Date().toISOString();
     const rows: GSCRow[] = apiRows
       .map((r) => {
         const [date, query, page] = r.keys ?? [];
@@ -176,6 +177,7 @@ export async function syncSite(
           impressions: r.impressions ?? 0,
           ctr: r.ctr ?? 0,
           position: r.position ?? 0,
+          synced_at: syncedAt,
         };
       })
       .filter((r) => r.date && r.query && r.page);
@@ -218,7 +220,7 @@ export function extendedBackfillRange(now: Date = new Date()): { startDate: stri
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
-/** Delta sync: re-pull the last N days to absorb GSC's ~2-3 day lag + revisions. */
+/** Delta sync: re-pull the last N days to absorb GSC lag + revisions. */
 export function deltaRange(days = 7, now: Date = new Date()): { startDate: string; endDate: string } {
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() - 1);
@@ -242,5 +244,5 @@ export async function autoSyncRange(siteId: string): Promise<{ startDate: string
   if (!count || count === 0) {
     return { ...fullBackfillRange(), mode: 'backfill' };
   }
-  return { ...deltaRange(7), mode: 'delta' };
+  return { ...deltaRange(1), mode: 'delta' };
 }

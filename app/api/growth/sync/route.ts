@@ -18,7 +18,7 @@ export const maxDuration = 300;
  *
  * POST { siteId?: string, mode?: 'auto'|'backfill'|'delta' }
  *   - siteId omitted ⇒ sync every enabled site
- *   - mode 'auto' (default) ⇒ backfill if no rows yet, otherwise 7-day delta
+ *   - mode 'auto' (default) ⇒ backfill if no rows yet, otherwise 1-day delta
  *
  * Returns 202 immediately; the actual sync runs in `after()` so the dashboard
  * can show a "syncing…" state without holding an HTTP connection open for
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
           mode === 'backfill'
             ? fullBackfillRange()
             : mode === 'delta'
-              ? deltaRange(7)
+              ? deltaRange(1)
               : await autoSyncRange(site.id);
         await syncSite(site, range, (m) => console.log(`[gsc-sync] ${m}`));
       } catch (e) {

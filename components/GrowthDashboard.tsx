@@ -154,7 +154,7 @@ export function GrowthSyncToolbar({
                 disabled={busy || syncing}
                 className="rounded-md border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800/80 disabled:opacity-50"
               >
-                {syncing ? 'Syncing…' : busy ? 'Starting…' : 'Sync last 7 days'}
+                {syncing ? 'Syncing…' : busy ? 'Starting…' : 'Sync latest day'}
               </button>
               <button
                 onClick={() => sync('backfill')}

@@ -282,8 +282,8 @@ How it works:
 - **Site switcher** — every row in `public.sites` shows up as a pill in the
   page header. The data model is multi-site from day 1; adding LunaCradle or
   any other property is just another row.
-- **GSC sync** — manual on first run (the **Backfill 16 months** button) and
-  then a **Sync last 7 days** button to catch up the rolling window. No cron
+- **GSC sync** — manual on first run (the **Backfill 90 days** button) and
+  then a **Sync latest day** button to catch up the rolling window. No cron
   yet; sync before generating the weekly plan.
 - **Opportunity queues** (deterministic — pure rules over the data, no LLM):
   - **Near-wins** — already ranks page 2–3 with real impressions: push to page 1.
