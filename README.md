@@ -283,7 +283,7 @@ How it works:
   page header. The data model is multi-site from day 1; adding LunaCradle or
   any other property is just another row.
 - **GSC sync** — manual on first run (the **Backfill 90 days** button) and
-  then a **Sync latest day** button to catch up the rolling window. No cron
+  then a **Sync latest data** button to catch up from the newest stored GSC date. No cron
   yet; sync before generating the weekly plan.
 - **Opportunity queues** (deterministic — pure rules over the data, no LLM):
   - **Near-wins** — already ranks page 2–3 with real impressions: push to page 1.

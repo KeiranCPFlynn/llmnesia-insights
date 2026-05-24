@@ -106,6 +106,30 @@ export function GrowthSyncToolbar({
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'Failed');
 
+      if (j.completed) {
+        const totalRows = Array.isArray(j.results)
+          ? j.results.reduce((sum: number, r: { rows?: number }) => sum + (r.rows ?? 0), 0)
+          : 0;
+        const ranges = Array.isArray(j.results)
+          ? j.results
+              .map((r: { range?: { startDate?: string; endDate?: string } }) =>
+                r.range?.startDate && r.range?.endDate
+                  ? r.range.startDate === r.range.endDate
+                    ? r.range.startDate
+                    : `${r.range.startDate} to ${r.range.endDate}`
+                  : null,
+              )
+              .filter(Boolean)
+          : [];
+        router.refresh();
+        setStatus(
+          `Sync complete — ${totalRows.toLocaleString('en-GB')} row${
+            totalRows === 1 ? '' : 's'
+          } refreshed${ranges.length ? ` (${ranges.join(', ')})` : ''}.`,
+        );
+        return;
+      }
+
       startedAt.current = Date.now();
       lastSeenSyncedAt.current = lastSyncedAt;
       stableTicks.current = 0;
@@ -154,7 +178,7 @@ export function GrowthSyncToolbar({
                 disabled={busy || syncing}
                 className="rounded-md border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800/80 disabled:opacity-50"
               >
-                {syncing ? 'Syncing…' : busy ? 'Starting…' : 'Sync latest day'}
+                {syncing ? 'Syncing…' : busy ? 'Starting…' : 'Sync latest data'}
               </button>
               <button
                 onClick={() => sync('backfill')}

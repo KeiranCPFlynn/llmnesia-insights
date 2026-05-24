@@ -230,19 +230,41 @@ export function deltaRange(days = 7, now: Date = new Date()): { startDate: strin
 }
 
 /**
- * Convenience: pick a backfill or delta range based on whether the site
+ * Catch up from the latest stored GSC date through yesterday. This avoids
+ * re-importing the full backfill window on normal use while still re-pulling
+ * the newest stored day so late GSC revisions can settle.
+ */
+export async function catchUpRange(
+  siteId: string,
+  now: Date = new Date(),
+): Promise<{ startDate: string; endDate: string; mode: 'backfill' | 'delta' }> {
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() - 1);
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('gsc_rows')
+    .select('date')
+    .eq('site_id', siteId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Supabase latest date failed: ${error.message}`);
+  const latestDate = (data as { date?: string } | null)?.date;
+  if (!latestDate) {
+    return { ...fullBackfillRange(), mode: 'backfill' };
+  }
+
+  const start = new Date(`${latestDate}T00:00:00Z`);
+  if (start > end) start.setTime(end.getTime());
+  return { startDate: isoDate(start), endDate: isoDate(end), mode: 'delta' };
+}
+
+/**
+ * Convenience: pick a backfill or catch-up range based on whether the site
  * already has any rows. Used by the sync API route to "do the right thing"
  * on the first run vs subsequent runs.
  */
 export async function autoSyncRange(siteId: string): Promise<{ startDate: string; endDate: string; mode: 'backfill' | 'delta' }> {
-  const supabase = getSupabase();
-  const { count, error } = await supabase
-    .from('gsc_rows')
-    .select('*', { count: 'exact', head: true })
-    .eq('site_id', siteId);
-  if (error) throw new Error(`Supabase count failed: ${error.message}`);
-  if (!count || count === 0) {
-    return { ...fullBackfillRange(), mode: 'backfill' };
-  }
-  return { ...deltaRange(1), mode: 'delta' };
+  return catchUpRange(siteId);
 }
