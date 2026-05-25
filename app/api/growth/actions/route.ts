@@ -111,13 +111,24 @@ export async function PATCH(req: Request) {
   }
   const body = (await req.json().catch(() => ({}))) as {
     id?: string;
+    ids?: string[];
     status?: string;
     publishedUrl?: string | null;
     note?: string | null;
     followUpDate?: string | null;
   };
-  if (!body.id) {
-    return NextResponse.json({ error: 'id is required' }, { status: 400 });
+  const ids = body.ids ?? (body.id ? [body.id] : []);
+  if (ids.length === 0) {
+    return NextResponse.json({ error: 'id or ids are required' }, { status: 400 });
+  }
+  if (ids.some((id) => typeof id !== 'string' || id.length === 0)) {
+    return NextResponse.json({ error: 'ids must be non-empty strings' }, { status: 400 });
+  }
+  if (ids.length > 100) {
+    return NextResponse.json(
+      { error: 'Cannot update more than 100 actions at once' },
+      { status: 400 },
+    );
   }
   if (body.status && !VALID_STATUSES.includes(body.status as GrowthActionStatus)) {
     return NextResponse.json({ error: `Invalid status: ${body.status}` }, { status: 400 });
@@ -131,14 +142,13 @@ export async function PATCH(req: Request) {
   if (body.publishedUrl !== undefined) patch.published_url = body.publishedUrl;
   if (body.note !== undefined) patch.note = body.note;
   if (body.followUpDate !== undefined) patch.follow_up_date = body.followUpDate;
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: 'No changes provided' }, { status: 400 });
+  }
 
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('growth_actions')
-    .update(patch)
-    .eq('id', body.id)
-    .select()
-    .maybeSingle();
+  const query = supabase.from('growth_actions').update(patch).in('id', ids).select();
+  const { data, error } = body.ids ? await query : await query.maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ action: data });
+  return NextResponse.json(body.ids ? { actions: data } : { action: data });
 }

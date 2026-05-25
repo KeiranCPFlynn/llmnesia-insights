@@ -16,14 +16,9 @@ import { GrowthSyncToolbar } from '../../components/GrowthDashboard';
 import { GSCDataVisuals } from '../../components/GSCDataVisuals';
 import { WeeklyPlan } from '../../components/WeeklyPlan';
 import { OpportunityList } from '../../components/OpportunityList';
-import { ActionCard } from '../../components/ActionCard';
+import { ActionBoard } from '../../components/ActionBoard';
 import { ensureOpportunities } from '../../src/growth.js';
-import type {
-  GrowthAction,
-  GrowthActionStatus,
-  GrowthOpportunityType,
-  GrowthRecommendation,
-} from '../../src/types.js';
+import type { GrowthOpportunityType } from '../../src/types.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,41 +35,6 @@ function EmptySites() {
       </Link>
     </main>
   );
-}
-
-type BoardStatus = 'planned' | 'monitoring' | 'needs_adjustment' | 'ignored';
-
-const STATUS_ORDER: BoardStatus[] = ['planned', 'monitoring', 'needs_adjustment', 'ignored'];
-
-const STATUS_LABEL: Record<BoardStatus, string> = {
-  planned: 'Planned',
-  monitoring: 'Actioned + monitoring',
-  needs_adjustment: 'Needs adjustment',
-  ignored: 'Ignored',
-};
-
-function boardStatus(status: GrowthActionStatus): BoardStatus {
-  if (status === 'monitoring' || status === 'needs_adjustment' || status === 'ignored') {
-    return status;
-  }
-  if (
-    status === 'actioned' ||
-    status === 'published' ||
-    status === 'updated' ||
-    status === 'completed'
-  ) {
-    return 'monitoring';
-  }
-  return 'planned';
-}
-
-function groupActionsByStatus(actions: GrowthAction[]): Record<BoardStatus, GrowthAction[]> {
-  const out: Record<string, GrowthAction[]> = {};
-  for (const s of STATUS_ORDER) out[s] = [];
-  for (const a of actions) {
-    out[boardStatus(a.status)].push(a);
-  }
-  return out as Record<BoardStatus, GrowthAction[]>;
 }
 
 export default async function GrowthPage({
@@ -133,11 +93,6 @@ export default async function GrowthPage({
   }
 
   const thisWeekActions = data.actions.filter((a) => a.week_start === weekStart);
-  const actionsByStatus = groupActionsByStatus(thisWeekActions);
-  const recommendationsById = new Map<string, GrowthRecommendation>();
-  for (const rec of data.plan?.recommendations ?? []) {
-    recommendationsById.set(rec.id, rec);
-  }
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
@@ -232,30 +187,7 @@ export default async function GrowthPage({
             this board.
           </div>
         ) : (
-          <div className="space-y-6">
-            {STATUS_ORDER.map((s) =>
-              !actionsByStatus[s] || actionsByStatus[s].length === 0 ? null : (
-                <div key={s}>
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    {STATUS_LABEL[s]} · {actionsByStatus[s].length}
-                  </div>
-                  <ul className="space-y-3">
-                    {actionsByStatus[s].map((a) => (
-                      <ActionCard
-                        key={a.id}
-                        action={a}
-                        recommendation={
-                          a.recommendation_id
-                            ? recommendationsById.get(a.recommendation_id)
-                            : undefined
-                        }
-                      />
-                    ))}
-                  </ul>
-                </div>
-              ),
-            )}
-          </div>
+          <ActionBoard actions={thisWeekActions} recommendations={data.plan?.recommendations ?? []} />
         )}
       </section>
 

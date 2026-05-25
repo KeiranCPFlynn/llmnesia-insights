@@ -2,19 +2,31 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { formatWeek } from '../lib/format';
 import { ProviderSelect, useProvider } from './ProviderSelect';
 import { WeekSelect } from './WeekSelect';
+
+type RunIntent = {
+  kind: 'latest' | 'selected';
+  weekStart: string;
+  weekEnd?: string;
+  exists: boolean;
+};
 
 export function Toolbar({
   weeks,
   selected,
+  latestRunWeekStart,
+  latestRunWeekEnd,
 }: {
   weeks: string[];
   selected: string;
+  latestRunWeekStart: string;
+  latestRunWeekEnd: string;
 }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<RunIntent | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [provider, setProvider] = useProvider();
@@ -39,16 +51,18 @@ export function Toolbar({
   // Auto-disarm the confirm so it can't sit primed and get clicked later.
   useEffect(() => {
     if (!confirming) return;
-    const t = setTimeout(() => setConfirming(false), 6000);
+    const t = setTimeout(() => setConfirming(null), 10000);
     return () => clearTimeout(t);
   }, [confirming]);
 
   // DeepSeek is a reasoning model and much slower than Claude.
   const estimate = provider === 'deepseek' ? '~3–4 min' : '~1 min';
+  const latestRunExists = weeks.includes(latestRunWeekStart);
+  const selectedIsLatestRun = selected === latestRunWeekStart;
 
-  async function runNow() {
+  async function runNow(intent: RunIntent) {
     if (running) return;
-    setConfirming(false);
+    setConfirming(null);
     setRunning(true);
     setMsg(null);
     const ctrl = new AbortController();
@@ -57,12 +71,13 @@ export function Toolbar({
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, weekStart: intent.weekStart }),
         signal: ctrl.signal,
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Failed (${res.status})`);
       setMsg('Done — refreshing.');
+      if (body.week) router.push(`/?week=${body.week}`);
       router.refresh();
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
@@ -79,6 +94,31 @@ export function Toolbar({
   function cancel() {
     abortRef.current?.abort();
   }
+
+  function confirmLatest() {
+    setMsg(null);
+    setConfirming({
+      kind: 'latest',
+      weekStart: latestRunWeekStart,
+      weekEnd: latestRunWeekEnd,
+      exists: latestRunExists,
+    });
+  }
+
+  function confirmSelected() {
+    setMsg(null);
+    setConfirming({
+      kind: 'selected',
+      weekStart: selected,
+      exists: weeks.includes(selected),
+    });
+  }
+
+  const confirmVerb = confirming?.exists ? 'replace' : 'create';
+  const confirmLabel =
+    confirming?.kind === 'latest'
+      ? `${confirming.exists ? 'Refresh' : 'Create'} latest week`
+      : 'Update selected week';
 
   const mm = String(Math.floor(elapsed / 60)).padStart(1, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
@@ -105,28 +145,35 @@ export function Toolbar({
         ) : confirming ? (
           <>
             <button
-              onClick={runNow}
+              onClick={() => runNow(confirming)}
               className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(225,29,72,0.22)] hover:bg-rose-500"
             >
-              Confirm — run analysis ({estimate})
+              Confirm — {confirmVerb} {formatWeek(confirming.weekStart)} ({estimate})
             </button>
             <button
-              onClick={() => setConfirming(false)}
+              onClick={() => setConfirming(null)}
               className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/80"
             >
               Back
             </button>
           </>
         ) : (
-          <button
-            onClick={() => {
-              setMsg(null);
-              setConfirming(true);
-            }}
-            className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
-          >
-            Run analysis now
-          </button>
+          <>
+            <button
+              onClick={confirmLatest}
+              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
+            >
+              {latestRunExists ? 'Refresh latest week' : 'Create latest week'}
+            </button>
+            {!selectedIsLatestRun && (
+              <button
+                onClick={confirmSelected}
+                className="rounded-md border border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-800/80"
+              >
+                Update selected week
+              </button>
+            )}
+          </>
         )}
 
         {!running && msg && <span className="text-sm text-neutral-400">{msg}</span>}
@@ -142,6 +189,14 @@ export function Toolbar({
             elapsed — keep this tab open.
           </p>
         </div>
+      )}
+      {confirming && !running && (
+        <p className="max-w-xl text-right text-xs leading-relaxed text-neutral-500">
+          {confirmLabel} will fetch fresh PostHog and GA4 data for week of{' '}
+          {formatWeek(confirming.weekStart)}
+          {confirming.weekEnd ? ` → ${formatWeek(confirming.weekEnd)}` : ''}. It will{' '}
+          {confirming.exists ? 'replace the stored report for that week' : 'create a new stored report'}.
+        </p>
       )}
     </div>
   );

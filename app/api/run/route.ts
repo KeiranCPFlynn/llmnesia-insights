@@ -14,11 +14,20 @@ async function run(req: Request) {
     // The "Run analysis now" button POSTs a provider; the Vercel Cron GET has
     // no body and falls back to the LLM_PROVIDER env default.
     let provider: string | undefined;
+    let weekStart: string | undefined;
     if (req.method === 'POST') {
-      const body = (await req.json().catch(() => ({}))) as { provider?: string };
+      const body = (await req.json().catch(() => ({}))) as {
+        provider?: string;
+        weekStart?: string;
+      };
       provider = body.provider;
+      weekStart = body.weekStart;
     }
-    const result = await runPipeline({ log: (m) => console.log(`[run] ${m}`), provider });
+    const result = await runPipeline({
+      log: (m) => console.log(`[run] ${m}`),
+      provider,
+      weekStart,
+    });
     return NextResponse.json({
       ok: true,
       week: result.weekStart,

@@ -1,10 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GrowthAction, GrowthActionStatus, GrowthRecommendation } from '../src/types.js';
 
-type BoardStatus = 'planned' | 'actioned' | 'monitoring' | 'needs_adjustment' | 'ignored';
+export type BoardStatus = 'planned' | 'actioned' | 'monitoring' | 'needs_adjustment' | 'ignored';
 
 const STATUS_TONE: Record<BoardStatus, string> = {
   planned: 'border-sky-700 bg-sky-900/40 text-sky-200',
@@ -38,7 +38,7 @@ const LEGACY_STATUS: Partial<Record<GrowthActionStatus, BoardStatus>> = {
   completed: 'actioned',
 };
 
-function boardStatus(status: GrowthActionStatus): BoardStatus {
+export function boardStatus(status: GrowthActionStatus): BoardStatus {
   if (
     status === 'planned' ||
     status === 'actioned' ||
@@ -54,9 +54,13 @@ function boardStatus(status: GrowthActionStatus): BoardStatus {
 export function ActionCard({
   action,
   recommendation,
+  selected,
+  onSelectedChange,
 }: {
   action: GrowthAction;
   recommendation?: GrowthRecommendation;
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<BoardStatus>(boardStatus(action.status));
@@ -64,6 +68,12 @@ export function ActionCard({
   const [note, setNote] = useState(action.note ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStatus(boardStatus(action.status));
+    setPublishedUrl(action.published_url ?? '');
+    setNote(action.note ?? '');
+  }, [action.note, action.published_url, action.status]);
 
   async function patch(body: Record<string, unknown>) {
     setBusy(true);
@@ -96,35 +106,46 @@ export function ActionCard({
   return (
     <li className="rounded-lg border border-neutral-800/80 bg-neutral-950/45 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.14)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-0.5 text-xs ${STATUS_TONE[status]}`}>
-              {STATUS_LABEL[status]}
-            </span>
-            <span className="rounded-full border border-neutral-700 bg-neutral-900/60 px-2 py-0.5 text-[11px] capitalize text-neutral-300">
-              {action.action_type.replace('_', ' ')}
-            </span>
-            {action.target_query && (
-              <span className="text-sm font-medium text-neutral-100">"{action.target_query}"</span>
+        <div className="flex min-w-0 flex-1 gap-3">
+          {onSelectedChange && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={(e) => onSelectedChange(e.target.checked)}
+              aria-label={`Select ${action.suggested_title ?? action.target_page ?? 'growth action'}`}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-neutral-700 bg-neutral-950 accent-emerald-500"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className={`rounded-full border px-2.5 py-0.5 text-xs ${STATUS_TONE[status]}`}>
+                {STATUS_LABEL[status]}
+              </span>
+              <span className="rounded-full border border-neutral-700 bg-neutral-900/60 px-2 py-0.5 text-[11px] capitalize text-neutral-300">
+                {action.action_type.replace('_', ' ')}
+              </span>
+              {action.target_query && (
+                <span className="text-sm font-medium text-neutral-100">"{action.target_query}"</span>
+              )}
+            </div>
+
+            <h3 className="text-base font-semibold leading-snug text-neutral-100">
+              {action.suggested_title ?? recommendation?.title ?? action.target_page ?? 'Growth action'}
+            </h3>
+
+            {action.target_page && (
+              <code className="mt-2 block w-fit max-w-full overflow-hidden text-ellipsis rounded bg-neutral-900 px-1.5 py-1 text-[12px] text-neutral-400">
+                {action.target_page}
+              </code>
+            )}
+
+            {recommendation?.expected_impact && (
+              <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+                <span className="font-semibold text-neutral-400">Expected outcome: </span>
+                {recommendation.expected_impact}
+              </p>
             )}
           </div>
-
-          <h3 className="text-base font-semibold leading-snug text-neutral-100">
-            {action.suggested_title ?? recommendation?.title ?? action.target_page ?? 'Growth action'}
-          </h3>
-
-          {action.target_page && (
-            <code className="mt-2 block w-fit max-w-full overflow-hidden text-ellipsis rounded bg-neutral-900 px-1.5 py-1 text-[12px] text-neutral-400">
-              {action.target_page}
-            </code>
-          )}
-
-          {recommendation?.expected_impact && (
-            <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-              <span className="font-semibold text-neutral-400">Expected outcome: </span>
-              {recommendation.expected_impact}
-            </p>
-          )}
         </div>
 
         {status === 'planned' || status === 'needs_adjustment' ? (

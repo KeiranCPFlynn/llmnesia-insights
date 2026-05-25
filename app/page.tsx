@@ -7,6 +7,7 @@ import { PageNav } from '../components/PageNav';
 import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
 import { ChatPanel } from '../components/ChatPanel';
+import { getDefaultWeek } from '../src/pipeline.js';
 import type { DataSource } from '../src/types.js';
 
 export const dynamic = 'force-dynamic';
@@ -87,6 +88,7 @@ export default async function Page({
 
   const { week } = await searchParams;
   const { weeks, current, prev } = selectWeek(insights, week);
+  const latestRunWeek = getDefaultWeek();
 
   const openRecs = current.strategy
     ? current.strategy.recommendations.filter(
@@ -134,7 +136,12 @@ export default async function Page({
             </Link>
             <PageNav week={current.week_start} />
           </div>
-          <Toolbar weeks={[...weeks].reverse()} selected={current.week_start} />
+          <Toolbar
+            weeks={[...weeks].reverse()}
+            selected={current.week_start}
+            latestRunWeekStart={latestRunWeek.weekStart}
+            latestRunWeekEnd={latestRunWeek.weekEnd}
+          />
         </div>
       </header>
 
