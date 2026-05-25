@@ -217,7 +217,7 @@ export async function generateGrowthPlan(
               `${JSON.stringify(opportunityDigest)}\n\n` +
               `GA4 TRAFFIC DIGEST (this site, optional context):\n${JSON.stringify(inputs.ga4Digest ?? null)}\n\n` +
               `PRIOR PLAN THESES (oldest → newest):\n${JSON.stringify(inputs.priorPlans)}\n\n` +
-              `IN-FLIGHT / RECENT ACTIONS (respect status — don't re-pitch published items unless monitoring):\n${JSON.stringify(inputs.priorActions)}`,
+              `IN-FLIGHT / RECENT ACTIONS (respect status — don't re-pitch actioned/monitoring items; if needs_adjustment, propose a targeted follow-up):\n${JSON.stringify(inputs.priorActions)}`,
           },
         ],
       },

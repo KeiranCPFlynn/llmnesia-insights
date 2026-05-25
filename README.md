@@ -301,11 +301,10 @@ How it works:
   expected impact, effort/confidence, source-data line, and the next concrete
   step.
 - **Action board** — accepting a recommendation (or an opportunity directly)
-  materialises a row in `growth_actions` with a status workflow:
-  `idea → planned → briefed → drafted → published → updated → monitoring →
-  completed` (plus `ignored`). Each card lets you set status, paste the
-  published URL, add notes, and click **Generate brief** for a tight,
-  decision-ready content brief.
+  materialises a row in `growth_actions`. The board keeps the workflow simple:
+  `planned`, `monitoring` (actioned), `needs_adjustment`, or `ignored`.
+  Each card lets you mark the work actioned, paste the published URL, and add
+  notes about monitoring results or follow-up adjustments.
 
 Runs entirely on owned data — no paid keyword or SERP APIs needed for v1.
 Schema (`sites`, `gsc_rows`, `growth_opportunities`, `growth_plans`,

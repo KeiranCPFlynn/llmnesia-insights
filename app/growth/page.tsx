@@ -6,10 +6,12 @@ import {
   getCurrentWeekStart,
   getEnabledSites,
   getGrowthPageData,
+  getGrowthWeekOptions,
   groupOpportunities,
 } from '../../lib/growth';
 import { PageNav } from '../../components/PageNav';
 import { SiteSwitch } from '../../components/SiteSwitch';
+import { WeekSelect } from '../../components/WeekSelect';
 import { GrowthSyncToolbar } from '../../components/GrowthDashboard';
 import { GSCDataVisuals } from '../../components/GSCDataVisuals';
 import { WeeklyPlan } from '../../components/WeeklyPlan';
@@ -20,6 +22,7 @@ import type {
   GrowthAction,
   GrowthActionStatus,
   GrowthOpportunityType,
+  GrowthRecommendation,
 } from '../../src/types.js';
 
 export const dynamic = 'force-dynamic';
@@ -39,26 +42,39 @@ function EmptySites() {
   );
 }
 
-const STATUS_ORDER: GrowthActionStatus[] = [
-  'planned',
-  'briefed',
-  'drafted',
-  'published',
-  'updated',
-  'monitoring',
-  'completed',
-  'idea',
-  'ignored',
-];
+type BoardStatus = 'planned' | 'monitoring' | 'needs_adjustment' | 'ignored';
 
-function groupActionsByStatus(actions: GrowthAction[]): Record<string, GrowthAction[]> {
+const STATUS_ORDER: BoardStatus[] = ['planned', 'monitoring', 'needs_adjustment', 'ignored'];
+
+const STATUS_LABEL: Record<BoardStatus, string> = {
+  planned: 'Planned',
+  monitoring: 'Actioned + monitoring',
+  needs_adjustment: 'Needs adjustment',
+  ignored: 'Ignored',
+};
+
+function boardStatus(status: GrowthActionStatus): BoardStatus {
+  if (status === 'monitoring' || status === 'needs_adjustment' || status === 'ignored') {
+    return status;
+  }
+  if (
+    status === 'actioned' ||
+    status === 'published' ||
+    status === 'updated' ||
+    status === 'completed'
+  ) {
+    return 'monitoring';
+  }
+  return 'planned';
+}
+
+function groupActionsByStatus(actions: GrowthAction[]): Record<BoardStatus, GrowthAction[]> {
   const out: Record<string, GrowthAction[]> = {};
   for (const s of STATUS_ORDER) out[s] = [];
   for (const a of actions) {
-    if (!out[a.status]) out[a.status] = [];
-    out[a.status].push(a);
+    out[boardStatus(a.status)].push(a);
   }
-  return out;
+  return out as Record<BoardStatus, GrowthAction[]>;
 }
 
 export default async function GrowthPage({
@@ -71,7 +87,9 @@ export default async function GrowthPage({
 
   const { site: siteParam, week: weekParam } = await searchParams;
   const siteId = siteParam ?? sites[0].id;
-  const weekStart = weekParam ?? getCurrentWeekStart();
+  const currentWeekStart = getCurrentWeekStart();
+  const weekOptions = await getGrowthWeekOptions(siteId, currentWeekStart);
+  const weekStart = weekParam ?? weekOptions.defaultWeek;
 
   const data = await getGrowthPageData(siteId, weekStart);
   if (!data) {
@@ -116,6 +134,10 @@ export default async function GrowthPage({
 
   const thisWeekActions = data.actions.filter((a) => a.week_start === weekStart);
   const actionsByStatus = groupActionsByStatus(thisWeekActions);
+  const recommendationsById = new Map<string, GrowthRecommendation>();
+  for (const rec of data.plan?.recommendations ?? []) {
+    recommendationsById.set(rec.id, rec);
+  }
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
@@ -128,7 +150,15 @@ export default async function GrowthPage({
         </div>
         <div className="flex flex-col items-end gap-3">
           <PageNav week={weekStart} />
-          <SiteSwitch sites={sites} selectedId={siteId} week={weekStart} />
+          <div className="flex flex-wrap justify-end gap-2">
+            <WeekSelect
+              weeks={weekOptions.weeks}
+              selected={weekStart}
+              basePath="/growth"
+              params={{ site: siteId }}
+            />
+            <SiteSwitch sites={sites} selectedId={siteId} week={weekStart} />
+          </div>
         </div>
       </header>
 
@@ -207,11 +237,19 @@ export default async function GrowthPage({
               !actionsByStatus[s] || actionsByStatus[s].length === 0 ? null : (
                 <div key={s}>
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    {s} · {actionsByStatus[s].length}
+                    {STATUS_LABEL[s]} · {actionsByStatus[s].length}
                   </div>
                   <ul className="space-y-3">
                     {actionsByStatus[s].map((a) => (
-                      <ActionCard key={a.id} action={a} />
+                      <ActionCard
+                        key={a.id}
+                        action={a}
+                        recommendation={
+                          a.recommendation_id
+                            ? recommendationsById.get(a.recommendation_id)
+                            : undefined
+                        }
+                      />
                     ))}
                   </ul>
                 </div>

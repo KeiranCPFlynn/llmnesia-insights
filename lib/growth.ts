@@ -26,6 +26,60 @@ export async function getEnabledSites(): Promise<Site[]> {
   return (data as Site[]) ?? [];
 }
 
+export async function getGrowthWeekOptions(
+  siteId: string,
+  currentWeekStart = getCurrentWeekStart(),
+): Promise<{ weeks: string[]; defaultWeek: string }> {
+  const supabase = getClient();
+  const [plansRes, actionsRes, oppsRes] = await Promise.all([
+    supabase
+      .from('growth_plans')
+      .select('week_start')
+      .eq('site_id', siteId)
+      .order('week_start', { ascending: false })
+      .limit(26),
+    supabase
+      .from('growth_actions')
+      .select('week_start')
+      .eq('site_id', siteId)
+      .order('week_start', { ascending: false })
+      .limit(26),
+    supabase
+      .from('growth_opportunities')
+      .select('week_start')
+      .eq('site_id', siteId)
+      .order('week_start', { ascending: false })
+      .limit(26),
+  ]);
+
+  if (plansRes.error) {
+    throw new Error(`growth_plans weeks fetch failed: ${plansRes.error.message}`);
+  }
+  if (actionsRes.error) {
+    throw new Error(`growth_actions weeks fetch failed: ${actionsRes.error.message}`);
+  }
+  if (oppsRes.error) {
+    throw new Error(`growth_opportunities weeks fetch failed: ${oppsRes.error.message}`);
+  }
+
+  const activeWeeks = new Set<string>();
+  for (const rows of [plansRes.data, actionsRes.data, oppsRes.data]) {
+    for (const r of (rows as { week_start: string }[] | null) ?? []) {
+      if (r.week_start) activeWeeks.add(r.week_start);
+    }
+  }
+
+  const sortedActiveWeeks = [...activeWeeks].sort((a, b) => b.localeCompare(a));
+  const weeks = [...new Set([currentWeekStart, ...sortedActiveWeeks])].sort((a, b) =>
+    b.localeCompare(a),
+  );
+
+  return {
+    weeks,
+    defaultWeek: sortedActiveWeeks[0] ?? currentWeekStart,
+  };
+}
+
 /** ISO date for the Monday of the current calendar week, in UTC. */
 export function getCurrentWeekStart(now: Date = new Date()): string {
   const day = now.getUTCDay(); // 0=Sun, 1=Mon, …

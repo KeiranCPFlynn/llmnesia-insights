@@ -356,8 +356,10 @@ export type GrowthActionStatus =
   | 'planned'
   | 'briefed'
   | 'drafted'
+  | 'actioned'
   | 'published'
   | 'updated'
+  | 'needs_adjustment'
   | 'ignored'
   | 'completed'
   | 'monitoring';

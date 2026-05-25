@@ -2,40 +2,67 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { GrowthAction, GrowthActionStatus, GrowthBrief } from '../src/types.js';
+import type { GrowthAction, GrowthActionStatus, GrowthRecommendation } from '../src/types.js';
 
-const STATUS_TONE: Record<GrowthActionStatus, string> = {
-  idea: 'border-neutral-700 bg-neutral-800/70 text-neutral-300',
+type BoardStatus = 'planned' | 'actioned' | 'monitoring' | 'needs_adjustment' | 'ignored';
+
+const STATUS_TONE: Record<BoardStatus, string> = {
   planned: 'border-sky-700 bg-sky-900/40 text-sky-200',
-  briefed: 'border-sky-600 bg-sky-900/50 text-sky-100',
-  drafted: 'border-amber-700 bg-amber-900/40 text-amber-200',
-  published: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
-  updated: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
-  ignored: 'border-neutral-700 bg-neutral-900/60 text-neutral-500',
-  completed: 'border-emerald-700 bg-emerald-900/50 text-emerald-100',
+  actioned: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
   monitoring: 'border-violet-700 bg-violet-900/40 text-violet-200',
+  needs_adjustment: 'border-amber-700 bg-amber-900/40 text-amber-200',
+  ignored: 'border-neutral-700 bg-neutral-900/60 text-neutral-500',
 };
 
-const STATUSES: GrowthActionStatus[] = [
-  'idea',
-  'planned',
-  'briefed',
-  'drafted',
-  'published',
-  'updated',
-  'ignored',
-  'completed',
-  'monitoring',
+const STATUS_LABEL: Record<BoardStatus, string> = {
+  planned: 'Planned',
+  actioned: 'Actioned',
+  monitoring: 'Monitoring',
+  needs_adjustment: 'Adjust',
+  ignored: 'Ignored',
+};
+
+const STATUS_OPTIONS: { value: BoardStatus; label: string }[] = [
+  { value: 'planned', label: 'Planned' },
+  { value: 'monitoring', label: 'Actioned + monitoring' },
+  { value: 'needs_adjustment', label: 'Needs adjustment' },
+  { value: 'ignored', label: 'Ignore' },
 ];
 
-export function ActionCard({ action }: { action: GrowthAction }) {
+const LEGACY_STATUS: Partial<Record<GrowthActionStatus, BoardStatus>> = {
+  idea: 'planned',
+  briefed: 'planned',
+  drafted: 'planned',
+  published: 'actioned',
+  updated: 'actioned',
+  completed: 'actioned',
+};
+
+function boardStatus(status: GrowthActionStatus): BoardStatus {
+  if (
+    status === 'planned' ||
+    status === 'actioned' ||
+    status === 'monitoring' ||
+    status === 'needs_adjustment' ||
+    status === 'ignored'
+  ) {
+    return status;
+  }
+  return LEGACY_STATUS[status] ?? 'planned';
+}
+
+export function ActionCard({
+  action,
+  recommendation,
+}: {
+  action: GrowthAction;
+  recommendation?: GrowthRecommendation;
+}) {
   const router = useRouter();
-  const [status, setStatus] = useState<GrowthActionStatus>(action.status);
+  const [status, setStatus] = useState<BoardStatus>(boardStatus(action.status));
   const [publishedUrl, setPublishedUrl] = useState(action.published_url ?? '');
   const [note, setNote] = useState(action.note ?? '');
-  const [brief, setBrief] = useState<GrowthBrief | null>(action.brief ?? null);
   const [busy, setBusy] = useState(false);
-  const [briefBusy, setBriefBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function patch(body: Record<string, unknown>) {
@@ -57,78 +84,70 @@ export function ActionCard({ action }: { action: GrowthAction }) {
     }
   }
 
-  async function generateBrief() {
-    if (briefBusy) return;
-    setBriefBusy(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/growth/brief', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionId: action.id }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'Failed');
-      setBrief(j.brief as GrowthBrief);
-      // briefed → bump status if it was still 'planned'.
-      if (status === 'planned' || status === 'idea') {
-        setStatus('briefed');
-        await patch({ status: 'briefed' });
-      } else {
-        router.refresh();
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
-    } finally {
-      setBriefBusy(false);
-    }
+  async function updateStatus(next: BoardStatus) {
+    setStatus(next);
+    await patch({ status: next });
   }
 
-  const isPublished = status === 'published' || status === 'updated' || status === 'monitoring';
+  async function markActioned() {
+    await updateStatus('monitoring');
+  }
 
   return (
     <li className="rounded-lg border border-neutral-800/80 bg-neutral-950/45 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.14)]">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded-full border px-2.5 py-0.5 text-xs capitalize ${STATUS_TONE[status]}`}
-        >
-          {status}
-        </span>
-        <span className="rounded-full border border-neutral-700 bg-neutral-900/60 px-2 py-0.5 text-[11px] text-neutral-300">
-          {action.action_type.replace('_', ' ')}
-        </span>
-        {action.target_query && (
-          <span className="text-sm font-medium text-neutral-100">“{action.target_query}”</span>
-        )}
-        {action.target_page && (
-          <code className="rounded bg-neutral-900 px-1 text-[12px] text-neutral-400">
-            {action.target_page}
-          </code>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-2.5 py-0.5 text-xs ${STATUS_TONE[status]}`}>
+              {STATUS_LABEL[status]}
+            </span>
+            <span className="rounded-full border border-neutral-700 bg-neutral-900/60 px-2 py-0.5 text-[11px] capitalize text-neutral-300">
+              {action.action_type.replace('_', ' ')}
+            </span>
+            {action.target_query && (
+              <span className="text-sm font-medium text-neutral-100">"{action.target_query}"</span>
+            )}
+          </div>
+
+          <h3 className="text-base font-semibold leading-snug text-neutral-100">
+            {action.suggested_title ?? recommendation?.title ?? action.target_page ?? 'Growth action'}
+          </h3>
+
+          {action.target_page && (
+            <code className="mt-2 block w-fit max-w-full overflow-hidden text-ellipsis rounded bg-neutral-900 px-1.5 py-1 text-[12px] text-neutral-400">
+              {action.target_page}
+            </code>
+          )}
+
+          {recommendation?.expected_impact && (
+            <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+              <span className="font-semibold text-neutral-400">Expected outcome: </span>
+              {recommendation.expected_impact}
+            </p>
+          )}
+        </div>
+
+        {status === 'planned' || status === 'needs_adjustment' ? (
+          <button
+            onClick={markActioned}
+            disabled={busy}
+            className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-50"
+          >
+            {busy ? 'Saving...' : 'Mark actioned'}
+          </button>
+        ) : null}
       </div>
 
-      {action.suggested_title && (
-        <p className="text-sm text-neutral-300">
-          <span className="font-semibold text-neutral-400">Suggested: </span>
-          {action.suggested_title}
-        </p>
-      )}
-
-      {/* Status changer + published URL + note */}
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[10rem_1fr_auto]">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[12rem_1fr]">
         <select
-          value={status}
-          onChange={(e) => {
-            const next = e.target.value as GrowthActionStatus;
-            setStatus(next);
-            void patch({ status: next });
-          }}
+          value={status === 'actioned' ? 'monitoring' : status}
+          onChange={(e) => void updateStatus(e.target.value as BoardStatus)}
           disabled={busy}
           className="rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-200 outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10"
         >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
             </option>
           ))}
         </select>
@@ -141,17 +160,9 @@ export function ActionCard({ action }: { action: GrowthAction }) {
               void patch({ publishedUrl: publishedUrl || null });
             }
           }}
-          placeholder={isPublished ? 'Published URL' : 'Published URL (when shipped)'}
+          placeholder="Published URL"
           className="rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10"
         />
-
-        <button
-          onClick={generateBrief}
-          disabled={briefBusy || busy}
-          className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-50"
-        >
-          {briefBusy ? 'Briefing…' : brief ? 'Re-brief' : 'Generate brief'}
-        </button>
       </div>
 
       <textarea
@@ -160,69 +171,10 @@ export function ActionCard({ action }: { action: GrowthAction }) {
         onBlur={() => {
           if ((note || null) !== (action.note ?? null)) void patch({ note: note || null });
         }}
-        placeholder="Notes (optional)…"
+        placeholder="Note or adjustment"
         rows={1}
         className="mt-2 w-full resize-y rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10"
       />
-
-      {brief && (
-        <div className="mt-3 rounded-lg border border-neutral-800/80 bg-neutral-950/70 p-4 text-sm leading-relaxed text-neutral-200">
-          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Brief
-          </div>
-          <p className="mt-1">
-            <span className="font-semibold text-neutral-400">Title: </span>
-            {brief.suggested_title}
-          </p>
-          <p className="mt-1">
-            <span className="font-semibold text-neutral-400">Intent: </span>
-            {brief.search_intent}
-          </p>
-          <p className="mt-1">
-            <span className="font-semibold text-neutral-400">Format: </span>
-            {brief.format}
-          </p>
-          <p className="mt-1">
-            <span className="font-semibold text-neutral-400">Angle: </span>
-            {brief.angle}
-          </p>
-          {brief.sections.length > 0 && (
-            <div className="mt-2">
-              <div className="font-semibold text-neutral-400">Sections</div>
-              <ul className="mt-1 list-disc space-y-1 pl-5">
-                {brief.sections.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {brief.supporting_queries.length > 0 && (
-            <p className="mt-2 text-[13px] text-neutral-400">
-              Supporting: {brief.supporting_queries.join(' · ')}
-            </p>
-          )}
-          {brief.internal_links.length > 0 && (
-            <div className="mt-2">
-              <div className="font-semibold text-neutral-400">Internal links</div>
-              <ul className="mt-1 list-disc space-y-1 pl-5 text-[13px]">
-                {brief.internal_links.map((l, i) => (
-                  <li key={i}>
-                    {l.from && (
-                      <code className="rounded bg-neutral-900 px-1 text-[12px]">{l.from}</code>
-                    )}
-                    {' → '}
-                    {l.to && <code className="rounded bg-neutral-900 px-1 text-[12px]">{l.to}</code>}
-                    {l.anchor && <span className="text-neutral-500"> — anchor “{l.anchor}”</span>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <p className="mt-2 text-[13px] text-neutral-500">
-            Generated {new Date(brief.generated_at).toLocaleString('en-GB')} · {brief.model_used}
-          </p>
-        </div>
-      )}
 
       {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
     </li>
