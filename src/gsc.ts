@@ -221,7 +221,7 @@ export function extendedBackfillRange(now: Date = new Date()): { startDate: stri
 }
 
 /** Delta sync: re-pull the last N days to absorb GSC lag + revisions. */
-export function deltaRange(days = 7, now: Date = new Date()): { startDate: string; endDate: string } {
+export function deltaRange(days = 90, now: Date = new Date()): { startDate: string; endDate: string } {
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() - 1);
   const start = new Date(end);
@@ -266,5 +266,16 @@ export async function catchUpRange(
  * on the first run vs subsequent runs.
  */
 export async function autoSyncRange(siteId: string): Promise<{ startDate: string; endDate: string; mode: 'backfill' | 'delta' }> {
-  return catchUpRange(siteId);
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('gsc_rows')
+    .select('date')
+    .eq('site_id', siteId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Supabase latest date failed: ${error.message}`);
+  if (!(data as { date?: string } | null)?.date) {
+    return { ...fullBackfillRange(), mode: 'backfill' };
+  }
+  return { ...deltaRange(), mode: 'delta' };
 }

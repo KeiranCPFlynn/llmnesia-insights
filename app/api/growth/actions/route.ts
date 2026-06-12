@@ -64,6 +64,9 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  if (body.status && !VALID_STATUSES.includes(body.status as GrowthActionStatus)) {
+    return NextResponse.json({ error: `Invalid status: ${body.status}` }, { status: 400 });
+  }
 
   const supabase = getSupabase();
 
@@ -75,7 +78,30 @@ export async function POST(req: Request) {
       .select('*')
       .eq('recommendation_id', body.recommendationId)
       .maybeSingle();
-    if (existing) return NextResponse.json({ action: existing });
+    if (existing) {
+      const patch: Record<string, unknown> = {};
+      if (body.opportunityId !== undefined) patch.opportunity_id = body.opportunityId;
+      if (body.actionType !== undefined) patch.action_type = body.actionType;
+      if (body.targetQuery !== undefined) patch.target_query = body.targetQuery;
+      if (body.targetPage !== undefined) patch.target_page = body.targetPage;
+      if (body.suggestedTitle !== undefined) patch.suggested_title = body.suggestedTitle;
+      if (body.note !== undefined) patch.note = body.note;
+      if (body.status) {
+        patch.status = body.status;
+        patch.status_updated_at = new Date().toISOString();
+      }
+
+      if (Object.keys(patch).length === 0) return NextResponse.json({ action: existing });
+
+      const { data, error } = await supabase
+        .from('growth_actions')
+        .update(patch)
+        .eq('id', (existing as GrowthAction).id)
+        .select()
+        .maybeSingle();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ action: data });
+    }
   }
 
   const row: GrowthAction = {

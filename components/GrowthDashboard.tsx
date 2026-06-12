@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { formatDateTime } from '../lib/format';
 import type { Site } from '../src/types.js';
 
 /** Stop polling after this long even if nothing changes — safety net. */
@@ -148,7 +149,7 @@ export function GrowthSyncToolbar({
   }
 
   const synced = lastSyncedAt
-    ? new Date(lastSyncedAt).toLocaleString('en-GB')
+    ? formatDateTime(lastSyncedAt)
     : 'never';
 
   return (

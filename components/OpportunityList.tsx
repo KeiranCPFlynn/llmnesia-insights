@@ -42,7 +42,7 @@ export function OpportunityList({
   label,
   hint,
   opportunities,
-  acceptedRecIds,
+  acceptedIds,
 }: {
   siteId: string;
   weekStart: string;
@@ -51,8 +51,10 @@ export function OpportunityList({
   hint: string;
   opportunities: GrowthOpportunity[];
   /** Opportunity ids already materialised as actions — hide the "Accept" button. */
-  acceptedRecIds: Set<string>;
+  acceptedIds: string[];
 }) {
+  const acceptedIdSet = new Set(acceptedIds);
+
   if (opportunities.length === 0) return null;
   return (
     <details className={`rounded-lg border p-4 shadow-[0_10px_28px_rgba(0,0,0,0.14)] ${TYPE_TONE[type]}`}>
@@ -70,7 +72,7 @@ export function OpportunityList({
             siteId={siteId}
             weekStart={weekStart}
             opportunity={o}
-            accepted={acceptedRecIds.has(o.id)}
+            accepted={acceptedIdSet.has(o.id)}
           />
         ))}
       </ul>

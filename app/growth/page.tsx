@@ -19,7 +19,7 @@ import { WeeklyPlan } from '../../components/WeeklyPlan';
 import { OpportunityList } from '../../components/OpportunityList';
 import { ActionBoard } from '../../components/ActionBoard';
 import { ensureOpportunities } from '../../src/growth.js';
-import type { GrowthOpportunityType } from '../../src/types.js';
+import type { GrowthActionStatus, GrowthOpportunityType } from '../../src/types.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,12 +85,24 @@ export default async function GrowthPage({
     'proven_expander',
   ];
 
-  // Recommendation/opportunity ids already turned into an action — used to grey
-  // out the "Accept" buttons.
-  const acceptedRecIds = new Set<string>();
+  // Recommendation/opportunity ids already turned into actions. Keep the
+  // recommendation action state so the plan cards can manage stale recs
+  // without forcing the user into the action board first.
+  const recommendationActions: Record<
+    string,
+    { id: string; status: GrowthActionStatus; note?: string | null; status_updated_at: string }
+  > = {};
+  const acceptedOpportunityIds: string[] = [];
   for (const a of data.actions) {
-    if (a.recommendation_id) acceptedRecIds.add(a.recommendation_id);
-    if (a.opportunity_id) acceptedRecIds.add(a.opportunity_id);
+    if (a.recommendation_id) {
+      recommendationActions[a.recommendation_id] = {
+        id: a.id,
+        status: a.status,
+        note: a.note,
+        status_updated_at: a.status_updated_at,
+      };
+    }
+    if (a.opportunity_id) acceptedOpportunityIds.push(a.opportunity_id);
   }
 
   const thisWeekActions = data.actions.filter((a) => a.week_start === weekStart);
@@ -119,11 +131,16 @@ export default async function GrowthPage({
       </header>
 
       <section className="mb-6">
-        <GrowthGoalEditor siteId={siteId} initialGoal={data.site.growth_goal} />
+        <GrowthGoalEditor
+          key={siteId}
+          siteId={siteId}
+          initialGoal={data.site.growth_goal}
+        />
       </section>
 
       <section className="mb-6">
         <GrowthSyncToolbar
+          key={siteId}
           site={data.site}
           lastSyncedAt={data.lastSyncedAt}
           rowCount={data.rowCount}
@@ -137,15 +154,16 @@ export default async function GrowthPage({
             clicks, impressions, CTR and ranking context
           </span>
         </h2>
-        <GSCDataVisuals digest={data.gscDigest} />
+        <GSCDataVisuals key={`${siteId}:${weekStart}`} digest={data.gscDigest} />
       </section>
 
       <section className="mb-10">
         <WeeklyPlan
+          key={`${siteId}:${weekStart}`}
           siteId={siteId}
           weekStart={weekStart}
           initialPlan={data.plan}
-          acceptedRecIds={acceptedRecIds}
+          recommendationActions={recommendationActions}
           opportunityCount={opportunities.length}
         />
       </section>
@@ -172,7 +190,7 @@ export default async function GrowthPage({
                 label={OPP_LABEL[t]}
                 hint={OPP_HINT[t]}
                 opportunities={grouped[t]}
-                acceptedRecIds={acceptedRecIds}
+                acceptedIds={acceptedOpportunityIds}
               />
             ),
           )}
@@ -192,13 +210,17 @@ export default async function GrowthPage({
             this board.
           </div>
         ) : (
-          <ActionBoard actions={thisWeekActions} recommendations={data.plan?.recommendations ?? []} />
+          <ActionBoard
+            key={`${siteId}:${weekStart}`}
+            actions={thisWeekActions}
+            recommendations={data.plan?.recommendations ?? []}
+          />
         )}
       </section>
 
       <footer className="border-t border-neutral-800 pt-4 text-xs text-neutral-600">
         Google Search Console + opportunity detectors + LLM-composed weekly plan ·{' '}
-        Window: rolling 28 days ending ~2 days ago
+        Window: rolling 90 days anchored to the selected week
       </footer>
     </main>
   );

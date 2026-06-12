@@ -78,6 +78,7 @@ export default async function StrategyPage({
           key={current.week_start}
           week={current.week_start}
           strategy={current.strategy ?? null}
+          strategyGoal={current.strategy_goal}
           decisions={current.strategy_decisions ?? []}
         />
       </section>

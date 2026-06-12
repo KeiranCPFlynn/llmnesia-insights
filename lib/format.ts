@@ -4,6 +4,8 @@ export const pct = (n: number | undefined) =>
 export const num = (n: number | undefined) =>
   n == null ? '—' : n.toLocaleString('en-GB');
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function delta(curr?: number, prev?: number): { label: string; dir: 'up' | 'down' | 'flat' } {
   if (curr == null || prev == null || prev === 0) return { label: '', dir: 'flat' };
   const change = ((curr - prev) / prev) * 100;
@@ -17,10 +19,14 @@ export function delta(curr?: number, prev?: number): { label: string; dir: 'up' 
 export function formatWeek(weekStart: string): string {
   const d = new Date(`${weekStart}T00:00:00Z`);
   if (isNaN(d.getTime())) return weekStart; // threads may carry free-text dates
-  return d.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+export function formatDateTime(value: string): string {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const hour = String(d.getUTCHours()).padStart(2, '0');
+  const minute = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${day} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${hour}:${minute} UTC`;
 }

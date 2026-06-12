@@ -76,7 +76,7 @@ export async function getGrowthWeekOptions(
 
   return {
     weeks,
-    defaultWeek: sortedActiveWeeks[0] ?? currentWeekStart,
+    defaultWeek: currentWeekStart,
   };
 }
 
@@ -158,6 +158,16 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+function selectedWeekEnd(weekStart: string, now: Date = new Date()): string {
+  const laggedToday = new Date(now);
+  laggedToday.setUTCDate(laggedToday.getUTCDate() - 1);
+
+  const weekEnd = new Date(`${weekStart}T00:00:00Z`);
+  if (Number.isNaN(weekEnd.getTime())) return isoDate(laggedToday);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+  return isoDate(weekEnd < laggedToday ? weekEnd : laggedToday);
+}
+
 function weightedPosition(rows: Pick<GSCRow, 'position' | 'impressions'>[]) {
   const impressionWeight = rows.reduce((sum, r) => sum + (r.impressions ?? 0), 0);
   if (impressionWeight > 0) {
@@ -201,12 +211,45 @@ function topRows(
     .slice(0, limit);
 }
 
-async function getGscDigest(siteId: string): Promise<GscDigest> {
+async function getGscRowsForDigest(
+  siteId: string,
+  startDate: string,
+  endDate: string,
+): Promise<GSCRow[]> {
   const supabase = getClient();
+  const out: GSCRow[] = [];
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('gsc_rows')
+      .select('date,query,page,clicks,impressions,ctr,position,country,device,site_id')
+      .eq('site_id', siteId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(`gsc digest fetch failed: ${error.message}`);
+
+    const rows = ((data as GSCRow[]) ?? []).filter((r) => r.date);
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return out;
+}
+
+async function getGscDigest(siteId: string, weekStart: string): Promise<GscDigest> {
+  const supabase = getClient();
+  const targetEndDate = selectedWeekEnd(weekStart);
   const { data: latest, error: latestError } = await supabase
     .from('gsc_rows')
     .select('date')
     .eq('site_id', siteId)
+    .lte('date', targetEndDate)
     .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -219,17 +262,7 @@ async function getGscDigest(siteId: string): Promise<GscDigest> {
   start.setUTCDate(start.getUTCDate() - 89);
   const startDate = isoDate(start);
 
-  const { data, error } = await supabase
-    .from('gsc_rows')
-    .select('date,query,page,clicks,impressions,ctr,position,country,device,site_id')
-    .eq('site_id', siteId)
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .order('date', { ascending: true })
-    .range(0, 19999);
-  if (error) throw new Error(`gsc digest fetch failed: ${error.message}`);
-
-  const rows = ((data as GSCRow[]) ?? []).filter((r) => r.date);
+  const rows = await getGscRowsForDigest(siteId, startDate, endDate);
   if (rows.length === 0) return { ...EMPTY_GSC_DIGEST, startDate, endDate };
 
   const clicks = rows.reduce((sum, r) => sum + (r.clicks ?? 0), 0);
@@ -317,7 +350,7 @@ export async function getGrowthPageData(
       .limit(1)
       .maybeSingle(),
     supabase.from('gsc_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
-    getGscDigest(siteId),
+    getGscDigest(siteId, weekStart),
   ]);
 
   if (siteRes.error) throw new Error(`site fetch failed: ${siteRes.error.message}`);

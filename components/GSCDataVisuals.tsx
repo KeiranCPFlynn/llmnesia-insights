@@ -14,8 +14,19 @@ import {
 } from 'recharts';
 import type { GscDigest, GscTopRow } from '../lib/growth';
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 function compact(n: number) {
-  return new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000_000) return `${sign}${trimCompact(abs / 1_000_000_000)}b`;
+  if (abs >= 1_000_000) return `${sign}${trimCompact(abs / 1_000_000)}m`;
+  if (abs >= 1_000) return `${sign}${trimCompact(abs / 1_000)}k`;
+  return `${n}`;
+}
+
+function trimCompact(n: number) {
+  return n.toFixed(n >= 10 ? 0 : 1).replace(/\.0$/, '');
 }
 
 function percent(n: number) {
@@ -27,10 +38,9 @@ function position(n: number) {
 }
 
 function shortDate(date: string) {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-  });
+  const d = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return date;
+  return `${String(d.getUTCDate()).padStart(2, '0')} ${MONTHS[d.getUTCMonth()]}`;
 }
 
 function Metric({

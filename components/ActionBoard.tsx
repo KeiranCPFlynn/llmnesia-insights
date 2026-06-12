@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import { ActionCard, boardStatus, type BoardStatus } from './ActionCard';
 import type { GrowthAction, GrowthRecommendation } from '../src/types.js';
 
-const STATUS_ORDER: BoardStatus[] = ['planned', 'monitoring', 'needs_adjustment', 'ignored'];
+const STATUS_ORDER: BoardStatus[] = ['planned', 'monitoring', 'needs_adjustment', 'completed', 'ignored'];
 
 const STATUS_LABEL: Record<BoardStatus, string> = {
   planned: 'Planned',
   actioned: 'Actioned',
   monitoring: 'Actioned + monitoring',
   needs_adjustment: 'Needs adjustment',
+  completed: 'Done',
   ignored: 'Ignored',
 };
 
@@ -19,7 +20,8 @@ const STATUS_OPTIONS: { value: BoardStatus; label: string }[] = [
   { value: 'planned', label: 'Planned' },
   { value: 'monitoring', label: 'Actioned + monitoring' },
   { value: 'needs_adjustment', label: 'Needs adjustment' },
-  { value: 'ignored', label: 'Ignore' },
+  { value: 'completed', label: 'Done' },
+  { value: 'ignored', label: 'Discard' },
 ];
 
 function groupActions(actions: GrowthAction[]): Record<BoardStatus, GrowthAction[]> {

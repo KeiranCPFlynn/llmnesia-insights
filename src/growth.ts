@@ -35,8 +35,8 @@ function getSupabase() {
  * fire — the volume score sorts them out.
  */
 const WINDOW_DAYS = 90;
-/** GSC data lags ~2 days; ignore the most recent two to avoid jagged trends. */
-const LAG_DAYS = 2;
+/** GSC dataState=all gives fresh-but-partial data through roughly yesterday. */
+const LAG_DAYS = 1;
 
 /**
  * Threshold floors — tuned for indie / early-stage sites. With single-digit
@@ -50,15 +50,28 @@ const T_GAP_MIN_IMP = 3;
 const T_DECLINING_MIN_PRIOR_CLICKS = 3;
 const T_PROVEN_EXPANDER_MIN_CLICKS = 5;
 
-/** Rolling window the detectors operate on, ending ~2 days ago. */
-export function detectionWindow(now: Date = new Date()): {
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function selectedWeekEnd(weekStart?: string, now: Date = new Date()): Date {
+  const laggedToday = new Date(now);
+  laggedToday.setUTCDate(laggedToday.getUTCDate() - LAG_DAYS);
+  if (!weekStart) return laggedToday;
+
+  const weekEnd = new Date(`${weekStart}T00:00:00Z`);
+  if (Number.isNaN(weekEnd.getTime())) return laggedToday;
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+  return weekEnd < laggedToday ? weekEnd : laggedToday;
+}
+
+/** Rolling window the detectors operate on, anchored to the selected week. */
+export function detectionWindow(opts: { weekStart?: string; now?: Date } = {}): {
   current: { startDate: string; endDate: string };
   prior: { startDate: string; endDate: string };
   asOf: string;
 } {
-  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-  const end = new Date(now);
-  end.setUTCDate(end.getUTCDate() - LAG_DAYS);
+  const end = selectedWeekEnd(opts.weekStart, opts.now);
   const currentStart = new Date(end);
   currentStart.setUTCDate(currentStart.getUTCDate() - (WINDOW_DAYS - 1));
 
@@ -381,7 +394,10 @@ export async function computeOpportunities(opts: {
   weekStart: string;
   now?: Date;
 }): Promise<GrowthOpportunity[]> {
-  const { current, prior, asOf } = detectionWindow(opts.now);
+  const { current, prior, asOf } = detectionWindow({
+    weekStart: opts.weekStart,
+    now: opts.now,
+  });
   const supabase = getSupabase();
   const { data: rowsRaw, error } = await supabase
     .from('gsc_rows')
@@ -462,8 +478,8 @@ export function summariseSiteScale(rows: GSCRow[]): SiteScale {
   };
 }
 
-export async function getSiteScale(siteId: string): Promise<SiteScale> {
-  const { current } = detectionWindow();
+export async function getSiteScale(siteId: string, weekStart?: string): Promise<SiteScale> {
+  const { current } = detectionWindow({ weekStart });
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('gsc_rows')

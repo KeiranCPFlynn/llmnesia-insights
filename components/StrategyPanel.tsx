@@ -7,6 +7,7 @@ import type {
   StrategyRecommendation,
   StrategyResult,
 } from '../src/types.js';
+import { formatDateTime } from '../lib/format';
 import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
@@ -202,10 +203,12 @@ function RecommendationCard({
 export function StrategyPanel({
   week,
   strategy: initialStrategy,
+  strategyGoal: initialStrategyGoal,
   decisions: initialDecisions,
 }: {
   week: string;
   strategy: StrategyResult | null;
+  strategyGoal?: string | null;
   decisions: StrategyDecision[];
 }) {
   const router = useRouter();
@@ -219,6 +222,7 @@ export function StrategyPanel({
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generationContext, setGenerationContext] = useState('');
+  const [strategyGoal, setStrategyGoal] = useState(initialStrategyGoal ?? '');
   const baseOffset = useRef(0);
   const tick = useElapsed(busy || polling);
   const shown = baseOffset.current + tick;
@@ -232,8 +236,16 @@ export function StrategyPanel({
   useEffect(() => {
     setStrategy(initialStrategy);
     setDecisions(initialDecisions);
-    if (initialStrategy) localStorage.removeItem(pendingKey(week));
-  }, [week, initialStrategy, initialDecisions]);
+    setStrategyGoal(initialStrategyGoal ?? '');
+    const raw = localStorage.getItem(pendingKey(week));
+    const start = raw ? Number(raw) : 0;
+    const generatedAt = initialStrategy?.generated_at
+      ? new Date(initialStrategy.generated_at).getTime()
+      : 0;
+    if (initialStrategy && (!start || generatedAt >= start - 1000)) {
+      localStorage.removeItem(pendingKey(week));
+    }
+  }, [week, initialStrategy, initialStrategyGoal, initialDecisions]);
 
   function stopPoll() {
     pollStop.current = true;
@@ -253,8 +265,12 @@ export function StrategyPanel({
         const r = await fetch(`/api/strategy?week=${week}`);
         if (r.ok) {
           const b = await r.json();
-          if (b.strategy) {
-            setStrategy(b.strategy as StrategyResult);
+          const nextStrategy = b.strategy as StrategyResult | null;
+          const generatedAt = nextStrategy?.generated_at
+            ? new Date(nextStrategy.generated_at).getTime()
+            : 0;
+          if (nextStrategy && generatedAt >= startMs - 1000) {
+            setStrategy(nextStrategy);
             setDecisions((b.decisions as StrategyDecision[]) ?? []);
             localStorage.removeItem(pendingKey(week));
             setPolling(false);
@@ -281,12 +297,17 @@ export function StrategyPanel({
   // On mount: if a generation was kicked off (marker present) and the result
   // isn't here yet, resume watching it.
   useEffect(() => {
-    if (initialStrategy) {
-      localStorage.removeItem(pendingKey(week));
-      return;
-    }
     const raw = localStorage.getItem(pendingKey(week));
     const start = raw ? Number(raw) : 0;
+    if (initialStrategy) {
+      const generatedAt = initialStrategy.generated_at
+        ? new Date(initialStrategy.generated_at).getTime()
+        : 0;
+      if (!start || generatedAt >= start - 1000) {
+        localStorage.removeItem(pendingKey(week));
+        return;
+      }
+    }
     if (!start || Date.now() - start > STALE_MS) {
       if (raw) localStorage.removeItem(pendingKey(week));
       return;
@@ -313,6 +334,7 @@ export function StrategyPanel({
           week,
           provider,
           generationContext: (contextOverride ?? generationContext).trim() || undefined,
+          strategyGoal: strategyGoal.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -338,7 +360,17 @@ export function StrategyPanel({
     window.addEventListener('llmnesia:strategy-regenerate', handler);
     return () => window.removeEventListener('llmnesia:strategy-regenerate', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [week, busy, polling, provider, generationContext]);
+  }, [week, busy, polling, provider, generationContext, strategyGoal]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ week?: string; goal?: string }>).detail;
+      if (detail?.week && detail.week !== week) return;
+      setStrategyGoal(detail?.goal ?? '');
+    };
+    window.addEventListener('llmnesia:strategy-goal-change', handler);
+    return () => window.removeEventListener('llmnesia:strategy-goal-change', handler);
+  }, [week]);
 
   const byId = new Map(decisions.map((d) => [d.recommendation_id, d]));
   const working = busy || polling;
@@ -350,8 +382,7 @@ export function StrategyPanel({
           <h2 className="text-lg font-bold text-neutral-100">Revenue & growth strategy</h2>
           {strategy && (
             <p className="text-sm text-neutral-500">
-              {label(provider)} · generated{' '}
-              {new Date(strategy.generated_at).toLocaleString('en-GB')} · model{' '}
+              {label(provider)} · generated {formatDateTime(strategy.generated_at)} · model{' '}
               {strategy.model_used}
             </p>
           )}

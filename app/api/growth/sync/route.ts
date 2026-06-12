@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server';
 import { isAuthorized } from '../../../../lib/session';
 import {
   autoSyncRange,
-  catchUpRange,
+  deltaRange,
   fullBackfillRange,
   getSiteById,
   getSites,
@@ -22,7 +22,7 @@ type SyncRange = Awaited<ReturnType<typeof autoSyncRange>>;
  * POST { siteId?: string, mode?: 'auto'|'backfill'|'delta' }
  *   - siteId omitted ⇒ sync every enabled site
  *   - mode 'auto' (default) ⇒ backfill if no rows yet, otherwise catch up
- *   - mode 'delta' ⇒ catch up from newest stored date through yesterday
+ *   - mode 'delta' ⇒ refresh the visible 90-day graph window through yesterday
  *
  * Backfills return 202 immediately and continue in `after()`. Catch-up syncs
  * run in the request and return a concrete row count, so the toolbar does not
@@ -48,7 +48,10 @@ export async function POST(req: Request) {
   if (mode !== 'backfill') {
     const planned: { site: Site; range: SyncRange }[] = [];
     for (const site of sites) {
-      const range = mode === 'delta' ? await catchUpRange(site.id) : await autoSyncRange(site.id);
+      const range =
+        mode === 'delta'
+          ? { ...deltaRange(), mode: 'delta' as const }
+          : await autoSyncRange(site.id);
       planned.push({ site, range });
     }
 

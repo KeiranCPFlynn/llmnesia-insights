@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ProviderSelect, useProvider } from './ProviderSelect';
 
 export function StrategyGoalEditor({
@@ -24,6 +24,14 @@ export function StrategyGoalEditor({
   });
   const changed = goal.trim() !== (initialGoal ?? '').trim();
   const busy = saving || suggesting;
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('llmnesia:strategy-goal-change', {
+        detail: { week, goal },
+      }),
+    );
+  }, [week, goal]);
 
   async function save() {
     if (busy) return;

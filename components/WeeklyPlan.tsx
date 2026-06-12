@@ -4,10 +4,12 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type {
   GrowthAction,
+  GrowthActionStatus,
   GrowthActionType,
   GrowthPlan,
   GrowthRecommendation,
 } from '../src/types.js';
+import { formatDateTime } from '../lib/format';
 import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
@@ -31,18 +33,53 @@ const ACTION_TYPE_LABEL: Record<GrowthActionType, string> = {
 
 const EFFORT = { S: 'Small', M: 'Medium', L: 'Large' } as const;
 
+type RecommendationActionState = Pick<
+  GrowthAction,
+  'id' | 'status' | 'note' | 'status_updated_at'
+>;
+
+const RECOMMENDATION_STATUS_LABEL: Record<GrowthActionStatus, string> = {
+  idea: 'Idea',
+  planned: 'Planned',
+  briefed: 'Briefed',
+  drafted: 'Drafted',
+  actioned: 'Actioned',
+  published: 'Published',
+  updated: 'Updated',
+  needs_adjustment: 'Needs adjustment',
+  ignored: 'Discarded',
+  completed: 'Done',
+  monitoring: 'Monitoring',
+};
+
+const RECOMMENDATION_STATUS_TONE: Record<GrowthActionStatus, string> = {
+  idea: 'border-neutral-700 bg-neutral-900/60 text-neutral-300',
+  planned: 'border-sky-700 bg-sky-900/40 text-sky-200',
+  briefed: 'border-sky-700 bg-sky-900/40 text-sky-200',
+  drafted: 'border-sky-700 bg-sky-900/40 text-sky-200',
+  actioned: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
+  published: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
+  updated: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
+  needs_adjustment: 'border-amber-700 bg-amber-900/40 text-amber-200',
+  ignored: 'border-neutral-700 bg-neutral-900/60 text-neutral-500',
+  completed: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
+  monitoring: 'border-violet-700 bg-violet-900/40 text-violet-200',
+};
+
+const HANDLED_RECOMMENDATION_STATUSES = new Set<GrowthActionStatus>(['completed', 'ignored']);
+
 export function WeeklyPlan({
   siteId,
   weekStart,
   initialPlan,
-  acceptedRecIds,
+  recommendationActions,
   opportunityCount,
 }: {
   siteId: string;
   weekStart: string;
   initialPlan: GrowthPlan | null;
-  /** Recommendation ids already turned into an action — hides the Accept button. */
-  acceptedRecIds: Set<string>;
+  /** Recommendation ids already turned into an action, keyed by recommendation id. */
+  recommendationActions: Record<string, RecommendationActionState>;
   opportunityCount: number;
 }) {
   const router = useRouter();
@@ -109,8 +146,9 @@ export function WeeklyPlan({
     pollTimer.current = setTimeout(step, 4000);
   }
 
-  // Resume polling if a previous tab kicked off a generation.
+  // Resume polling if this site/week has an in-flight generation marker.
   useEffect(() => {
+    stopPoll();
     if (initialPlan) {
       localStorage.removeItem(pendingKey(siteId, weekStart));
       return;
@@ -124,7 +162,7 @@ export function WeeklyPlan({
     runPoll(start);
     return () => stopPoll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [siteId, weekStart, initialPlan]);
 
   useEffect(() => () => stopPoll(), []);
 
@@ -159,6 +197,13 @@ export function WeeklyPlan({
   }
 
   const working = busy || polling;
+  const activeRecommendations =
+    plan?.recommendations.filter((rec) => {
+      const actionState = recommendationActions[rec.id];
+      return !actionState || !HANDLED_RECOMMENDATION_STATUSES.has(actionState.status);
+    }) ?? [];
+  const handledRecommendationCount =
+    (plan?.recommendations.length ?? 0) - activeRecommendations.length;
 
   return (
     <div className="space-y-5">
@@ -167,8 +212,8 @@ export function WeeklyPlan({
           <h2 className="text-lg font-bold text-neutral-100">This week’s plan</h2>
           {plan && (
             <p className="text-sm text-neutral-500">
-              {label(provider)} · generated{' '}
-              {new Date(plan.generated_at).toLocaleString('en-GB')} · model {plan.model_used}
+              {label(provider)} · generated {formatDateTime(plan.generated_at)} · model{' '}
+              {plan.model_used}
             </p>
           )}
         </div>
@@ -250,20 +295,34 @@ export function WeeklyPlan({
 
           <section>
             <h3 className="mb-3 text-base font-bold text-neutral-100">
-              Recommendations — ranked, do #1 first
+              {activeRecommendations.length > 0
+                ? 'Recommendations — ranked, do #1 first'
+                : 'Recommendations'}
+              {handledRecommendationCount > 0 && (
+                <span className="ml-2 text-sm font-normal text-neutral-500">
+                  {handledRecommendationCount} handled hidden
+                </span>
+              )}
             </h3>
-            <ul className="space-y-4">
-              {plan.recommendations.map((rec, i) => (
-                <RecommendationCard
-                  key={rec.id}
-                  rank={i + 1}
-                  rec={rec}
-                  siteId={siteId}
-                  weekStart={weekStart}
-                  accepted={acceptedRecIds.has(rec.id)}
-                />
-              ))}
-            </ul>
+            {activeRecommendations.length === 0 ? (
+              <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-5 py-6 text-sm text-neutral-400 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+                All recommendations in this plan have been handled. Regenerate the plan when you
+                want a fresh queue.
+              </div>
+            ) : (
+              <ul className="space-y-4">
+                {activeRecommendations.map((rec, i) => (
+                  <RecommendationCard
+                    key={rec.id}
+                    rank={i + 1}
+                    rec={rec}
+                    siteId={siteId}
+                    weekStart={weekStart}
+                    actionState={recommendationActions[rec.id]}
+                  />
+                ))}
+              </ul>
+            )}
           </section>
 
           {plan.experiments.length > 0 && (
@@ -301,20 +360,25 @@ function RecommendationCard({
   rec,
   siteId,
   weekStart,
-  accepted,
+  actionState,
 }: {
   rank: number;
   rec: GrowthRecommendation;
   siteId: string;
   weekStart: string;
-  accepted: boolean;
+  actionState?: RecommendationActionState;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [accepting, setAccepting] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<GrowthActionStatus | null>(null);
   const [copied, setCopied] = useState(false);
+  const [note, setNote] = useState(actionState?.note ?? '');
   const top = rank === 1;
+
+  useEffect(() => {
+    setNote(actionState?.note ?? '');
+  }, [actionState?.id, actionState?.note]);
 
   async function copyPrompt() {
     if (!rec.handoff?.coding_agent_prompt) return;
@@ -323,26 +387,53 @@ function RecommendationCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function accept() {
-    if (busy || accepted || accepting) return;
-    setAccepting(true);
+  async function saveStatus(nextStatus: GrowthActionStatus) {
+    if (busy) return;
+    setPendingStatus(nextStatus);
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/growth/actions', actionState
+        ? {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: actionState.id, status: nextStatus }),
+          }
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              siteId,
+              weekStart,
+              recommendationId: rec.id,
+              opportunityId: rec.opportunity_id ?? null,
+              actionType: rec.action_type,
+              targetQuery: rec.target_query,
+              targetPage: rec.target_page,
+              suggestedTitle: rec.title,
+              status: nextStatus,
+            }),
+          });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Failed');
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setBusy(false);
+      setPendingStatus(null);
+    }
+  }
+
+  async function saveNote() {
+    if (!actionState || busy || (note || null) === (actionState.note ?? null)) return;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch('/api/growth/actions', {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          siteId,
-          weekStart,
-          recommendationId: rec.id,
-          opportunityId: rec.opportunity_id ?? null,
-          actionType: rec.action_type,
-          targetQuery: rec.target_query,
-          targetPage: rec.target_page,
-          suggestedTitle: rec.title,
-          status: 'planned',
-        }),
+        body: JSON.stringify({ id: actionState.id, note: note || null }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Failed');
@@ -351,7 +442,6 @@ function RecommendationCard({
       setError(e instanceof Error ? e.message : 'Failed');
     } finally {
       setBusy(false);
-      setAccepting(false);
     }
   }
 
@@ -372,9 +462,11 @@ function RecommendationCard({
           {rank}
         </span>
         <h4 className="text-lg font-semibold text-neutral-50">{rec.title}</h4>
-        {accepted && (
-          <span className="rounded-full border border-emerald-700 bg-emerald-900/50 px-2.5 py-0.5 text-xs text-emerald-200">
-            in plan
+        {actionState && (
+          <span
+            className={`rounded-full border px-2.5 py-0.5 text-xs ${RECOMMENDATION_STATUS_TONE[actionState.status]}`}
+          >
+            {RECOMMENDATION_STATUS_LABEL[actionState.status]}
           </span>
         )}
       </div>
@@ -452,16 +544,44 @@ function RecommendationCard({
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-2 border-t border-neutral-800 pt-4">
-        {accepted ? (
-          <span className="text-sm text-emerald-300">✓ Already in this week’s action board</span>
-        ) : (
+      {actionState && (
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onBlur={() => void saveNote()}
+          disabled={busy}
+          rows={1}
+          placeholder="Note why this is done, discarded, or needs follow-up"
+          className="mt-4 w-full resize-y rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 disabled:opacity-60"
+        />
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-4">
+        {actionState?.status !== 'planned' && (
           <button
-            onClick={accept}
+            onClick={() => void saveStatus('planned')}
+            disabled={busy}
+            className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3.5 py-2 text-sm font-medium text-sky-200 hover:bg-sky-500/15 disabled:opacity-50"
+          >
+            {pendingStatus === 'planned' ? 'Saving...' : 'Plan'}
+          </button>
+        )}
+        {actionState?.status !== 'completed' && (
+          <button
+            onClick={() => void saveStatus('completed')}
             disabled={busy}
             className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-50"
           >
-            {busy ? 'Adding…' : 'Add to plan'}
+            {pendingStatus === 'completed' ? 'Saving...' : 'Done'}
+          </button>
+        )}
+        {actionState?.status !== 'ignored' && (
+          <button
+            onClick={() => void saveStatus('ignored')}
+            disabled={busy}
+            className="rounded-md border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {pendingStatus === 'ignored' ? 'Saving...' : 'Discard'}
           </button>
         )}
         {error && <span className="text-sm text-rose-400">{error}</span>}

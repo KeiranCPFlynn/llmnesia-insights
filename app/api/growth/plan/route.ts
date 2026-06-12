@@ -72,7 +72,7 @@ export async function POST(req: Request) {
           .eq('site_id', siteId)
           .order('status_updated_at', { ascending: false })
           .limit(40),
-        getSiteScale(siteId),
+        getSiteScale(siteId, weekStart),
       ]);
       if (actionsRes.error) throw new Error(`growth_actions fetch failed: ${actionsRes.error.message}`);
       const priorActions =

@@ -4,13 +4,20 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { GrowthAction, GrowthActionStatus, GrowthRecommendation } from '../src/types.js';
 
-export type BoardStatus = 'planned' | 'actioned' | 'monitoring' | 'needs_adjustment' | 'ignored';
+export type BoardStatus =
+  | 'planned'
+  | 'actioned'
+  | 'monitoring'
+  | 'needs_adjustment'
+  | 'completed'
+  | 'ignored';
 
 const STATUS_TONE: Record<BoardStatus, string> = {
   planned: 'border-sky-700 bg-sky-900/40 text-sky-200',
   actioned: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
   monitoring: 'border-violet-700 bg-violet-900/40 text-violet-200',
   needs_adjustment: 'border-amber-700 bg-amber-900/40 text-amber-200',
+  completed: 'border-emerald-700 bg-emerald-900/40 text-emerald-200',
   ignored: 'border-neutral-700 bg-neutral-900/60 text-neutral-500',
 };
 
@@ -19,6 +26,7 @@ const STATUS_LABEL: Record<BoardStatus, string> = {
   actioned: 'Actioned',
   monitoring: 'Monitoring',
   needs_adjustment: 'Adjust',
+  completed: 'Done',
   ignored: 'Ignored',
 };
 
@@ -26,7 +34,8 @@ const STATUS_OPTIONS: { value: BoardStatus; label: string }[] = [
   { value: 'planned', label: 'Planned' },
   { value: 'monitoring', label: 'Actioned + monitoring' },
   { value: 'needs_adjustment', label: 'Needs adjustment' },
-  { value: 'ignored', label: 'Ignore' },
+  { value: 'completed', label: 'Done' },
+  { value: 'ignored', label: 'Discard' },
 ];
 
 const LEGACY_STATUS: Partial<Record<GrowthActionStatus, BoardStatus>> = {
@@ -35,7 +44,6 @@ const LEGACY_STATUS: Partial<Record<GrowthActionStatus, BoardStatus>> = {
   drafted: 'planned',
   published: 'actioned',
   updated: 'actioned',
-  completed: 'actioned',
 };
 
 export function boardStatus(status: GrowthActionStatus): BoardStatus {
@@ -44,6 +52,7 @@ export function boardStatus(status: GrowthActionStatus): BoardStatus {
     status === 'actioned' ||
     status === 'monitoring' ||
     status === 'needs_adjustment' ||
+    status === 'completed' ||
     status === 'ignored'
   ) {
     return status;
@@ -99,8 +108,8 @@ export function ActionCard({
     await patch({ status: next });
   }
 
-  async function markActioned() {
-    await updateStatus('monitoring');
+  async function markDone() {
+    await updateStatus('completed');
   }
 
   return (
@@ -150,11 +159,11 @@ export function ActionCard({
 
         {status === 'planned' || status === 'needs_adjustment' ? (
           <button
-            onClick={markActioned}
+            onClick={markDone}
             disabled={busy}
             className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-50"
           >
-            {busy ? 'Saving...' : 'Mark actioned'}
+            {busy ? 'Saving...' : 'Mark done'}
           </button>
         ) : null}
       </div>
