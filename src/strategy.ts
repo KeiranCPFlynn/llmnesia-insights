@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   ActionItem,
+  ChatMessage,
   Correction,
   Finding,
   StrategyDecision,
@@ -124,10 +125,19 @@ export interface StrategyInputs {
   };
   metrics: unknown;
   corrections: Correction[];
+  /** Founder-owned objective for this week's strategy generation. */
+  strategyGoal?: string | null;
   /** Prior weeks' theses, oldest → newest, for continuity. */
   priorStrategies: { week_start: string; thesis: string }[];
   /** Founder decisions on prior + current recommendations (the loop). */
   priorDecisions: { week_start: string; decisions: StrategyDecision[] }[];
+  /**
+   * Current week's PM discussion. Founder statements here should influence
+   * regeneration even when no recommendation revision was explicitly applied.
+   */
+  strategyChat?: ChatMessage[];
+  /** One-off founder context typed beside the Generate/Regenerate button. */
+  generationContext?: string | null;
   provider?: LlmProvider | string | null;
 }
 
@@ -137,6 +147,13 @@ export async function generateStrategy(
   const resolved = resolveProvider((inputs.provider as string) ?? process.env.STRATEGY_PROVIDER ?? 'openai');
 
   console.log(`Generating PM strategy via ${resolved} for ${inputs.weekStart}…`);
+  const chatDigest = (inputs.strategyChat ?? []).slice(-20).map((m) => ({
+    role: m.role,
+    content: m.content,
+    attachments: m.attachments?.map((a) => ({ name: a.name })),
+  }));
+  const trimmedContext = inputs.generationContext?.trim();
+  const trimmedGoal = inputs.strategyGoal?.trim();
 
   const { text, toolCall, modelUsed } = await callLlm({
     provider: resolved,
@@ -154,7 +171,10 @@ export async function generateStrategy(
               `WEEK: ${inputs.weekStart} → ${inputs.weekEnd}\n\n` +
               `THIS WEEK'S ANALYSIS:\n${JSON.stringify(inputs.analysis)}\n\n` +
               `RAW METRICS:\n${JSON.stringify(inputs.metrics)}\n\n` +
+              `CURRENT STRATEGY GOAL — optimize the plan for this. It is founder-owned and takes priority over generic monetization instincts. If absent, infer the right stage from the data:\n${trimmedGoal || '(none)'}\n\n` +
               `FOUNDER-CONFIRMED CAVEATS/CONTEXT:\n${JSON.stringify(inputs.corrections)}\n\n` +
+              `ADDITIONAL FOUNDER CONTEXT FOR THIS GENERATION — treat as authoritative if present:\n${trimmedContext || '(none)'}\n\n` +
+              `RECENT PM CHAT — use founder-stated constraints, preferences, and corrections when regenerating. Assistant replies are conversational context, not facts unless the founder accepted or repeated them:\n${JSON.stringify(chatDigest)}\n\n` +
               `PRIOR STRATEGY THESES (oldest→newest):\n${JSON.stringify(inputs.priorStrategies)}\n\n` +
               `FOUNDER DECISIONS ON PRIOR/CURRENT RECOMMENDATIONS — respect these (don't re-pitch rejected; build on accepted/shipped):\n${JSON.stringify(inputs.priorDecisions)}`,
           },

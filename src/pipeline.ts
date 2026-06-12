@@ -1,5 +1,6 @@
 import { collectMetrics } from './posthog.js';
 import { collectGA4Metrics } from './ga4.js';
+import { randomUUID } from 'node:crypto';
 import {
   getHistoryBefore,
   getInsightByWeek,
@@ -9,7 +10,7 @@ import {
 } from './supabase.js';
 import { analyseMetrics } from './analyse.js';
 import type { LlmProvider } from './llm.js';
-import type { AnalysisResult, MetricsSnapshot } from './types.js';
+import type { AnalysisResult, Correction, MetricsSnapshot, WeeklyInsight } from './types.js';
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -60,6 +61,7 @@ export async function runPipeline(opts: {
   dryRun?: boolean;
   log?: (msg: string) => void;
   provider?: LlmProvider | string | null;
+  generationContext?: string | null;
 }): Promise<PipelineResult> {
   const log = opts.log ?? ((m: string) => console.log(m));
   const { weekStart, weekEnd } = opts.weekStart
@@ -68,17 +70,33 @@ export async function runPipeline(opts: {
 
   log(`LLMnesia insights — ${weekStart} → ${weekEnd}${opts.dryRun ? ' [DRY RUN]' : ''}`);
 
-  const [posthogMetrics, ga4, history] = await Promise.all([
+  const [posthogMetrics, ga4, history, existingRow] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
     getRecentInsights(6),
+    getInsightByWeek(weekStart),
   ]);
   const metrics = { ...posthogMetrics, ga4 };
+  const trimmedContext = opts.generationContext?.trim();
+  const generationCorrection: Correction | null = trimmedContext
+    ? {
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+        kind: 'context',
+        affected_metric: 'Generation context',
+        note: trimmedContext,
+        source_excerpt: trimmedContext.slice(0, 280),
+      }
+    : null;
+  const corrections = [
+    ...(existingRow?.corrections ?? []),
+    ...(generationCorrection ? [generationCorrection] : []),
+  ];
 
   const { result: analysis, modelUsed } = await analyseMetrics(
     metrics,
     history,
-    [],
+    corrections,
     opts.provider,
   );
 
@@ -87,7 +105,7 @@ export async function runPipeline(opts: {
     return { weekStart, weekEnd, metrics, analysis, modelUsed, saved: false };
   }
 
-  await insertInsight({
+  const insight: Omit<WeeklyInsight, 'id' | 'created_at'> = {
     week_start: weekStart,
     week_end: weekEnd,
     metrics_snapshot: metrics,
@@ -98,7 +116,9 @@ export async function runPipeline(opts: {
     open_threads: analysis.open_threads,
     resolved_threads: analysis.resolved_threads,
     model_used: modelUsed,
-  });
+    ...(corrections.length ? { corrections } : {}),
+  };
+  await insertInsight(insight);
   log('Saved to Supabase.');
 
   return { weekStart, weekEnd, metrics, analysis, modelUsed, saved: true };

@@ -10,6 +10,7 @@ import type {
 } from '../src/types.js';
 import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
+import { GenerationContextBox } from './GenerationContextBox';
 
 const STALE_MS = 20 * 60 * 1000;
 const pendingKey = (siteId: string, week: string) =>
@@ -53,6 +54,7 @@ export function WeeklyPlan({
   const [busy, setBusy] = useState(false);
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generationContext, setGenerationContext] = useState('');
   const baseOffset = useRef(0);
   const tick = useElapsed(busy || polling);
   const shown = baseOffset.current + tick;
@@ -136,7 +138,12 @@ export function WeeklyPlan({
       const res = await fetch('/api/growth/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId, weekStart, provider }),
+        body: JSON.stringify({
+          siteId,
+          weekStart,
+          provider,
+          generationContext: generationContext.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -183,6 +190,14 @@ export function WeeklyPlan({
           </button>
         </div>
       </div>
+
+      <GenerationContextBox
+        value={generationContext}
+        onChange={setGenerationContext}
+        disabled={working}
+        placeholder="Optional: e.g. wait for the new article to publish before recommending distribution, ignore brand-query spikes, focus only on LLMnesia pages…"
+        label="Context for next growth plan"
+      />
 
       {working && (
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">

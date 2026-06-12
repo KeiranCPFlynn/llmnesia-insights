@@ -64,9 +64,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, provider } = (await req.json().catch(() => ({}))) as {
+  const { week, provider, generationContext } = (await req.json().catch(() => ({}))) as {
     week?: string;
     provider?: string;
+    generationContext?: string;
   };
   if (!week) {
     return NextResponse.json({ error: 'week is required' }, { status: 400 });
@@ -112,8 +113,11 @@ export async function POST(req: Request) {
         },
         metrics: metricsDigest(insight.metrics_snapshot),
         corrections: insight.corrections ?? [],
+        strategyGoal: insight.strategy_goal,
         priorStrategies,
         priorDecisions,
+        strategyChat: insight.strategy_chat ?? [],
+        generationContext,
         provider,
       });
 

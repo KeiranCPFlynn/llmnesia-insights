@@ -230,6 +230,12 @@ export interface WeeklyInsight {
   revisions?: Revision[];
   chat?: ChatMessage[];
   strategy?: StrategyResult;
+  /**
+   * Current objective for this week's Strategy page. Separate from the
+   * generated strategy so the founder can steer/regenerate without editing
+   * model output directly.
+   */
+  strategy_goal?: string | null;
   strategy_decisions?: StrategyDecision[];
   strategy_chat?: ChatMessage[];
   model_used: string;
@@ -261,6 +267,12 @@ export interface Site {
   sitemap_url?: string | null;
   /** Optional per-site override for the project brief that grounds the LLM. */
   brief_override?: string | null;
+  /**
+   * Current objective for the Growth planner. This is deliberately separate
+   * from the business/monetization Strategy page; it tells /growth what kind
+   * of organic-search work matters now.
+   */
+  growth_goal?: string | null;
   /**
    * Code repo this site's content lives in (folder name on disk, e.g.
    * "llmnesia-site njs"). Surfaced to the LLM so handoff prompts can name

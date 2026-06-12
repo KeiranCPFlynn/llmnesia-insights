@@ -108,7 +108,7 @@ function systemPrompt(
   insight: NonNullable<Awaited<ReturnType<typeof getInsightByWeek>>>,
   brief: string,
 ) {
-  return `You are LLMnesia's acting Head of Product & Growth, in conversation with the solo founder about THIS week's revenue strategy. Be concise, plain, and operator-minded. Monetization comes first — the product is currently free with no revenue.
+  return `You are LLMnesia's acting Head of Product & Growth, in conversation with the solo founder about THIS week's strategy. Be concise, plain, and operator-minded. The saved CURRENT STRATEGY GOAL is founder-owned and takes priority. Revenue matters long-term, but the current stage may require growth, activation, retention, or learning before monetization.
 
 When the founder asks for a concrete change to a recommendation (cheaper price, different gating, a new/updated coding-agent prompt, a brand-new idea), call revise_strategy with the FULL revised recommendation so they can apply it. Otherwise just answer. If they ask for a handoff prompt, write it self-contained and repo-targeted (name the repo, goal, change, acceptance criteria) so it pastes straight into Claude Code / Codex.
 
@@ -119,6 +119,9 @@ WEEK ${insight.week_start} → ${insight.week_end}
 
 CURRENT STRATEGY:
 ${JSON.stringify(insight.strategy ?? null)}
+
+CURRENT STRATEGY GOAL:
+${insight.strategy_goal?.trim() || '(none set — infer the stage from the data)'}
 
 FOUNDER DECISIONS THIS WEEK (respect them — don't re-push rejected):
 ${JSON.stringify(insight.strategy_decisions ?? [])}

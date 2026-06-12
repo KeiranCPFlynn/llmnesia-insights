@@ -21,6 +21,7 @@ create table public.weekly_insights (
   revisions jsonb not null default '[]',
   chat jsonb not null default '[]',
   strategy jsonb,
+  strategy_goal text,
   strategy_decisions jsonb not null default '[]',
   strategy_chat jsonb not null default '[]',
   summary text not null,
@@ -43,6 +44,7 @@ create index on public.weekly_insights (week_start desc);
 > alter table public.weekly_insights add column if not exists chat jsonb not null default '[]';
 > alter table public.weekly_insights add column if not exists revisions jsonb not null default '[]';
 > alter table public.weekly_insights add column if not exists strategy jsonb;
+> alter table public.weekly_insights add column if not exists strategy_goal text;
 > alter table public.weekly_insights add column if not exists strategy_decisions jsonb not null default '[]';
 > alter table public.weekly_insights add column if not exists strategy_chat jsonb not null default '[]';
 > ```
@@ -62,6 +64,10 @@ create table if not exists public.sites (
   gsc_property text not null,
   sitemap_url text,
   brief_override text,
+  -- Current objective for /growth. Keep this stage-specific, e.g.
+  -- "Build qualified organic traffic and product discovery; avoid monetization
+  -- recommendations until the product has a larger active base."
+  growth_goal text,
   -- Code repo this site's content lives in. Used in handoff prompts so the
   -- LLM can name the right repo for the founder to open in Claude Code /
   -- Codex (e.g. "llmnesia-site njs"). Plain text — name it however the
@@ -74,6 +80,7 @@ create table if not exists public.sites (
 
 -- Existing-DB migration for the new column:
 alter table public.sites add column if not exists repo text;
+alter table public.sites add column if not exists growth_goal text;
 
 create table if not exists public.gsc_rows (
   site_id uuid not null references public.sites(id) on delete cascade,

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatWeek } from '../lib/format';
 import { ProviderSelect, useProvider } from './ProviderSelect';
 import { WeekSelect } from './WeekSelect';
+import { GenerationContextBox } from './GenerationContextBox';
 
 type RunIntent = {
   kind: 'latest' | 'selected';
@@ -28,6 +29,7 @@ export function Toolbar({
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState<RunIntent | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [generationContext, setGenerationContext] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const [provider, setProvider] = useProvider();
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -71,7 +73,11 @@ export function Toolbar({
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, weekStart: intent.weekStart }),
+        body: JSON.stringify({
+          provider,
+          weekStart: intent.weekStart,
+          generationContext: generationContext.trim() || undefined,
+        }),
         signal: ctrl.signal,
       });
       const body = await res.json().catch(() => ({}));
@@ -179,6 +185,15 @@ export function Toolbar({
         {!running && msg && <span className="text-sm text-neutral-400">{msg}</span>}
       </div>
 
+      <div className="w-full min-w-[18rem] max-w-xl">
+        <GenerationContextBox
+          value={generationContext}
+          onChange={setGenerationContext}
+          disabled={running}
+          placeholder="Optional: e.g. waiting for a release to be pushed, founder test traffic inflated installs, campaign went live mid-week…"
+        />
+      </div>
+
       {running && (
         <div className="w-full min-w-[16rem] sm:w-80">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
@@ -196,6 +211,7 @@ export function Toolbar({
           {formatWeek(confirming.weekStart)}
           {confirming.weekEnd ? ` → ${formatWeek(confirming.weekEnd)}` : ''}. It will{' '}
           {confirming.exists ? 'replace the stored report for that week' : 'create a new stored report'}.
+          {generationContext.trim() ? ' The context above will be saved and applied.' : ''}
         </p>
       )}
     </div>

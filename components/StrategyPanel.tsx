@@ -9,6 +9,7 @@ import type {
 } from '../src/types.js';
 import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
+import { GenerationContextBox } from './GenerationContextBox';
 
 const STATUS_STYLE: Record<StrategyDecision['status'], string> = {
   accepted: 'bg-emerald-900/60 text-emerald-200 border-emerald-700',
@@ -217,6 +218,7 @@ export function StrategyPanel({
   const [busy, setBusy] = useState(false);
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generationContext, setGenerationContext] = useState('');
   const baseOffset = useRef(0);
   const tick = useElapsed(busy || polling);
   const shown = baseOffset.current + tick;
@@ -297,7 +299,7 @@ export function StrategyPanel({
   // Always stop polling when the component goes away.
   useEffect(() => () => stopPoll(), []);
 
-  async function generate() {
+  async function generate(contextOverride?: string) {
     if (busy || polling) return;
     setBusy(true);
     setError(null);
@@ -307,7 +309,11 @@ export function StrategyPanel({
       const res = await fetch('/api/strategy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week, provider }),
+        body: JSON.stringify({
+          week,
+          provider,
+          generationContext: (contextOverride ?? generationContext).trim() || undefined,
+        }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -322,6 +328,17 @@ export function StrategyPanel({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ week?: string; context?: string }>).detail;
+      if (detail?.week && detail.week !== week) return;
+      void generate(detail?.context);
+    };
+    window.addEventListener('llmnesia:strategy-regenerate', handler);
+    return () => window.removeEventListener('llmnesia:strategy-regenerate', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week, busy, polling, provider, generationContext]);
 
   const byId = new Map(decisions.map((d) => [d.recommendation_id, d]));
   const working = busy || polling;
@@ -348,7 +365,7 @@ export function StrategyPanel({
             disabled={working}
           />
           <button
-            onClick={generate}
+            onClick={() => generate()}
             disabled={working}
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-500 disabled:opacity-50 disabled:shadow-none"
           >
@@ -356,6 +373,14 @@ export function StrategyPanel({
           </button>
         </div>
       </div>
+
+      <GenerationContextBox
+        value={generationContext}
+        onChange={setGenerationContext}
+        disabled={working}
+        placeholder="Optional: e.g. wait for the release to be pushed before recommending follow-up, prioritize store listing work, avoid pricing changes this week…"
+        label="Context for next strategy generation"
+      />
 
       {working && (
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">

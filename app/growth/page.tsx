@@ -13,6 +13,7 @@ import { PageNav } from '../../components/PageNav';
 import { SiteSwitch } from '../../components/SiteSwitch';
 import { WeekSelect } from '../../components/WeekSelect';
 import { GrowthSyncToolbar } from '../../components/GrowthDashboard';
+import { GrowthGoalEditor } from '../../components/GrowthGoalEditor';
 import { GSCDataVisuals } from '../../components/GSCDataVisuals';
 import { WeeklyPlan } from '../../components/WeeklyPlan';
 import { OpportunityList } from '../../components/OpportunityList';
@@ -116,6 +117,10 @@ export default async function GrowthPage({
           </div>
         </div>
       </header>
+
+      <section className="mb-6">
+        <GrowthGoalEditor siteId={siteId} initialGoal={data.site.growth_goal} />
+      </section>
 
       <section className="mb-6">
         <GrowthSyncToolbar

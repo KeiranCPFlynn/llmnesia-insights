@@ -174,10 +174,13 @@ export interface GrowthPlanInputs {
   site: Site;
   weekStart: string;
   brief: string;
+  growthGoal?: string | null;
   opportunities: GrowthOpportunity[];
   ga4Digest?: unknown;
   /** Total impressions/clicks/queries in window — tells the LLM "small site" vs "big site". */
   siteScale?: SiteScale;
+  /** One-off founder context typed beside the Generate/Regenerate button. */
+  generationContext?: string | null;
   priorPlans: { week_start: string; thesis: string }[];
   priorActions: Pick<GrowthAction, 'site_id' | 'week_start' | 'action_type' | 'status' | 'target_query' | 'target_page' | 'published_url'>[];
   provider?: LlmProvider | string | null;
@@ -193,6 +196,7 @@ export async function generateGrowthPlan(
   console.log(`Generating growth plan via ${resolved} for ${inputs.site.name} (${inputs.weekStart})…`);
 
   const opportunityDigest = digestOpportunities(inputs.opportunities);
+  const trimmedContext = inputs.generationContext?.trim();
 
   const { toolCall, text, modelUsed } = await callLlm({
     provider: resolved,
@@ -209,10 +213,12 @@ export async function generateGrowthPlan(
               `SITE: ${inputs.site.name} (${inputs.site.root_url})\n` +
               `SITE REPO (use for target_repo and in coding_agent_prompt): ${inputs.site.repo ? `"${inputs.site.repo}"` : '(unknown — use "<your-site-repo>")'}\n` +
               `WEEK: ${inputs.weekStart}\n\n` +
+              `CURRENT GROWTH GOAL — optimize the plan for this. If absent, default to qualified organic traffic, product discovery, and useful content expansion; do NOT drift into monetization strategy:\n${inputs.growthGoal?.trim() || '(none)'}\n\n` +
               `SITE SCALE (rolling 90 days):\n${JSON.stringify(inputs.siteScale ?? null)}\n` +
               (inputs.siteScale?.is_small_site
                 ? `↑ This is a SMALL / EARLY-STAGE site. Recommendations should favour creating new content and improving page-1 CTR over tactics that need volume to measure.\n\n`
                 : '\n') +
+              `ADDITIONAL FOUNDER CONTEXT FOR THIS GENERATION — treat as authoritative if present:\n${trimmedContext || '(none)'}\n\n` +
               `RANKED OPPORTUNITY CANDIDATES (top ${opportunityDigest.length}, deterministic detectors — do NOT invent extras):\n` +
               `${JSON.stringify(opportunityDigest)}\n\n` +
               `GA4 TRAFFIC DIGEST (this site, optional context):\n${JSON.stringify(inputs.ga4Digest ?? null)}\n\n` +

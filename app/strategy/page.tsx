@@ -6,6 +6,7 @@ import { PageNav } from '../../components/PageNav';
 import { WeekSelect } from '../../components/WeekSelect';
 import { StrategyPanel } from '../../components/StrategyPanel';
 import { StrategyChat } from '../../components/StrategyChat';
+import { StrategyGoalEditor } from '../../components/StrategyGoalEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,14 @@ export default async function StrategyPage({
           />
         </div>
       </header>
+
+      <section className="mb-6">
+        <StrategyGoalEditor
+          key={current.week_start}
+          week={current.week_start}
+          initialGoal={current.strategy_goal}
+        />
+      </section>
 
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">

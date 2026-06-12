@@ -125,6 +125,7 @@ export function StrategyChat({
     storageKey: 'llm-provider-strategy',
     fallback: 'openai',
   });
+  const [regenStarted, setRegenStarted] = useState(false);
 
   const label = (p: Provider) =>
     p === 'openai' ? 'GPT-5.5' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
@@ -155,6 +156,38 @@ export function StrategyChat({
       renderExtra={({ extra, clear }) => (
         <RevisionCard week={week} revision={extra} clear={clear} />
       )}
+      renderAction={({ messages, busy }) =>
+        messages.length === 0 ? null : (
+          <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-emerald-100">
+                {hasStrategy
+                  ? 'Regenerate the strategy using this PM discussion.'
+                  : 'Generate the strategy using this PM discussion.'}
+              </p>
+              <button
+                onClick={() => {
+                  setRegenStarted(true);
+                  window.dispatchEvent(
+                    new CustomEvent('llmnesia:strategy-regenerate', {
+                      detail: { week },
+                    }),
+                  );
+                }}
+                disabled={busy}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {hasStrategy ? 'Regenerate strategy' : 'Generate strategy'}
+              </button>
+            </div>
+            {regenStarted && (
+              <p className="mt-2 text-xs text-emerald-300">
+                Started — watch the strategy panel below for progress.
+              </p>
+            )}
+          </div>
+        )
+      }
     />
   );
 }

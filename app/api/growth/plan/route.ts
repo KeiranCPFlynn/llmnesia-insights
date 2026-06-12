@@ -41,10 +41,11 @@ export async function POST(req: Request) {
   if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { siteId, weekStart, provider } = (await req.json().catch(() => ({}))) as {
+  const { siteId, weekStart, provider, generationContext } = (await req.json().catch(() => ({}))) as {
     siteId?: string;
     weekStart?: string;
     provider?: string;
+    generationContext?: string;
   };
   if (!siteId || !weekStart) {
     return NextResponse.json({ error: 'siteId and weekStart are required' }, { status: 400 });
@@ -99,11 +100,13 @@ export async function POST(req: Request) {
         site,
         weekStart,
         brief: site.brief_override?.trim() || brief,
+        growthGoal: site.growth_goal,
         opportunities,
         ga4Digest,
         siteScale,
         priorPlans,
         priorActions,
+        generationContext,
         provider,
       });
 

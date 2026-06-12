@@ -15,18 +15,22 @@ async function run(req: Request) {
     // no body and falls back to the LLM_PROVIDER env default.
     let provider: string | undefined;
     let weekStart: string | undefined;
+    let generationContext: string | undefined;
     if (req.method === 'POST') {
       const body = (await req.json().catch(() => ({}))) as {
         provider?: string;
         weekStart?: string;
+        generationContext?: string;
       };
       provider = body.provider;
       weekStart = body.weekStart;
+      generationContext = body.generationContext;
     }
     const result = await runPipeline({
       log: (m) => console.log(`[run] ${m}`),
       provider,
       weekStart,
+      generationContext,
     });
     return NextResponse.json({
       ok: true,

@@ -47,6 +47,7 @@ export function ChatCore<E>({
   busyLabel,
   onSend,
   renderExtra,
+  renderAction,
 }: {
   title: string;
   collapsedLabel: string;
@@ -64,6 +65,11 @@ export function ChatCore<E>({
     extra: E;
     clear: () => void;
     setMessages: (m: ChatMessage[]) => void;
+    provider: Provider;
+  }) => ReactNode;
+  renderAction?: (args: {
+    messages: ChatMessage[];
+    busy: boolean;
     provider: Provider;
   }) => ReactNode;
 }) {
@@ -217,6 +223,7 @@ export function ChatCore<E>({
 
         {busy && <ProgressBar seconds={sendElapsed} label={busyLabel(provider)} />}
         {error && <div className="text-sm text-rose-400">{error}</div>}
+        {renderAction?.({ messages, busy, provider })}
       </div>
 
       <div className="space-y-2 border-t border-neutral-800/80 bg-neutral-950/30 p-3">
