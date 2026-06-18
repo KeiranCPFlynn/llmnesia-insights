@@ -238,11 +238,23 @@ export async function getStrategyHistoryBefore(
 export async function saveStrategyChat(
   weekStart: string,
   chat: ChatMessage[],
+  recommendationId?: string,
 ): Promise<void> {
+  const row = recommendationId ? await getInsightByWeek(weekStart) : null;
+  if (recommendationId && !row) throw new Error(`No insight for week ${weekStart}`);
+
   const supabase = getClient();
+  const update = recommendationId
+    ? {
+        strategy_recommendation_chats: {
+          ...(row?.strategy_recommendation_chats ?? {}),
+          [recommendationId]: chat,
+        },
+      }
+    : { strategy_chat: chat };
   const { error } = await supabase
     .from('weekly_insights')
-    .update({ strategy_chat: chat })
+    .update(update)
     .eq('week_start', weekStart);
 
   if (error) throw new Error(`Supabase update failed: ${error.message}`);

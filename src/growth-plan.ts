@@ -5,6 +5,7 @@ import { callLlm, resolveProvider, type LlmProvider, type LlmTool } from './llm.
 import { GROWTH_PLAN_SYSTEM_PROMPT } from './prompts/growth-prompt.js';
 import type { SiteScale } from './growth.js';
 import type {
+  ChatMessage,
   GrowthAction,
   GrowthOpportunity,
   GrowthPlan,
@@ -260,13 +261,143 @@ export async function saveGrowthPlan(
   plan: GrowthPlan,
 ): Promise<void> {
   const supabase = getSupabase();
+  const existing = await getGrowthPlan(siteId, weekStart);
+  const nextPlan: GrowthPlan = {
+    ...plan,
+    ...(existing?.chat?.length ? { chat: existing.chat } : {}),
+  };
   const { error } = await supabase
     .from('growth_plans')
     .upsert(
-      { site_id: siteId, week_start: weekStart, plan, model_used: plan.model_used, generated_at: plan.generated_at },
+      {
+        site_id: siteId,
+        week_start: weekStart,
+        plan: nextPlan,
+        model_used: nextPlan.model_used,
+        generated_at: nextPlan.generated_at,
+      },
       { onConflict: 'site_id,week_start' },
     );
   if (error) throw new Error(`growth_plans upsert failed: ${error.message}`);
+}
+
+export async function saveGrowthPlanChat(
+  siteId: string,
+  weekStart: string,
+  chat: ChatMessage[],
+  recommendationId?: string,
+): Promise<void> {
+  const plan = await getGrowthPlan(siteId, weekStart);
+  if (!plan) throw new Error(`No growth plan for ${siteId} in week ${weekStart}`);
+
+  const supabase = getSupabase();
+  const nextPlan = recommendationId
+    ? {
+        ...plan,
+        recommendation_chats: {
+          ...(plan.recommendation_chats ?? {}),
+          [recommendationId]: chat,
+        },
+      }
+    : { ...plan, chat };
+  const { error } = await supabase
+    .from('growth_plans')
+    .update({ plan: nextPlan })
+    .eq('site_id', siteId)
+    .eq('week_start', weekStart);
+  if (error) throw new Error(`growth plan chat update failed: ${error.message}`);
+}
+
+function balanceFor(recommendations: GrowthRecommendation[]): GrowthPlanBalance {
+  const balance: GrowthPlanBalance = {
+    create: 0,
+    improve: 0,
+    link: 0,
+    fix: 0,
+    distribute: 0,
+    measure: 0,
+  };
+
+  for (const rec of recommendations) {
+    if (rec.action_type === 'create' || rec.action_type === 'supporting_cluster') {
+      balance.create += 1;
+    } else if (
+      rec.action_type === 'improve' ||
+      rec.action_type === 'title_meta' ||
+      rec.action_type === 'add_section' ||
+      rec.action_type === 'refresh'
+    ) {
+      balance.improve += 1;
+    } else if (rec.action_type === 'internal_link') {
+      balance.link += 1;
+    } else if (rec.action_type === 'fix_indexing') {
+      balance.fix += 1;
+    } else if (rec.action_type === 'distribute') {
+      balance.distribute += 1;
+    } else {
+      balance.measure += 1;
+    }
+  }
+
+  return balance;
+}
+
+/**
+ * Replace one recommendation while preserving its id, or append a new one.
+ * Existing materialised actions are kept in sync with the recommendation's
+ * execution fields without touching their workflow status or notes.
+ */
+export async function applyGrowthPlanRevision(
+  siteId: string,
+  weekStart: string,
+  recommendation: GrowthRecommendation,
+  replacesId?: string,
+): Promise<GrowthPlan> {
+  const plan = await getGrowthPlan(siteId, weekStart);
+  if (!plan) throw new Error(`No growth plan for ${siteId} in week ${weekStart}`);
+
+  const recs = plan.recommendations ?? [];
+  const index = replacesId ? recs.findIndex((rec) => rec.id === replacesId) : -1;
+  if (replacesId && index < 0) {
+    throw new Error(`Recommendation ${replacesId} is no longer in this plan`);
+  }
+
+  const nextRecommendations =
+    index >= 0
+      ? recs.map((rec, i) => (i === index ? recommendation : rec))
+      : [...recs, recommendation];
+  const nextPlan: GrowthPlan = {
+    ...plan,
+    recommendations: nextRecommendations,
+    balance: balanceFor(nextRecommendations),
+  };
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('growth_plans')
+    .update({ plan: nextPlan })
+    .eq('site_id', siteId)
+    .eq('week_start', weekStart);
+  if (error) throw new Error(`growth plan revision failed: ${error.message}`);
+
+  if (replacesId) {
+    const { error: actionError } = await supabase
+      .from('growth_actions')
+      .update({
+        opportunity_id: recommendation.opportunity_id ?? null,
+        action_type: recommendation.action_type,
+        target_query: recommendation.target_query ?? null,
+        target_page: recommendation.target_page ?? null,
+        suggested_title: recommendation.title,
+      })
+      .eq('site_id', siteId)
+      .eq('recommendation_id', replacesId);
+    if (actionError) {
+      throw new Error(`recommendation updated but linked action sync failed: ${actionError.message}`);
+    }
+  }
+
+  return nextPlan;
 }
 
 export async function getGrowthPlan(

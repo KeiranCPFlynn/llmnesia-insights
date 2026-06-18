@@ -17,16 +17,17 @@ function formatDate(d: Date): string {
 }
 
 /**
- * The completed week is Mon–Sun ending yesterday (the pipeline runs on a Monday).
+ * The most recently completed Monday–Sunday week, regardless of which day the
+ * pipeline is run. This prevents ad-hoc weekday runs from creating rolling
+ * Thu–Wed (etc.) records that cannot line up with the Growth workspace.
  */
 export function getDefaultWeek(): { weekStart: string; weekEnd: string } {
   const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setUTCDate(today.getUTCDate() - 1); // Sunday
-
-  const weekEndDate = yesterday;
+  const daysSinceSunday = today.getUTCDay() === 0 ? 7 : today.getUTCDay();
+  const weekEndDate = new Date(today);
+  weekEndDate.setUTCDate(today.getUTCDate() - daysSinceSunday);
   const weekStartDate = new Date(weekEndDate);
-  weekStartDate.setUTCDate(weekEndDate.getUTCDate() - 6); // Monday
+  weekStartDate.setUTCDate(weekEndDate.getUTCDate() - 6);
 
   return { weekStart: formatDate(weekStartDate), weekEnd: formatDate(weekEndDate) };
 }

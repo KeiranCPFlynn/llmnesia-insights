@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { getAllInsights, toTrend, topChannel } from '../lib/dashboard';
 import { selectWeek } from '../lib/week';
+import { calendarWeekStart } from '../lib/week';
 import { delta, formatWeek, num, pct } from '../lib/format';
 import { Toolbar } from '../components/Toolbar';
-import { PageNav } from '../components/PageNav';
+import { AppShell } from '../components/AppShell';
 import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
 import { ChatPanel } from '../components/ChatPanel';
@@ -81,13 +81,13 @@ function Empty() {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; period?: string }>;
 }) {
   const insights = await getAllInsights();
   if (insights.length === 0) return <Empty />;
 
-  const { week } = await searchParams;
-  const { weeks, current, prev } = selectWeek(insights, week);
+  const { week, period } = await searchParams;
+  const { weeks, current, prev } = selectWeek(insights, week, period);
   const latestRunWeek = getDefaultWeek();
 
   const openRecs = current.strategy
@@ -117,36 +117,31 @@ export default async function Page({
     );
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
-      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-50">LLMnesia Insights</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Week of {formatWeek(current.week_start)} → {formatWeek(current.week_end)} ·{' '}
-            {insights.length} weeks tracked
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/strategy?week=${current.week_start}`}
-              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.04)] hover:bg-emerald-500/15"
-            >
-              Strategy{openRecs > 0 ? ` · ${openRecs} open` : ''} →
-            </Link>
-            <PageNav week={current.week_start} />
-          </div>
-          <Toolbar
-            weeks={[...weeks].reverse()}
-            selected={current.week_start}
-            latestRunWeekStart={latestRunWeek.weekStart}
-            latestRunWeekEnd={latestRunWeek.weekEnd}
-          />
-        </div>
-      </header>
+    <AppShell
+      week={current.week_start}
+      eyebrow="Product health"
+      title="Weekly insights"
+      description="Understand what changed, what needs attention, and which signals are strong enough to act on."
+      context={`Week of ${formatWeek(calendarWeekStart(current.week_start))} · source window ${formatWeek(current.week_start)} → ${formatWeek(current.week_end)} · ${insights.length} weeks tracked${openRecs > 0 ? ` · ${openRecs} strategy decisions open` : ''}`}
+      controls={
+        <Toolbar
+          weeks={[...weeks].reverse()}
+          selected={current.week_start}
+          latestRunWeekStart={latestRunWeek.weekStart}
+          latestRunWeekEnd={latestRunWeek.weekEnd}
+        />
+      }
+      sections={[
+        { href: '#overview', label: 'Overview' },
+        { href: '#discuss', label: 'Discuss' },
+        { href: '#attention', label: 'Needs attention' },
+        { href: '#metrics', label: 'Metrics & trends' },
+        { href: '#full-analysis', label: 'Full analysis' },
+      ]}
+    >
 
       {/* Hero — the one thing to take away */}
-      <section className="mb-8 rounded-lg border border-neutral-800/80 bg-[linear-gradient(135deg,rgba(23,23,23,0.92),rgba(6,78,59,0.18))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+      <section id="overview" className="scroll-mt-36 mb-8 rounded-xl border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(23,23,23,0.92),rgba(6,78,59,0.18))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
         <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
           Current readout
         </div>
@@ -222,7 +217,7 @@ export default async function Page({
 
       {/* Chat — interrogate the report, flag bad data, regenerate. Kept high
           on the page so it's the first thing you can act on. */}
-      <section className="mb-8">
+      <section id="discuss" className="scroll-mt-36 mb-8">
         {/* key forces a remount per week so the panel reloads that week's
             own thread on the client — not just after a full page refresh. */}
         <ChatPanel
@@ -233,7 +228,7 @@ export default async function Page({
       </section>
 
       {/* Needs attention — concern/critical findings + high-priority actions only */}
-      <section className="mb-8">
+      <section id="attention" className="scroll-mt-36 mb-8">
         <SectionTitle>What needs attention</SectionTitle>
         {attentionFindings.length === 0 && highActions.length === 0 ? (
           <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
@@ -279,7 +274,7 @@ export default async function Page({
       </section>
 
       {/* Key product numbers */}
-      <section className="mb-10">
+      <section id="metrics" className="scroll-mt-36 mb-10">
         <SectionTitle source="PostHog">The numbers</SectionTitle>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatCard
@@ -401,7 +396,7 @@ export default async function Page({
       </section>
 
       {/* Everything else — present but tucked away */}
-      <details className="mb-10 rounded-lg border border-neutral-800/80 bg-neutral-900/50 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+      <details id="full-analysis" className="scroll-mt-36 mb-10 rounded-lg border border-neutral-800/80 bg-neutral-900/50 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
         <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300 hover:bg-neutral-900/70">
           Full analysis ({current.findings.length} findings, {current.action_items.length} actions
           {current.open_threads.length ? `, ${current.open_threads.length} open threads` : ''})
@@ -534,6 +529,6 @@ export default async function Page({
         Generated{' '}
         {current.created_at ? new Date(current.created_at).toLocaleString('en-GB') : '—'}
       </footer>
-    </main>
+    </AppShell>
   );
 }

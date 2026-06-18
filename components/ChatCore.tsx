@@ -48,6 +48,7 @@ export function ChatCore<E>({
   onSend,
   renderExtra,
   renderAction,
+  suggestedPrompts,
 }: {
   title: string;
   collapsedLabel: string;
@@ -72,6 +73,7 @@ export function ChatCore<E>({
     busy: boolean;
     provider: Provider;
   }) => ReactNode;
+  suggestedPrompts?: { label: string; prompt: string }[];
 }) {
   const [open, setOpen] = useState(defaultOpen || initialChat.length > 0);
   const [messages, setMessages] = useState<ChatMessage[]>(initialChat);
@@ -227,6 +229,29 @@ export function ChatCore<E>({
       </div>
 
       <div className="space-y-2 border-t border-neutral-800/80 bg-neutral-950/30 p-3">
+        {suggestedPrompts && suggestedPrompts.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {suggestedPrompts.map((suggestion) => (
+              <button
+                key={suggestion.label}
+                type="button"
+                onClick={() => {
+                  setInput(suggestion.prompt);
+                  requestAnimationFrame(() => {
+                    if (taRef.current) {
+                      grow(taRef.current);
+                      taRef.current.focus();
+                    }
+                  });
+                }}
+                disabled={busy}
+                className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
+              >
+                {suggestion.label}
+              </button>
+            ))}
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {attachments.map((a, i) => (

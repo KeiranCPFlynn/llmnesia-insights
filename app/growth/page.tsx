@@ -9,7 +9,7 @@ import {
   getGrowthWeekOptions,
   groupOpportunities,
 } from '../../lib/growth';
-import { PageNav } from '../../components/PageNav';
+import { AppShell } from '../../components/AppShell';
 import { SiteSwitch } from '../../components/SiteSwitch';
 import { WeekSelect } from '../../components/WeekSelect';
 import { GrowthSyncToolbar } from '../../components/GrowthDashboard';
@@ -22,6 +22,13 @@ import { ensureOpportunities } from '../../src/growth.js';
 import type { GrowthActionStatus, GrowthOpportunityType } from '../../src/types.js';
 
 export const dynamic = 'force-dynamic';
+
+function mondayFor(date: string) {
+  const value = new Date(`${date}T12:00:00Z`);
+  const day = value.getUTCDay();
+  value.setUTCDate(value.getUTCDate() - ((day + 6) % 7));
+  return value.toISOString().slice(0, 10);
+}
 
 function EmptySites() {
   return (
@@ -41,16 +48,20 @@ function EmptySites() {
 export default async function GrowthPage({
   searchParams,
 }: {
-  searchParams: Promise<{ site?: string; week?: string }>;
+  searchParams: Promise<{ site?: string; week?: string; period?: string }>;
 }) {
   const sites = await getEnabledSites();
   if (sites.length === 0) return <EmptySites />;
 
-  const { site: siteParam, week: weekParam } = await searchParams;
+  const { site: siteParam, week: weekParam, period } = await searchParams;
   const siteId = siteParam ?? sites[0].id;
   const currentWeekStart = getCurrentWeekStart();
   const weekOptions = await getGrowthWeekOptions(siteId, currentWeekStart);
-  const weekStart = weekParam ?? weekOptions.defaultWeek;
+  const requestedWeek = period ?? (weekParam ? mondayFor(weekParam) : null);
+  const weekStart =
+    requestedWeek && weekOptions.weeks.includes(requestedWeek)
+      ? requestedWeek
+      : weekOptions.defaultWeek;
 
   const data = await getGrowthPageData(siteId, weekStart);
   if (!data) {
@@ -108,29 +119,33 @@ export default async function GrowthPage({
   const thisWeekActions = data.actions.filter((a) => a.week_start === weekStart);
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
-      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-50">Traffic Growth Planner</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            {data.site.name} · week of {formatWeek(weekStart)}
-          </p>
+    <AppShell
+      week={weekStart}
+      eyebrow="Acquisition workspace"
+      title="Organic growth"
+      description="Move from Search Console signal to a ranked weekly plan, then track the work through to publication."
+      context={`${data.site.name} · week of ${formatWeek(weekStart)} · ${opportunities.length} opportunities`}
+      controls={
+        <div className="flex flex-wrap justify-end gap-2">
+          <WeekSelect
+            weeks={weekOptions.weeks}
+            selected={weekStart}
+            basePath="/growth"
+            params={{ site: siteId }}
+          />
+          <SiteSwitch sites={sites} selectedId={siteId} week={weekStart} />
         </div>
-        <div className="flex flex-col items-end gap-3">
-          <PageNav week={weekStart} />
-          <div className="flex flex-wrap justify-end gap-2">
-            <WeekSelect
-              weeks={weekOptions.weeks}
-              selected={weekStart}
-              basePath="/growth"
-              params={{ site: siteId }}
-            />
-            <SiteSwitch sites={sites} selectedId={siteId} week={weekStart} />
-          </div>
-        </div>
-      </header>
+      }
+      sections={[
+        { href: '#setup', label: 'Goal & data' },
+        { href: '#plan', label: 'Weekly plan' },
+        { href: '#search-data', label: 'Search data' },
+        { href: '#opportunities', label: 'Opportunities' },
+        { href: '#actions', label: 'Action board' },
+      ]}
+    >
 
-      <section className="mb-6">
+      <section id="setup" className="scroll-mt-36 mb-6">
         <GrowthGoalEditor
           key={siteId}
           siteId={siteId}
@@ -138,7 +153,7 @@ export default async function GrowthPage({
         />
       </section>
 
-      <section className="mb-6">
+      <section className="mb-8">
         <GrowthSyncToolbar
           key={siteId}
           site={data.site}
@@ -147,17 +162,7 @@ export default async function GrowthPage({
         />
       </section>
 
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          Imported GSC data{' '}
-          <span className="ml-2 font-normal text-neutral-500">
-            clicks, impressions, CTR and ranking context
-          </span>
-        </h2>
-        <GSCDataVisuals key={`${siteId}:${weekStart}`} digest={data.gscDigest} />
-      </section>
-
-      <section className="mb-10">
+      <section id="plan" className="scroll-mt-36 mb-10">
         <WeeklyPlan
           key={`${siteId}:${weekStart}`}
           siteId={siteId}
@@ -168,7 +173,17 @@ export default async function GrowthPage({
         />
       </section>
 
-      <section className="mb-10">
+      <section id="search-data" className="scroll-mt-36 mb-10">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Search performance{' '}
+          <span className="ml-2 font-normal text-neutral-500">
+            clicks, impressions, CTR and ranking context
+          </span>
+        </h2>
+        <GSCDataVisuals key={`${siteId}:${weekStart}`} digest={data.gscDigest} />
+      </section>
+
+      <section id="opportunities" className="scroll-mt-36 mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
           Opportunity queues{' '}
           <span className="ml-2 font-normal text-neutral-500">
@@ -197,7 +212,7 @@ export default async function GrowthPage({
         </div>
       </section>
 
-      <section className="mb-10">
+      <section id="actions" className="scroll-mt-36 mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
           Action board — this week
           <span className="ml-2 font-normal text-neutral-500">
@@ -222,6 +237,6 @@ export default async function GrowthPage({
         Google Search Console + opportunity detectors + LLM-composed weekly plan ·{' '}
         Window: rolling 90 days anchored to the selected week
       </footer>
-    </main>
+    </AppShell>
   );
 }

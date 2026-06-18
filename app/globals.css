@@ -2,6 +2,7 @@
 
 :root {
   color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -12,6 +13,15 @@ body {
   color: #e7e9ea;
   font-family:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+button,
+a,
+select,
+textarea,
+input,
+summary {
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {

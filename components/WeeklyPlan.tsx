@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type {
+  ChatMessage,
   GrowthAction,
   GrowthActionStatus,
   GrowthActionType,
@@ -13,6 +14,7 @@ import { formatDateTime } from '../lib/format';
 import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
+import { GrowthPlanChat } from './GrowthPlanChat';
 
 const STALE_MS = 20 * 60 * 1000;
 const pendingKey = (siteId: string, week: string) =>
@@ -257,6 +259,14 @@ export function WeeklyPlan({
       )}
       {error && <div className="text-base text-rose-400">{error}</div>}
 
+      {plan && (
+        <GrowthPlanChat
+          siteId={siteId}
+          weekStart={weekStart}
+          initialChat={plan.chat ?? []}
+        />
+      )}
+
       {!plan && !working && (
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-5 py-8 text-center shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
           <p className="text-base text-neutral-300">
@@ -319,6 +329,7 @@ export function WeeklyPlan({
                     siteId={siteId}
                     weekStart={weekStart}
                     actionState={recommendationActions[rec.id]}
+                    initialChat={plan.recommendation_chats?.[rec.id] ?? []}
                   />
                 ))}
               </ul>
@@ -361,12 +372,14 @@ function RecommendationCard({
   siteId,
   weekStart,
   actionState,
+  initialChat,
 }: {
   rank: number;
   rec: GrowthRecommendation;
   siteId: string;
   weekStart: string;
   actionState?: RecommendationActionState;
+  initialChat: ChatMessage[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -374,6 +387,7 @@ function RecommendationCard({
   const [pendingStatus, setPendingStatus] = useState<GrowthActionStatus | null>(null);
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState(actionState?.note ?? '');
+  const [discussing, setDiscussing] = useState(initialChat.length > 0);
   const top = rank === 1;
 
   useEffect(() => {
@@ -557,6 +571,14 @@ function RecommendationCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-4">
+        <button
+          type="button"
+          onClick={() => setDiscussing((open) => !open)}
+          aria-expanded={discussing}
+          className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/15"
+        >
+          {discussing ? 'Close discussion' : 'Discuss / regenerate'}
+        </button>
         {actionState?.status !== 'planned' && (
           <button
             onClick={() => void saveStatus('planned')}
@@ -586,6 +608,17 @@ function RecommendationCard({
         )}
         {error && <span className="text-sm text-rose-400">{error}</span>}
       </div>
+      {discussing && (
+        <div className="mt-4 border-t border-neutral-800 pt-4">
+          <GrowthPlanChat
+            siteId={siteId}
+            weekStart={weekStart}
+            recommendation={rec}
+            rank={rank}
+            initialChat={initialChat}
+          />
+        </div>
+      )}
     </li>
   );
 }

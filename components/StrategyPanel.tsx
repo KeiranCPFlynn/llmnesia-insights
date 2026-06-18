@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type {
+  ChatMessage,
   StrategyDecision,
   StrategyRecommendation,
   StrategyResult,
@@ -11,6 +12,7 @@ import { formatDateTime } from '../lib/format';
 import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
+import { StrategyChat } from './StrategyChat';
 
 const STATUS_STYLE: Record<StrategyDecision['status'], string> = {
   accepted: 'bg-emerald-900/60 text-emerald-200 border-emerald-700',
@@ -50,17 +52,20 @@ function RecommendationCard({
   rank,
   decision,
   onDecided,
+  initialChat,
 }: {
   week: string;
   rec: StrategyRecommendation;
   rank: number;
   decision?: StrategyDecision;
   onDecided: (d: StrategyDecision[]) => void;
+  initialChat: ChatMessage[];
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discussing, setDiscussing] = useState(initialChat.length > 0);
   const top = rank === 1;
 
   async function decide(status: StrategyDecision['status']) {
@@ -172,6 +177,14 @@ function RecommendationCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-4">
+        <button
+          type="button"
+          onClick={() => setDiscussing((open) => !open)}
+          aria-expanded={discussing}
+          className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/15"
+        >
+          {discussing ? 'Close discussion' : 'Discuss / regenerate'}
+        </button>
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -196,6 +209,17 @@ function RecommendationCard({
         <p className="mt-1 text-sm text-neutral-400">Outcome: {decision.outcome}</p>
       )}
       {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
+      {discussing && (
+        <div className="mt-4 border-t border-neutral-800 pt-4">
+          <StrategyChat
+            week={week}
+            recommendation={rec}
+            rank={rank}
+            initialChat={initialChat}
+            hasStrategy
+          />
+        </div>
+      )}
     </li>
   );
 }
@@ -205,11 +229,13 @@ export function StrategyPanel({
   strategy: initialStrategy,
   strategyGoal: initialStrategyGoal,
   decisions: initialDecisions,
+  recommendationChats,
 }: {
   week: string;
   strategy: StrategyResult | null;
   strategyGoal?: string | null;
   decisions: StrategyDecision[];
+  recommendationChats: Record<string, ChatMessage[]>;
 }) {
   const router = useRouter();
   const [strategy, setStrategy] = useState<StrategyResult | null>(initialStrategy);
@@ -486,6 +512,7 @@ export function StrategyPanel({
                   rank={i + 1}
                   decision={byId.get(rec.id)}
                   onDecided={setDecisions}
+                  initialChat={recommendationChats[rec.id] ?? []}
                 />
               ))}
             </ul>

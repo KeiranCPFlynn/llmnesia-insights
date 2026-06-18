@@ -2,23 +2,25 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { ChatMessage, StrategyRecommendation } from '../src/types.js';
-import { useProvider, type Provider } from './ProviderSelect';
-import { ProgressBar, useElapsed } from './ProgressBar';
+import type { ChatMessage, GrowthRecommendation } from '../src/types.js';
 import { ChatCore } from './ChatCore';
+import { ProgressBar, useElapsed } from './ProgressBar';
+import { useProvider, type Provider } from './ProviderSelect';
 
-type Revision = {
+type GrowthRevision = {
   replaces_id?: string;
-  recommendation: Omit<StrategyRecommendation, 'id'>;
+  recommendation: Omit<GrowthRecommendation, 'id'>;
 };
 
 function RevisionCard({
-  week,
+  siteId,
+  weekStart,
   revision,
   clear,
 }: {
-  week: string;
-  revision: Revision;
+  siteId: string;
+  weekStart: string;
+  revision: GrowthRevision;
   clear: () => void;
 }) {
   const router = useRouter();
@@ -26,11 +28,11 @@ function RevisionCard({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const elapsed = useElapsed(saving);
-  const r = revision.recommendation;
+  const rec = revision.recommendation;
 
   async function copyPrompt() {
-    if (!r.handoff.coding_agent_prompt) return;
-    await navigator.clipboard.writeText(r.handoff.coding_agent_prompt);
+    if (!rec.handoff?.coding_agent_prompt) return;
+    await navigator.clipboard.writeText(rec.handoff.coding_agent_prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -40,30 +42,39 @@ function RevisionCard({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch('/api/strategy/revise', {
+      const res = await fetch('/api/growth/revise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week, ...revision }),
+        body: JSON.stringify({ siteId, weekStart, ...revision }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'Failed to apply');
+      if (!res.ok) throw new Error(body.error || 'Failed to apply recommendation');
       clear();
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to apply');
+      setError(e instanceof Error ? e.message : 'Failed to apply recommendation');
       setSaving(false);
     }
   }
 
   return (
-    <div className="rounded-lg border border-violet-800 bg-violet-950/40 p-3">
+    <div className="rounded-lg border border-violet-800 bg-violet-950/40 p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-violet-300">
-        {revision.replaces_id ? 'Revised recommendation' : 'New recommendation'} · {r.area}
+        {revision.replaces_id ? 'Revised recommendation' : 'New recommendation'} ·{' '}
+        {rec.action_type.replace('_', ' ')}
       </div>
-      <p className="mt-1 text-sm font-medium text-violet-100">{r.title}</p>
-      <p className="mt-1 text-sm text-violet-100/90">{r.recommendation}</p>
+      <p className="mt-1 text-base font-semibold text-violet-100">{rec.title}</p>
+      <p className="mt-2 text-sm leading-relaxed text-violet-100/90">{rec.recommendation}</p>
+      <p className="mt-2 text-sm leading-relaxed text-violet-200/80">
+        <span className="font-semibold">Why: </span>
+        {rec.rationale}
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-violet-200/80">
+        <span className="font-semibold">Expected impact: </span>
+        {rec.expected_impact}
+      </p>
 
-      {r.handoff.coding_agent_prompt && (
+      {rec.handoff?.coding_agent_prompt && (
         <div className="mt-3">
           <button
             onClick={copyPrompt}
@@ -72,7 +83,7 @@ function RevisionCard({
             {copied
               ? '✓ Copied — paste into Claude Code / Codex'
               : `Copy coding-agent prompt${
-                  r.target_repo !== 'none' ? ` · ${r.target_repo}` : ''
+                  rec.target_repo && rec.target_repo !== 'none' ? ` · ${rec.target_repo}` : ''
                 }`}
           </button>
           <details className="mt-2">
@@ -80,7 +91,7 @@ function RevisionCard({
               Preview prompt
             </summary>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-neutral-950 p-3 text-xs leading-relaxed text-neutral-300">
-              {r.handoff.coding_agent_prompt}
+              {rec.handoff.coding_agent_prompt}
             </pre>
           </details>
         </div>
@@ -92,7 +103,11 @@ function RevisionCard({
           disabled={saving}
           className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
         >
-          {saving ? 'Applying…' : revision.replaces_id ? 'Apply & replace' : 'Add to strategy'}
+          {saving
+            ? 'Applying…'
+            : revision.replaces_id
+              ? 'Apply & replace'
+              : 'Add to plan'}
         </button>
         <button
           onClick={clear}
@@ -104,7 +119,7 @@ function RevisionCard({
       </div>
       {saving && (
         <div className="mt-3">
-          <ProgressBar seconds={elapsed} label="Saving to the strategy" />
+          <ProgressBar seconds={elapsed} label="Updating the growth plan" />
         </div>
       )}
       {error && <div className="mt-2 text-sm text-rose-400">{error}</div>}
@@ -112,24 +127,23 @@ function RevisionCard({
   );
 }
 
-export function StrategyChat({
-  week,
+export function GrowthPlanChat({
+  siteId,
+  weekStart,
   initialChat,
-  hasStrategy,
   recommendation,
   rank,
 }: {
-  week: string;
+  siteId: string;
+  weekStart: string;
   initialChat: ChatMessage[];
-  hasStrategy: boolean;
-  recommendation?: StrategyRecommendation;
+  recommendation?: GrowthRecommendation;
   rank?: number;
 }) {
   const [provider, setProvider] = useProvider({
-    storageKey: 'llm-provider-strategy',
-    fallback: 'openai',
+    storageKey: 'llm-provider-growth-chat',
+    fallback: 'claude',
   });
-  const [regenStarted, setRegenStarted] = useState(false);
 
   const label = (p: Provider) =>
     p === 'openai' ? 'GPT-5.5' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
@@ -137,41 +151,41 @@ export function StrategyChat({
   const recommendationLabel = rank ? `Recommendation #${rank}` : 'Recommendation';
 
   return (
-    <ChatCore<Revision>
+    <ChatCore<GrowthRevision>
       title={
         focused
           ? `${recommendationLabel}: ${recommendation.title}`
-          : 'Discuss the overall strategy'
+          : 'Discuss the overall growth plan'
       }
       collapsedLabel={
         focused
           ? 'Discuss or regenerate this recommendation'
-          : 'Discuss the overall strategy'
+          : 'Discuss the overall plan'
       }
       placeholder={
         focused
           ? 'Explain what should change, or ask a question about this recommendation…'
-          : 'Ask the PM about priorities, tradeoffs, or the overall strategy…'
+          : 'Challenge the plan, compare recommendations, or ask to add new work…'
       }
       emptyHint={
         focused
           ? 'This thread is tied to this recommendation. Ask questions or request a concrete revision. Any regenerated version is shown for review before it replaces the current recommendation.'
-          : "Interrogate or refine this week's strategy. Each recommendation also has its own discussion and regeneration control."
+          : 'Use this for plan-wide questions or to request additional work. Each recommendation also has its own discussion and regeneration control.'
       }
       initialChat={initialChat}
-      defaultOpen={focused || hasStrategy}
+      defaultOpen={focused}
       provider={provider}
       setProvider={setProvider}
-      providerOptions={['openai', 'claude', 'deepseek']}
-      providerTitle="Which model acts as PM"
-      busyLabel={(p) => `${label(p)} is thinking`}
+      providerOptions={['claude', 'openai', 'deepseek']}
+      providerTitle="Which model discusses the growth plan"
+      busyLabel={(p) => `${label(p)} is reviewing the plan`}
       suggestedPrompts={
         focused
           ? [
               {
                 label: 'Regenerate',
                 prompt:
-                  'Regenerate this recommendation from scratch using the same evidence and strategy goal. Return a complete replacement for my review.',
+                  'Regenerate this recommendation from scratch using the same evidence and goal. Keep it concrete and return a complete replacement for my review.',
               },
               {
                 label: 'Make smaller',
@@ -188,65 +202,42 @@ export function StrategyChat({
               {
                 label: 'Challenge priorities',
                 prompt:
-                  'Challenge the ranking of this strategy. Which recommendation should actually be first, and why?',
+                  'Challenge the ranking of this plan. Which recommendation should actually be first, and why?',
               },
               {
                 label: 'Add recommendation',
                 prompt:
-                  'Propose one additional recommendation that fills the biggest gap in the strategy.',
+                  'Propose one additional recommendation that fills the biggest gap in the current plan.',
               },
             ]
       }
       onSend={async (messages, p) => {
-        const res = await fetch('/api/strategy/chat', {
+        const res = await fetch('/api/growth/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            week,
+            siteId,
+            weekStart,
             messages,
             provider: p,
             recommendationId: recommendation?.id,
           }),
         });
         const body = await res.json();
-        if (!res.ok) throw new Error(body.error || 'Chat failed');
-        return { reply: body.reply as ChatMessage, extra: (body.revision as Revision) ?? null };
+        if (!res.ok) throw new Error(body.error || 'Growth chat failed');
+        return {
+          reply: body.reply as ChatMessage,
+          extra: (body.revision as GrowthRevision) ?? null,
+        };
       }}
       renderExtra={({ extra, clear }) => (
-        <RevisionCard week={week} revision={extra} clear={clear} />
+        <RevisionCard
+          siteId={siteId}
+          weekStart={weekStart}
+          revision={extra}
+          clear={clear}
+        />
       )}
-      renderAction={({ messages, busy }) =>
-        focused || messages.length === 0 ? null : (
-          <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-emerald-100">
-                {hasStrategy
-                  ? 'Regenerate the strategy using this PM discussion.'
-                  : 'Generate the strategy using this PM discussion.'}
-              </p>
-              <button
-                onClick={() => {
-                  setRegenStarted(true);
-                  window.dispatchEvent(
-                    new CustomEvent('llmnesia:strategy-regenerate', {
-                      detail: { week },
-                    }),
-                  );
-                }}
-                disabled={busy}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {hasStrategy ? 'Regenerate strategy' : 'Generate strategy'}
-              </button>
-            </div>
-            {regenStarted && (
-              <p className="mt-2 text-xs text-emerald-300">
-                Started — watch the strategy panel below for progress.
-              </p>
-            )}
-          </div>
-        )
-      }
     />
   );
 }

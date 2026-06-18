@@ -24,7 +24,7 @@ export function SiteSwitch({
         return (
           <Link
             key={s.id}
-            href={`/growth?site=${s.id}&week=${week}`}
+            href={`/growth?site=${s.id}&period=${week}`}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
               active
                 ? 'bg-neutral-100 text-neutral-950 shadow-sm'

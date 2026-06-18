@@ -107,10 +107,26 @@ function formatRevisionReply(text: string, revision: StrategyRevision | null): s
 function systemPrompt(
   insight: NonNullable<Awaited<ReturnType<typeof getInsightByWeek>>>,
   brief: string,
+  focusedRecommendationId?: string,
 ) {
+  const focusedRecommendation = focusedRecommendationId
+    ? insight.strategy?.recommendations.find(
+        (recommendation) => recommendation.id === focusedRecommendationId,
+      )
+    : null;
+
   return `You are LLMnesia's acting Head of Product & Growth, in conversation with the solo founder about THIS week's strategy. Be concise, plain, and operator-minded. The saved CURRENT STRATEGY GOAL is founder-owned and takes priority. Revenue matters long-term, but the current stage may require growth, activation, retention, or learning before monetization.
 
 When the founder asks for a concrete change to a recommendation (cheaper price, different gating, a new/updated coding-agent prompt, a brand-new idea), call revise_strategy with the FULL revised recommendation so they can apply it. Otherwise just answer. If they ask for a handoff prompt, write it self-contained and repo-targeted (name the repo, goal, change, acceptance criteria) so it pastes straight into Claude Code / Codex.
+
+${focusedRecommendation
+  ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
+The founder is discussing recommendation id "${focusedRecommendation.id}" titled "${focusedRecommendation.title}".
+Keep the discussion focused on this recommendation. If asked to regenerate, revise, replace, simplify, expand, or create a new handoff for "this recommendation", you MUST call revise_strategy with replaces_id exactly "${focusedRecommendation.id}". Do not add a separate recommendation unless the founder explicitly asks for an additional item.
+
+FOCUSED RECOMMENDATION:
+${JSON.stringify(focusedRecommendation)}`
+  : 'This is a strategy-wide discussion. Ask which recommendation the founder means if a requested change is ambiguous.'}
 
 PROJECT BRIEF:
 ${brief}
@@ -139,10 +155,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, messages, provider } = (await req.json().catch(() => ({}))) as {
+  const { week, messages, provider, recommendationId } = (await req.json().catch(() => ({}))) as {
     week?: string;
     messages?: ChatMessage[];
     provider?: string;
+    recommendationId?: string;
   };
   if (!week || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'week and messages are required' }, { status: 400 });
@@ -150,6 +167,14 @@ export async function POST(req: Request) {
 
   const insight = await getInsightByWeek(week);
   if (!insight) return NextResponse.json({ error: `No report for ${week}` }, { status: 404 });
+  if (
+    recommendationId &&
+    !insight.strategy?.recommendations.some(
+      (recommendation) => recommendation.id === recommendationId,
+    )
+  ) {
+    return NextResponse.json({ error: 'That recommendation is no longer in this strategy' }, { status: 404 });
+  }
 
   try {
     const brief = await readBrief();
@@ -158,7 +183,7 @@ export async function POST(req: Request) {
       maxTokens: 8000,
       tools: [REVISE_TOOL],
       toolChoice: 'auto',
-      system: [{ text: systemPrompt(insight, brief), cache: true }],
+      system: [{ text: systemPrompt(insight, brief, recommendationId), cache: true }],
       messages: chatToLlmMessages(messages),
     });
 
@@ -171,7 +196,7 @@ export async function POST(req: Request) {
       ts: new Date().toISOString(),
     };
 
-    await saveStrategyChat(week, [...messages, assistantMsg]);
+    await saveStrategyChat(week, [...messages, assistantMsg], recommendationId);
 
     return NextResponse.json({ reply: assistantMsg, revision });
   } catch (e) {

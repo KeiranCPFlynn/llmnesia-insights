@@ -238,6 +238,8 @@ export interface WeeklyInsight {
   strategy_goal?: string | null;
   strategy_decisions?: StrategyDecision[];
   strategy_chat?: ChatMessage[];
+  /** Separate PM discussion threads keyed by strategy recommendation id. */
+  strategy_recommendation_chats?: Record<string, ChatMessage[]>;
   model_used: string;
   created_at?: string;
 }
@@ -437,6 +439,10 @@ export interface GrowthPlan {
   recommendations: GrowthRecommendation[];
   risks: string[];
   experiments: { hypothesis: string; measure: string }[];
+  /** Persisted founder/SEO-planner discussion for this site and week. */
+  chat?: ChatMessage[];
+  /** Separate discussion threads keyed by recommendation id. */
+  recommendation_chats?: Record<string, ChatMessage[]>;
   model_used: string;
   generated_at: string;
 }

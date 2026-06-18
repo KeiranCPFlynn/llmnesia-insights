@@ -76,7 +76,12 @@ export async function getGrowthWeekOptions(
 
   return {
     weeks,
-    defaultWeek: currentWeekStart,
+    // Opening Growth should show useful work. Prefer the latest generated plan;
+    // the current calendar week remains available in the selector for starting
+    // a fresh plan.
+    defaultWeek:
+      ((plansRes.data as { week_start: string }[] | null)?.[0]?.week_start) ??
+      currentWeekStart,
   };
 }
 
