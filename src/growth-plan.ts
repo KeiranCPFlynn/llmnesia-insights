@@ -178,6 +178,8 @@ export interface GrowthPlanInputs {
   growthGoal?: string | null;
   opportunities: GrowthOpportunity[];
   ga4Digest?: unknown;
+  /** Top Bing queries (clicks/impressions/position) for context alongside GSC. */
+  bingDigest?: unknown;
   /** Total impressions/clicks/queries in window — tells the LLM "small site" vs "big site". */
   siteScale?: SiteScale;
   /** One-off founder context typed beside the Generate/Regenerate button. */
@@ -223,6 +225,7 @@ export async function generateGrowthPlan(
               `RANKED OPPORTUNITY CANDIDATES (top ${opportunityDigest.length}, deterministic detectors — do NOT invent extras):\n` +
               `${JSON.stringify(opportunityDigest)}\n\n` +
               `GA4 TRAFFIC DIGEST (this site, optional context):\n${JSON.stringify(inputs.ga4Digest ?? null)}\n\n` +
+              `BING WEBMASTER DATA (top queries from Bing Search, optional context — null when not yet synced):\n${JSON.stringify(inputs.bingDigest ?? null)}\n\n` +
               `PRIOR PLAN THESES (oldest → newest):\n${JSON.stringify(inputs.priorPlans)}\n\n` +
               `IN-FLIGHT / RECENT ACTIONS (respect status — don't re-pitch actioned/monitoring items; if needs_adjustment, propose a targeted follow-up):\n${JSON.stringify(inputs.priorActions)}`,
           },

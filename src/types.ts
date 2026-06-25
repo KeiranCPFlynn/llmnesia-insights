@@ -282,6 +282,11 @@ export interface Site {
    * means the LLM should leave the repo as `<your-site-repo>` in prompts.
    */
   repo?: string | null;
+  /**
+   * The exact URL registered in Bing Webmaster Tools (e.g. `https://llmnesia.com/`).
+   * Defaults to `root_url` when null — only set this when they differ.
+   */
+  bing_site_url?: string | null;
   enabled: boolean;
   created_at?: string;
 }
@@ -299,6 +304,23 @@ export interface GSCRow {
   date: string;
   country: string;
   device: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  synced_at?: string;
+}
+
+/**
+ * One row of Bing Webmaster Tools `GetKeywordStats` data — query × date × country.
+ * Page-level breakdown is not available from this endpoint; `position` is
+ * AvgImpressionPosition (rank in the SERP, equivalent to GSC `position`).
+ */
+export interface BingRow {
+  site_id: string;
+  query: string;
+  date: string;
+  country: string;
   clicks: number;
   impressions: number;
   ctr: number;

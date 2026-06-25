@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server';
 import { isAuthorized } from '../../../../lib/session';
 import { readBrief } from '../../../../src/brief.js';
 import { getSiteById } from '../../../../src/gsc.js';
+import { getBingDigest } from '../../../../src/bing.js';
 import { ensureOpportunities, getSiteScale } from '../../../../src/growth.js';
 import {
   generateGrowthPlan,
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
       // pull prior plans + recent actions for continuity, and compute the
       // site-scale digest so the LLM knows whether this is an established or
       // early-stage site.
-      const [opportunities, brief, priorPlans, actionsRes, siteScale] = await Promise.all([
+      const [opportunities, brief, priorPlans, actionsRes, siteScale, bingDigest] = await Promise.all([
         ensureOpportunities({ siteId, weekStart, force: true }),
         readBrief(),
         getPriorPlans(siteId, weekStart, 4),
@@ -73,6 +74,12 @@ export async function POST(req: Request) {
           .order('status_updated_at', { ascending: false })
           .limit(40),
         getSiteScale(siteId, weekStart),
+        process.env.BING_WEBMASTER_API_KEY
+          ? getBingDigest(siteId).catch((e) => {
+              console.error('[growth-plan] bing digest failed:', e);
+              return null;
+            })
+          : Promise.resolve(null),
       ]);
       if (actionsRes.error) throw new Error(`growth_actions fetch failed: ${actionsRes.error.message}`);
       const priorActions =
@@ -103,6 +110,7 @@ export async function POST(req: Request) {
         growthGoal: site.growth_goal,
         opportunities,
         ga4Digest,
+        bingDigest,
         siteScale,
         priorPlans,
         priorActions,

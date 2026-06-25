@@ -157,6 +157,34 @@ update public.sites set repo = 'llmnesia-site njs' where name = 'LLMnesia'   and
 update public.sites set repo = 'lunacradle'        where name = 'LunaCradle' and repo is null;
 ```
 
+> **Migration (Bing Webmaster Tools):** if you are adding Bing to an existing
+> database, run this block once before syncing:
+>
+> ```sql
+> -- Optional override when the URL registered in Bing WMT differs from root_url:
+> alter table public.sites add column if not exists bing_site_url text;
+>
+> create table if not exists public.bing_rows (
+>   site_id  uuid not null references public.sites(id) on delete cascade,
+>   query    text not null,
+>   date     date not null,
+>   country  text not null default 'all',
+>   clicks   integer not null default 0,
+>   impressions integer not null default 0,
+>   ctr      double precision not null default 0,
+>   position double precision not null default 0,
+>   synced_at timestamptz not null default now(),
+>   primary key (site_id, query, date, country)
+> );
+> create index if not exists bing_rows_site_date  on public.bing_rows (site_id, date desc);
+> create index if not exists bing_rows_site_query on public.bing_rows (site_id, query);
+> ```
+>
+> After that, set `BING_WEBMASTER_API_KEY` and click **Sync** in `/growth` to
+> backfill. If the site URL in Bing WMT differs from `root_url` (e.g. it has a
+> trailing slash), update the row:
+> `update public.sites set bing_site_url = 'https://llmnesia.com/' where name = 'LLMnesia';`
+
 > Run as-is. If a later sync returns "property not found", that site's GSC
 > entry is URL-prefix instead of Domain — update just that row in the `sites`
 > table (e.g. `update public.sites set gsc_property = 'https://llmnesia.com/' where name = 'LLMnesia';`).
@@ -188,6 +216,7 @@ Copy `.env.example` to `.env` and fill in:
 | `GA4_PROPERTY_ID_EXTENSION` | Optional — GA4 property ID for the Chrome Web Store listing. Read via OAuth, **not** the service account — see §2b. Leave blank to skip. |
 | `GA4_OAUTH_CLIENT_ID` / `GA4_OAUTH_CLIENT_SECRET` / `GA4_OAUTH_REFRESH_TOKEN` | Only for the extension property — see §2b. Leave blank to skip it. |
 | `GSC_OAUTH_CLIENT_ID` / `GSC_OAUTH_CLIENT_SECRET` / `GSC_OAUTH_REFRESH_TOKEN` | Google Search Console for the Traffic Growth Planner — see §2c. Leave blank to disable `/growth`. |
+| `BING_WEBMASTER_API_KEY` | Optional — Bing Webmaster Tools API key for Bing search data in `/growth`. Get it from Bing WMT → Settings → API Access. Leave blank to skip. |
 | `GROWTH_PROVIDER` | Optional — default provider for the `/growth` plan + briefs: `claude` (default), `openai` or `deepseek`. Falls back to `LLM_PROVIDER`. |
 | `DASHBOARD_PASSWORD` | Password to view the dashboard once deployed. **Leave blank to disable the gate locally.** |
 | `RUN_SECRET` | Shared secret the weekly cron uses to authorise `/api/run` |
