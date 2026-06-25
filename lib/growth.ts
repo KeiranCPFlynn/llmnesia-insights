@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { calendarWeekStart } from './week.js';
 import type {
   GSCRow,
   GrowthAction,
@@ -92,6 +93,29 @@ export function getCurrentWeekStart(now: Date = new Date()): string {
   const monday = new Date(now);
   monday.setUTCDate(now.getUTCDate() - offset);
   return monday.toISOString().slice(0, 10);
+}
+
+/**
+ * Union of every week that exists anywhere in the app — weekly_insights,
+ * growth_plans, growth_actions, and growth_opportunities — normalised to
+ * canonical Mondays and sorted newest-first. Used to keep the week picker
+ * identical across all three tabs.
+ */
+export async function getAllWeeks(siteId: string): Promise<string[]> {
+  const supabase = getClient();
+  const [insightsRes, plansRes, actionsRes, oppsRes] = await Promise.all([
+    supabase.from('weekly_insights').select('week_start'),
+    supabase.from('growth_plans').select('week_start').eq('site_id', siteId),
+    supabase.from('growth_actions').select('week_start').eq('site_id', siteId),
+    supabase.from('growth_opportunities').select('week_start').eq('site_id', siteId),
+  ]);
+  const all = new Set<string>([getCurrentWeekStart()]);
+  for (const res of [insightsRes, plansRes, actionsRes, oppsRes]) {
+    for (const r of (res.data as { week_start: string }[] | null) ?? []) {
+      if (r.week_start) all.add(calendarWeekStart(r.week_start));
+    }
+  }
+  return [...all].sort((a, b) => b.localeCompare(a));
 }
 
 export interface GrowthPageData {

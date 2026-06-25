@@ -1,6 +1,7 @@
 import { getAllInsights, toTrend, topChannel } from '../lib/dashboard';
 import { selectWeek } from '../lib/week';
 import { calendarWeekStart } from '../lib/week';
+import { getAllWeeks, getEnabledSites } from '../lib/growth';
 import { delta, formatWeek, num, pct } from '../lib/format';
 import { Toolbar } from '../components/Toolbar';
 import { AppShell } from '../components/AppShell';
@@ -90,6 +91,9 @@ export default async function Page({
   const { weeks, current, prev } = selectWeek(insights, week, period);
   const latestRunWeek = getDefaultWeek();
 
+  const sites = await getEnabledSites();
+  const allWeeks = sites.length > 0 ? await getAllWeeks(sites[0].id) : undefined;
+
   const openRecs = current.strategy
     ? current.strategy.recommendations.filter(
         (r) => !(current.strategy_decisions ?? []).some((d) => d.recommendation_id === r.id),
@@ -126,6 +130,7 @@ export default async function Page({
       controls={
         <Toolbar
           weeks={[...weeks].reverse()}
+          allWeeks={allWeeks}
           selected={current.week_start}
           latestRunWeekStart={latestRunWeek.weekStart}
           latestRunWeekEnd={latestRunWeek.weekEnd}

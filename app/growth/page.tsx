@@ -3,6 +3,7 @@ import { formatWeek } from '../../lib/format';
 import {
   OPP_HINT,
   OPP_LABEL,
+  getAllWeeks,
   getCurrentWeekStart,
   getEnabledSites,
   getGrowthPageData,
@@ -56,12 +57,20 @@ export default async function GrowthPage({
   const { site: siteParam, week: weekParam, period } = await searchParams;
   const siteId = siteParam ?? sites[0].id;
   const currentWeekStart = getCurrentWeekStart();
-  const weekOptions = await getGrowthWeekOptions(siteId, currentWeekStart);
+  const [weekOptions, allWeeks] = await Promise.all([
+    getGrowthWeekOptions(siteId, currentWeekStart),
+    getAllWeeks(siteId),
+  ]);
   const requestedWeek = period ?? (weekParam ? mondayFor(weekParam) : null);
-  const weekStart =
-    requestedWeek && weekOptions.weeks.includes(requestedWeek)
-      ? requestedWeek
-      : weekOptions.defaultWeek;
+  const weekStart = (() => {
+    if (!requestedWeek) return weekOptions.defaultWeek;
+    if (weekOptions.weeks.includes(requestedWeek)) return requestedWeek;
+    // Find the closest available week that is <= the requested period so that
+    // navigating from Insights/Strategy lands on the nearest growth week rather
+    // than jumping to the latest plan week.
+    const closest = weekOptions.weeks.find((w) => w <= requestedWeek);
+    return closest ?? weekOptions.defaultWeek;
+  })();
 
   const data = await getGrowthPageData(siteId, weekStart);
   if (!data) {
@@ -128,7 +137,7 @@ export default async function GrowthPage({
       controls={
         <div className="flex flex-wrap justify-end gap-2">
           <WeekSelect
-            weeks={weekOptions.weeks}
+            weeks={allWeeks}
             selected={weekStart}
             basePath="/growth"
             params={{ site: siteId }}

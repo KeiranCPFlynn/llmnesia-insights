@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getAllInsights } from '../../lib/dashboard';
 import { calendarWeekStart, selectWeek } from '../../lib/week';
+import { getAllWeeks, getEnabledSites } from '../../lib/growth';
 import { formatWeek } from '../../lib/format';
 import { AppShell } from '../../components/AppShell';
 import { WeekSelect } from '../../components/WeekSelect';
@@ -33,6 +34,9 @@ export default async function StrategyPage({
   const { week, period } = await searchParams;
   const { weeks, current } = selectWeek(insights, week, period);
 
+  const sites = await getEnabledSites();
+  const allWeeks = sites.length > 0 ? await getAllWeeks(sites[0].id) : [...weeks].reverse();
+
   return (
     <AppShell
       week={current.week_start}
@@ -42,7 +46,7 @@ export default async function StrategyPage({
       context={`Week of ${formatWeek(calendarWeekStart(current.week_start))} · source window ${formatWeek(current.week_start)} → ${formatWeek(current.week_end)} · revenue & growth PM`}
       controls={
         <WeekSelect
-          weeks={[...weeks].reverse()}
+          weeks={allWeeks}
           selected={current.week_start}
           basePath="/strategy"
         />

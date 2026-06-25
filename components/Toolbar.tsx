@@ -16,11 +16,13 @@ type RunIntent = {
 
 export function Toolbar({
   weeks,
+  allWeeks,
   selected,
   latestRunWeekStart,
   latestRunWeekEnd,
 }: {
   weeks: string[];
+  allWeeks?: string[];
   selected: string;
   latestRunWeekStart: string;
   latestRunWeekEnd: string;
@@ -132,7 +134,7 @@ export function Toolbar({
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center gap-3">
-        <WeekSelect weeks={weeks} selected={selected} basePath="/" disabled={running} />
+        <WeekSelect weeks={allWeeks ?? weeks} selected={selected} basePath="/" disabled={running} />
 
         <ProviderSelect provider={provider} onChange={setProvider} disabled={running} />
 
