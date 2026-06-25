@@ -1,5 +1,6 @@
 import { collectMetrics } from './posthog.js';
 import { collectGA4Metrics } from './ga4.js';
+import { getCombinedSearchDigest } from './search-digest.js';
 import { randomUUID } from 'node:crypto';
 import {
   getHistoryBefore,
@@ -71,13 +72,23 @@ export async function runPipeline(opts: {
 
   log(`LLMnesia insights — ${weekStart} → ${weekEnd}${opts.dryRun ? ' [DRY RUN]' : ''}`);
 
-  const [posthogMetrics, ga4, history, existingRow] = await Promise.all([
+  const [posthogMetrics, ga4, history, existingRow, searchPerformance] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
     getRecentInsights(6),
     getInsightByWeek(weekStart),
+    // Top-of-funnel search visibility (Google + Bing). Fail-soft: a missing
+    // growth table or unconfigured search source must never break the run.
+    getCombinedSearchDigest(weekStart, weekEnd).catch((e) => {
+      log(`Search digest skipped: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }),
   ]);
-  const metrics = { ...posthogMetrics, ga4 };
+  const metrics = {
+    ...posthogMetrics,
+    ga4,
+    ...(searchPerformance ? { search_performance: searchPerformance } : {}),
+  };
   const trimmedContext = opts.generationContext?.trim();
   const generationCorrection: Correction | null = trimmedContext
     ? {

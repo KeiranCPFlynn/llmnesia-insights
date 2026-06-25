@@ -184,6 +184,15 @@ update public.sites set repo = 'lunacradle'        where name = 'LunaCradle' and
 > backfill. If the site URL in Bing WMT differs from `root_url` (e.g. it has a
 > trailing slash), update the row:
 > `update public.sites set bing_site_url = 'https://llmnesia.com/' where name = 'LLMnesia';`
+>
+> **Bing + Google feed two places:** (1) the `/growth` planner, where the raw
+> multi-site query data drives opportunity detection and the weekly SEO plan,
+> and (2) the **weekly insights** analysis, which gets a combined Google + Bing
+> search-visibility digest for **llmnesia.com only** (impressions, top queries,
+> ranking, week-over-week) under `metrics_snapshot.search_performance`. That's
+> the top-of-funnel demand layer GA4/PostHog can't see. It's `jsonb` so no extra
+> DDL is needed; it simply appears once `gsc_rows` / `bing_rows` have data, and
+> the pipeline omits it (and never fails) when they don't.
 
 > Run as-is. If a later sync returns "property not found", that site's GSC
 > entry is URL-prefix instead of Domain — update just that row in the `sites`

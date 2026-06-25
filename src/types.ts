@@ -60,9 +60,50 @@ export interface MetricsSnapshot {
     daily: Array<{ date: string; version: string; users: number }>;
   };
   ga4: GA4Metrics;
+  /**
+   * Top-of-funnel search visibility for llmnesia.com — combined Google Search
+   * Console + Bing Webmaster Tools (impressions, queries, ranking). The demand
+   * layer GA4/PostHog can't see: people who saw the site in search before any
+   * click. Optional — absent when the growth tables / search data aren't set
+   * up; the pipeline omits it rather than failing.
+   */
+  search_performance?: SearchPerformanceDigest;
 }
 
-export type DataSource = 'PostHog' | 'GA4' | 'Combined';
+/** One search engine's aggregate for the insights week, with prior-week comparison. */
+export interface SearchSourceDigest {
+  clicks: number;
+  impressions: number;
+  /** 0–1, clicks/impressions. */
+  ctr: number;
+  /** Impression-weighted average SERP position. */
+  avg_position: number;
+  prior_clicks: number;
+  prior_impressions: number;
+}
+
+/** One query's combined clicks/impressions across the contributing engines. */
+export interface SearchQueryRow {
+  query: string;
+  impressions: number;
+  clicks: number;
+  /** Which engines this query appeared in this week. */
+  sources: ('google' | 'bing')[];
+}
+
+export interface SearchPerformanceDigest {
+  site: string;
+  window: { start: string; end: string };
+  prior_window: { start: string; end: string };
+  /** Null when that engine had no rows this week. */
+  google: SearchSourceDigest | null;
+  bing: SearchSourceDigest | null;
+  combined: { clicks: number; impressions: number; ctr: number };
+  top_queries_by_impressions: SearchQueryRow[];
+  top_queries_by_clicks: SearchQueryRow[];
+}
+
+export type DataSource = 'PostHog' | 'GA4' | 'Search' | 'Combined';
 
 export interface Finding {
   metric: string;

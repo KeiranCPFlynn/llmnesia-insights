@@ -136,6 +136,7 @@ export default async function Page({
         { href: '#discuss', label: 'Discuss' },
         { href: '#attention', label: 'Needs attention' },
         { href: '#metrics', label: 'Metrics & trends' },
+        ...(m.search_performance ? [{ href: '#search', label: 'Search visibility' }] : []),
         { href: '#full-analysis', label: 'Full analysis' },
       ]}
     >
@@ -335,6 +336,162 @@ export default async function Page({
         </section>
       )}
 
+      {/* Search visibility — Google + Bing combined. Top-of-funnel: impressions
+          are people who SAW the site in search before any click. Sits above
+          GA4 sessions in the funnel: search → click → session → install. */}
+      {m.search_performance && (() => {
+        const sp = m.search_performance;
+        const psp = pm?.search_performance;
+
+        // For position a smaller number is better — invert delta direction.
+        function positionDelta(curr?: number, prev?: number) {
+          if (curr == null || prev == null || prev === 0) return { label: '', dir: 'flat' as const };
+          const d = delta(curr, prev);
+          if (!d.label) return d;
+          return { label: d.label, dir: (d.dir === 'up' ? 'down' : d.dir === 'down' ? 'up' : 'flat') as 'up' | 'down' | 'flat' };
+        }
+
+        const googleImpr = sp.google?.impressions ?? 0;
+        const bingImpr = sp.bing?.impressions ?? 0;
+        const totalImpr = googleImpr + bingImpr || 1;
+        const googleShare = Math.round((googleImpr / totalImpr) * 100);
+        const bingShare = 100 - googleShare;
+
+        const queries = sp.top_queries_by_impressions.slice(0, 8);
+
+        return (
+          <section id="search" className="scroll-mt-36 mb-10">
+            <SectionTitle source="Search">Search visibility</SectionTitle>
+
+            {/* Summary stat cards */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 mb-4">
+              <StatCard
+                label="Impressions (combined)"
+                value={num(sp.combined.impressions)}
+                d={delta(sp.combined.impressions, psp?.combined.impressions)}
+              />
+              <StatCard
+                label="Clicks from search"
+                value={num(sp.combined.clicks)}
+                d={delta(sp.combined.clicks, psp?.combined.clicks)}
+              />
+              {sp.google && (
+                <StatCard
+                  label="Google avg position"
+                  value={sp.google.avg_position > 0 ? `#${sp.google.avg_position}` : '—'}
+                  d={positionDelta(sp.google.avg_position, psp?.google?.avg_position)}
+                />
+              )}
+              {sp.bing && (
+                <StatCard
+                  label="Bing avg position"
+                  value={sp.bing.avg_position > 0 ? `#${sp.bing.avg_position}` : '—'}
+                  d={positionDelta(sp.bing.avg_position, psp?.bing?.avg_position)}
+                />
+              )}
+            </div>
+
+            {/* Google vs Bing split */}
+            {sp.google && sp.bing && (
+              <div className="mb-4 rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                  Impression share this week
+                </div>
+                <div className="flex h-2 overflow-hidden rounded-full bg-neutral-800">
+                  <div
+                    className="bg-sky-500/70"
+                    style={{ width: `${googleShare}%` }}
+                  />
+                  <div
+                    className="bg-orange-400/70"
+                    style={{ width: `${bingShare}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex gap-6 text-[12px]">
+                  <span>
+                    <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-sky-500/70" />
+                    <span className="text-neutral-300">Google</span>{' '}
+                    <span className="text-neutral-500">{num(sp.google.impressions)} impr · {num(sp.google.clicks)} clicks · pos {sp.google.avg_position}</span>
+                    {psp?.google && (
+                      <span className="ml-2 text-neutral-600">
+                        (prev: {num(psp.google.impressions)} impr)
+                      </span>
+                    )}
+                  </span>
+                  <span>
+                    <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-orange-400/70" />
+                    <span className="text-neutral-300">Bing</span>{' '}
+                    <span className="text-neutral-500">{num(sp.bing.impressions)} impr · {num(sp.bing.clicks)} clicks · pos {sp.bing.avg_position}</span>
+                    {psp?.bing && (
+                      <span className="ml-2 text-neutral-600">
+                        (prev: {num(psp.bing.impressions)} impr)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Top queries */}
+            {queries.length > 0 && (
+              <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 shadow-[0_10px_30px_rgba(0,0,0,0.16)] overflow-hidden">
+                <div className="border-b border-neutral-800 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                  Top queries by impressions
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-neutral-800/60 text-[11px] text-neutral-600">
+                      <th className="px-4 py-2 text-left font-medium">Query</th>
+                      <th className="px-3 py-2 text-right font-medium">Impr</th>
+                      <th className="px-3 py-2 text-right font-medium">Clicks</th>
+                      <th className="px-3 py-2 text-right font-medium">CTR</th>
+                      <th className="px-4 py-2 text-right font-medium">Via</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {queries.map((q, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-neutral-800/40 last:border-0 hover:bg-neutral-800/30"
+                      >
+                        <td className="px-4 py-2 text-neutral-200 font-medium truncate max-w-[240px]">
+                          {q.query}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-neutral-400">
+                          {num(q.impressions)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-neutral-400">
+                          {num(q.clicks)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-neutral-500">
+                          {q.impressions > 0
+                            ? pct(q.clicks / q.impressions)
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <span className="inline-flex gap-1">
+                            {q.sources.includes('google') && (
+                              <span className="inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/25">
+                                G
+                              </span>
+                            )}
+                            {q.sources.includes('bing') && (
+                              <span className="inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold bg-orange-400/15 text-orange-300 border border-orange-400/25">
+                                B
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        );
+      })()}
+
       {/* Conversion funnel — the website's actual job. Rates matter more than
           raw counts: low CTA rate = site doesn't sell; low click→install rate
           = store listing leaks. */}
@@ -525,7 +682,8 @@ export default async function Page({
 
       <footer className="border-t border-neutral-800 pt-4 text-xs text-neutral-600">
         <SourceBadge source="PostHog" title /> in-product events ·{' '}
-        <SourceBadge source="GA4" title /> site &amp; store traffic · Model {current.model_used} ·
+        <SourceBadge source="GA4" title /> site &amp; store traffic ·{' '}
+        <SourceBadge source="Search" title /> Google + Bing · Model {current.model_used} ·
         Generated{' '}
         {current.created_at ? new Date(current.created_at).toLocaleString('en-GB') : '—'}
       </footer>
