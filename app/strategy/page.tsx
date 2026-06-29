@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { getAllInsights } from '../../lib/dashboard';
 import { calendarWeekStart, selectWeek } from '../../lib/week';
-import { getAllWeeks, getEnabledSites } from '../../lib/growth';
 import { formatWeek } from '../../lib/format';
 import { AppShell } from '../../components/AppShell';
 import { WeekSelect } from '../../components/WeekSelect';
@@ -34,8 +33,9 @@ export default async function StrategyPage({
   const { week, period } = await searchParams;
   const { weeks, current } = selectWeek(insights, week, period);
 
-  const sites = await getEnabledSites();
-  const allWeeks = sites.length > 0 ? await getAllWeeks(sites[0].id) : [...weeks].reverse();
+  // Strategy lives on the weekly insight rows, so it shows the same report
+  // weeks as Insights — every option loads.
+  const allWeeks = [...weeks].reverse();
 
   return (
     <AppShell

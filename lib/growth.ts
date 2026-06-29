@@ -38,19 +38,19 @@ export async function getGrowthWeekOptions(
       .select('week_start')
       .eq('site_id', siteId)
       .order('week_start', { ascending: false })
-      .limit(26),
+      .limit(52), // Increased from 26 to 52 weeks
     supabase
       .from('growth_actions')
       .select('week_start')
       .eq('site_id', siteId)
       .order('week_start', { ascending: false })
-      .limit(26),
+      .limit(52), // Increased from 26 to 52 weeks
     supabase
       .from('growth_opportunities')
       .select('week_start')
       .eq('site_id', siteId)
       .order('week_start', { ascending: false })
-      .limit(26),
+      .limit(52), // Increased from 26 to 52 weeks
   ]);
 
   if (plansRes.error) {
@@ -246,28 +246,37 @@ async function getGscRowsForDigest(
   endDate: string,
 ): Promise<GSCRow[]> {
   const supabase = getClient();
-  const out: GSCRow[] = [];
   const pageSize = 1000;
-  let from = 0;
-
-  while (true) {
-    const to = from + pageSize - 1;
-    const { data, error } = await supabase
+  const page = (from: number) =>
+    supabase
       .from('gsc_rows')
       .select('date,query,page,clicks,impressions,ctr,position,country,device,site_id')
       .eq('site_id', siteId)
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: true })
-      .range(from, to);
+      .range(from, from + pageSize - 1);
+
+  // Count first, then fetch every page in parallel — far faster than the old
+  // sequential one-page-at-a-time loop for a 90-day window of GSC rows.
+  const { count, error: countError } = await supabase
+    .from('gsc_rows')
+    .select('*', { count: 'exact', head: true })
+    .eq('site_id', siteId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (countError) throw new Error(`gsc digest count failed: ${countError.message}`);
+
+  const pages = Math.ceil((count ?? 0) / pageSize);
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, i) => page(i * pageSize)),
+  );
+
+  const out: GSCRow[] = [];
+  for (const { data, error } of results) {
     if (error) throw new Error(`gsc digest fetch failed: ${error.message}`);
-
-    const rows = ((data as GSCRow[]) ?? []).filter((r) => r.date);
-    out.push(...rows);
-    if (rows.length < pageSize) break;
-    from += pageSize;
+    out.push(...((data as GSCRow[]) ?? []).filter((r) => r.date));
   }
-
   return out;
 }
 

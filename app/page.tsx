@@ -1,7 +1,6 @@
 import { getAllInsights, toTrend, topChannel } from '../lib/dashboard';
 import { selectWeek } from '../lib/week';
 import { calendarWeekStart } from '../lib/week';
-import { getAllWeeks, getEnabledSites } from '../lib/growth';
 import { delta, formatWeek, num, pct } from '../lib/format';
 import { Toolbar } from '../components/Toolbar';
 import { AppShell } from '../components/AppShell';
@@ -91,8 +90,10 @@ export default async function Page({
   const { weeks, current, prev } = selectWeek(insights, week, period);
   const latestRunWeek = getDefaultWeek();
 
-  const sites = await getEnabledSites();
-  const allWeeks = sites.length > 0 ? await getAllWeeks(sites[0].id) : undefined;
+  // Insights dropdown shows only weeks that have a published report — every
+  // option here loads. (Growth has more recent weeks because growth data runs
+  // ahead of the weekly insights pipeline; those weeks have no report yet.)
+  const allWeeks = [...weeks].reverse();
 
   const openRecs = current.strategy
     ? current.strategy.recommendations.filter(

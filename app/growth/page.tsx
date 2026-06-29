@@ -3,7 +3,6 @@ import { formatWeek } from '../../lib/format';
 import {
   OPP_HINT,
   OPP_LABEL,
-  getAllWeeks,
   getCurrentWeekStart,
   getEnabledSites,
   getGrowthPageData,
@@ -57,20 +56,17 @@ export default async function GrowthPage({
   const { site: siteParam, week: weekParam, period } = await searchParams;
   const siteId = siteParam ?? sites[0].id;
   const currentWeekStart = getCurrentWeekStart();
-  const [weekOptions, allWeeks] = await Promise.all([
-    getGrowthWeekOptions(siteId, currentWeekStart),
-    getAllWeeks(siteId),
-  ]);
+
+  const weekOptions = await getGrowthWeekOptions(siteId, currentWeekStart);
   const requestedWeek = period ?? (weekParam ? mondayFor(weekParam) : null);
-  const weekStart = (() => {
-    if (!requestedWeek) return weekOptions.defaultWeek;
-    if (weekOptions.weeks.includes(requestedWeek)) return requestedWeek;
-    // Find the closest available week that is <= the requested period so that
-    // navigating from Insights/Strategy lands on the nearest growth week rather
-    // than jumping to the latest plan week.
-    const closest = weekOptions.weeks.find((w) => w <= requestedWeek);
-    return closest ?? weekOptions.defaultWeek;
-  })();
+  // Open on the latest week with growth work (defaultWeek = newest growth plan).
+  const weekStart = requestedWeek ?? weekOptions.defaultWeek;
+
+  // Growth's own weeks — the current week plus every week that has a growth
+  // plan/action/opportunity. These are the weeks with growth content to show,
+  // so each option loads. Growth runs ahead of the insights pipeline, so this
+  // list is intentionally more recent than the Insights/Strategy dropdowns.
+  const allWeeks = weekOptions.weeks;
 
   const data = await getGrowthPageData(siteId, weekStart);
   if (!data) {

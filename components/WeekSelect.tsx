@@ -32,9 +32,11 @@ export function WeekSelect({
   function href(week: string) {
     const q = new URLSearchParams();
     for (const [key, value] of Object.entries(params ?? {})) {
-      if (value) q.set(key, value);
+      if (value && key !== 'period') q.set(key, value); // Exclude period to avoid conflicts
     }
-    q.set('week', week);
+    // Use period parameter instead of week to match page expectations
+    const period = calendarWeekStart(week);
+    q.set('period', period);
     return `${basePath}?${q.toString()}`;
   }
 
