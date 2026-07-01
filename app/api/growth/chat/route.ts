@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 import { isAuthorized } from '../../../../lib/session';
 import { readBrief } from '../../../../src/brief.js';
 import { getSiteById } from '../../../../src/gsc.js';
-import { getGrowthPlan, saveGrowthPlanChat } from '../../../../src/growth-plan.js';
+import {
+  getGrowthContextDigests,
+  getGrowthPlan,
+  saveGrowthPlanChat,
+} from '../../../../src/growth-plan.js';
 import {
   callLlm,
   chatToLlmMessages,
@@ -111,6 +115,9 @@ function systemPrompt({
   plan,
   opportunities,
   actions,
+  ga4Digest,
+  bingDigest,
+  siteScale,
   focusedRecommendationId,
 }: {
   brief: string;
@@ -122,6 +129,9 @@ function systemPrompt({
   plan: NonNullable<Awaited<ReturnType<typeof getGrowthPlan>>>;
   opportunities: GrowthOpportunity[];
   actions: GrowthAction[];
+  ga4Digest: unknown;
+  bingDigest: unknown;
+  siteScale: unknown;
   focusedRecommendationId?: string;
 }) {
   const focusedRecommendation = focusedRecommendationId
@@ -133,6 +143,8 @@ function systemPrompt({
 The CURRENT GROWTH GOAL is founder-owned and takes priority. Stay within organic traffic, search visibility, product discovery, and content growth unless that goal explicitly expands scope.
 
 When the founder asks for a concrete change to an existing recommendation, call revise_growth_recommendation and set replaces_id to that recommendation's exact id. When they ask for a genuinely new recommendation, omit replaces_id. Return the FULL recommendation, including a self-contained coding-agent prompt or founder checklist. Preserve the supplied opportunity_id when the revised work is still based on that opportunity. Do not invent GSC evidence.
+
+DATA YOU HAVE ACCESS TO — this is the same evidence the plan below was generated from: Google Search Console opportunities (below), Bing Webmaster data (when synced), GA4 traffic (for the primary product), and site-scale numbers. When the founder asks what data a recommendation is based on, point to the specific numbers in DETECTED OPPORTUNITIES / GA4 TRAFFIC DIGEST / BING WEBMASTER DATA / SITE SCALE below rather than saying you don't have access — you do. The one thing genuinely out of scope here is PostHog in-product usage data (search behavior inside the extension, feature engagement, etc.) — that lives on the Insights/Strategy tabs, not Growth. If asked about that, say so plainly instead of implying none of your data is real.
 
 ${focusedRecommendation
   ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
@@ -160,8 +172,17 @@ ${JSON.stringify({
   experiments: plan.experiments,
 })}
 
-DETECTED OPPORTUNITIES:
+DETECTED OPPORTUNITIES (Google Search Console, deterministic detectors):
 ${JSON.stringify(opportunities)}
+
+GA4 TRAFFIC DIGEST (primary product only; null if not applicable):
+${JSON.stringify(ga4Digest ?? null)}
+
+BING WEBMASTER DATA (top queries; null when not synced for this site):
+${JSON.stringify(bingDigest ?? null)}
+
+SITE SCALE (rolling 90 days — tells you small vs established site):
+${JSON.stringify(siteScale ?? null)}
 
 CURRENT/RECENT ACTIONS (respect completed, ignored, and monitoring state):
 ${JSON.stringify(actions)}`;
@@ -204,7 +225,7 @@ export async function POST(req: Request) {
 
   try {
     const supabase = getSupabase();
-    const [opportunitiesRes, actionsRes] = await Promise.all([
+    const [opportunitiesRes, actionsRes, { ga4Digest, bingDigest, siteScale }] = await Promise.all([
       supabase
         .from('growth_opportunities')
         .select('*')
@@ -218,6 +239,7 @@ export async function POST(req: Request) {
         .eq('site_id', siteId)
         .order('status_updated_at', { ascending: false })
         .limit(40),
+      getGrowthContextDigests(site, weekStart),
     ]);
     if (opportunitiesRes.error) throw new Error(opportunitiesRes.error.message);
     if (actionsRes.error) throw new Error(actionsRes.error.message);
@@ -241,6 +263,9 @@ export async function POST(req: Request) {
             plan,
             opportunities: (opportunitiesRes.data as GrowthOpportunity[]) ?? [],
             actions: (actionsRes.data as GrowthAction[]) ?? [],
+            ga4Digest,
+            bingDigest,
+            siteScale,
             focusedRecommendationId: recommendationId,
           }),
           cache: true,

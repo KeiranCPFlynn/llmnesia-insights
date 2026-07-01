@@ -29,6 +29,50 @@ function getSupabase() {
 }
 
 /**
+ * Supabase/PostgREST caps an unpaginated `.select()` at 1000 rows. A 90-day
+ * `gsc_rows` window for an active site is routinely 10k+ rows (query × page ×
+ * date × country × device), so fetching without `.range()` silently truncates
+ * to ~7% of the data — opportunity detection and site-scale numbers were
+ * being computed from that truncated slice instead of the real window.
+ * Count first, then fetch every page of `columns` in parallel.
+ */
+async function fetchAllGscRows(
+  siteId: string,
+  startDate: string,
+  endDate: string,
+  columns: string,
+): Promise<GSCRow[]> {
+  const supabase = getSupabase();
+  const pageSize = 1000;
+  const page = (from: number) =>
+    supabase
+      .from('gsc_rows')
+      .select(columns)
+      .eq('site_id', siteId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .range(from, from + pageSize - 1);
+
+  const { count, error: countError } = await supabase
+    .from('gsc_rows')
+    .select('*', { count: 'exact', head: true })
+    .eq('site_id', siteId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (countError) throw new Error(`gsc_rows count failed: ${countError.message}`);
+
+  const pages = Math.ceil((count ?? 0) / pageSize);
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => page(i * pageSize)));
+
+  const out: GSCRow[] = [];
+  for (const { data, error } of results) {
+    if (error) throw new Error(`gsc_rows fetch failed: ${error.message}`);
+    out.push(...((data as unknown as GSCRow[]) ?? []));
+  }
+  return out;
+}
+
+/**
  * Detection window. 90 days is the right size for small/young sites: a
  * 28-day slice would have single-digit impressions on most queries and
  * surface nothing actionable. For a busy site the same thresholds still
@@ -399,14 +443,12 @@ export async function computeOpportunities(opts: {
     now: opts.now,
   });
   const supabase = getSupabase();
-  const { data: rowsRaw, error } = await supabase
-    .from('gsc_rows')
-    .select('site_id, query, page, date, country, device, clicks, impressions, ctr, position')
-    .eq('site_id', opts.siteId)
-    .gte('date', prior.startDate)
-    .lte('date', current.endDate);
-  if (error) throw new Error(`gsc_rows fetch failed: ${error.message}`);
-  const all = (rowsRaw as GSCRow[]) ?? [];
+  const all = await fetchAllGscRows(
+    opts.siteId,
+    prior.startDate,
+    current.endDate,
+    'site_id, query, page, date, country, device, clicks, impressions, ctr, position',
+  );
 
   const currentRows = all.filter((r) => r.date >= current.startDate && r.date <= current.endDate);
   const priorRows = all.filter((r) => r.date >= prior.startDate && r.date <= prior.endDate);
@@ -480,15 +522,13 @@ export function summariseSiteScale(rows: GSCRow[]): SiteScale {
 
 export async function getSiteScale(siteId: string, weekStart?: string): Promise<SiteScale> {
   const { current } = detectionWindow({ weekStart });
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('gsc_rows')
-    .select('query, page, clicks, impressions')
-    .eq('site_id', siteId)
-    .gte('date', current.startDate)
-    .lte('date', current.endDate);
-  if (error) throw new Error(`gsc_rows scale fetch failed: ${error.message}`);
-  return summariseSiteScale((data as GSCRow[]) ?? []);
+  const rows = await fetchAllGscRows(
+    siteId,
+    current.startDate,
+    current.endDate,
+    'query, page, clicks, impressions',
+  );
+  return summariseSiteScale(rows);
 }
 
 export async function getOpportunities(

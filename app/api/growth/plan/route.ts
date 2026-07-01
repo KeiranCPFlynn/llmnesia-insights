@@ -2,10 +2,10 @@ import { NextResponse, after } from 'next/server';
 import { isAuthorized } from '../../../../lib/session';
 import { readBrief } from '../../../../src/brief.js';
 import { getSiteById } from '../../../../src/gsc.js';
-import { getBingDigest } from '../../../../src/bing.js';
-import { ensureOpportunities, getSiteScale } from '../../../../src/growth.js';
+import { ensureOpportunities } from '../../../../src/growth.js';
 import {
   generateGrowthPlan,
+  getGrowthContextDigests,
   getGrowthPlan,
   getPriorPlans,
   saveGrowthPlan,
@@ -63,45 +63,23 @@ export async function POST(req: Request) {
       // pull prior plans + recent actions for continuity, and compute the
       // site-scale digest so the LLM knows whether this is an established or
       // early-stage site.
-      const [opportunities, brief, priorPlans, actionsRes, siteScale, bingDigest] = await Promise.all([
-        ensureOpportunities({ siteId, weekStart, force: true }),
-        readBrief(),
-        getPriorPlans(siteId, weekStart, 4),
-        supabase
-          .from('growth_actions')
-          .select('site_id, week_start, action_type, status, target_query, target_page, published_url')
-          .eq('site_id', siteId)
-          .order('status_updated_at', { ascending: false })
-          .limit(40),
-        getSiteScale(siteId, weekStart),
-        process.env.BING_WEBMASTER_API_KEY
-          ? getBingDigest(siteId).catch((e) => {
-              console.error('[growth-plan] bing digest failed:', e);
-              return null;
-            })
-          : Promise.resolve(null),
-      ]);
+      const [opportunities, brief, priorPlans, actionsRes, { ga4Digest, bingDigest, siteScale }] =
+        await Promise.all([
+          ensureOpportunities({ siteId, weekStart, force: true }),
+          readBrief(),
+          getPriorPlans(siteId, weekStart, 4),
+          supabase
+            .from('growth_actions')
+            .select('site_id, week_start, action_type, status, target_query, target_page, published_url')
+            .eq('site_id', siteId)
+            .order('status_updated_at', { ascending: false })
+            .limit(40),
+          getGrowthContextDigests(site, weekStart),
+        ]);
       if (actionsRes.error) throw new Error(`growth_actions fetch failed: ${actionsRes.error.message}`);
       const priorActions =
         (actionsRes.data as Pick<GrowthAction, 'site_id' | 'week_start' | 'action_type' | 'status' | 'target_query' | 'target_page' | 'published_url'>[]) ??
         [];
-
-      // Pull the most recent stored GA4 digest for the site if it matches our
-      // primary product — for v1 we just pass the latest weekly_insights
-      // metrics_snapshot's GA4 website block (the same shape /api/strategy
-      // uses) when the site name matches. For other sites we pass null; the
-      // prompt tolerates that.
-      let ga4Digest: unknown = null;
-      if (site.name.toLowerCase() === 'llmnesia') {
-        const { data: latest } = await supabase
-          .from('weekly_insights')
-          .select('metrics_snapshot')
-          .order('week_start', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const m = (latest as { metrics_snapshot?: { ga4?: unknown } } | null)?.metrics_snapshot;
-        ga4Digest = m?.ga4 ?? null;
-      }
 
       const { plan } = await generateGrowthPlan({
         site,

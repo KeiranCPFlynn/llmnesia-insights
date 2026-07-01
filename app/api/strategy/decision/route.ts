@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, recommendation_id, status, note, outcome } = (await req
+  const { week, recommendation_id, status, note, outcome, title } = (await req
     .json()
     .catch(() => ({}))) as {
     week?: string;
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
     status?: StrategyDecision['status'];
     note?: string;
     outcome?: string;
+    title?: string;
   };
 
   if (!week || !recommendation_id || !status || !STATUSES.includes(status)) {
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
       note: note || undefined,
       outcome: outcome || undefined,
       decided_at: new Date().toISOString(),
+      title: title || undefined,
     };
     const decisions = await setStrategyDecision(week, decision);
     return NextResponse.json({ ok: true, decisions });

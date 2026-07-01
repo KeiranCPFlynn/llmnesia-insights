@@ -31,6 +31,8 @@ const AREA_STYLE: Record<string, string> = {
 };
 
 const EFFORT = { S: 'Small', M: 'Medium', L: 'Large' } as const;
+/** Decided and done with — hide from the active list, same as Growth's board. */
+const HANDLED_DECISION_STATUSES = new Set<StrategyDecision['status']>(['shipped', 'rejected']);
 const STALE_MS = 20 * 60 * 1000;
 const pendingKey = (week: string) => `llmnesia:strat-pending:${week}`;
 
@@ -80,6 +82,7 @@ function RecommendationCard({
           week,
           recommendation_id: rec.id,
           status,
+          title: rec.title,
           [status === 'shipped' ? 'outcome' : 'note']: note || undefined,
         }),
       });
@@ -400,6 +403,15 @@ export function StrategyPanel({
 
   const byId = new Map(decisions.map((d) => [d.recommendation_id, d]));
   const working = busy || polling;
+  const activeRecommendations =
+    strategy?.recommendations.filter((rec) => {
+      const decision = byId.get(rec.id);
+      return !decision || !HANDLED_DECISION_STATUSES.has(decision.status);
+    }) ?? [];
+  const handledCount = (strategy?.recommendations.length ?? 0) - activeRecommendations.length;
+  const sortedDecisions = [...decisions].sort(
+    (a, b) => new Date(b.decided_at).getTime() - new Date(a.decided_at).getTime(),
+  );
 
   return (
     <div className="space-y-6">
@@ -501,22 +513,63 @@ export function StrategyPanel({
 
           <section>
             <h3 className="mb-3 text-base font-bold text-neutral-100">
-              Recommendations — ranked, do #1 first
+              {activeRecommendations.length > 0
+                ? 'Recommendations — ranked, do #1 first'
+                : 'Recommendations'}
+              {handledCount > 0 && (
+                <span className="ml-2 text-sm font-normal text-neutral-500">
+                  {handledCount} shipped/rejected hidden
+                </span>
+              )}
             </h3>
-            <ul className="space-y-4">
-              {strategy.recommendations.map((rec, i) => (
-                <RecommendationCard
-                  key={rec.id}
-                  week={week}
-                  rec={rec}
-                  rank={i + 1}
-                  decision={byId.get(rec.id)}
-                  onDecided={setDecisions}
-                  initialChat={recommendationChats[rec.id] ?? []}
-                />
-              ))}
-            </ul>
+            {activeRecommendations.length === 0 ? (
+              <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-5 py-6 text-sm text-neutral-400 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+                All recommendations in this strategy have been shipped or rejected. Regenerate when
+                you want a fresh set.
+              </div>
+            ) : (
+              <ul className="space-y-4">
+                {activeRecommendations.map((rec) => (
+                  <RecommendationCard
+                    key={rec.id}
+                    week={week}
+                    rec={rec}
+                    rank={strategy.recommendations.indexOf(rec) + 1}
+                    decision={byId.get(rec.id)}
+                    onDecided={setDecisions}
+                    initialChat={recommendationChats[rec.id] ?? []}
+                  />
+                ))}
+              </ul>
+            )}
           </section>
+
+          {sortedDecisions.length > 0 && (
+            <details className="rounded-lg border border-neutral-800/80 bg-neutral-900/50 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300 hover:bg-neutral-900/70">
+                Decision history ({sortedDecisions.length}) — every decision ever made this week,
+                even after regenerating
+              </summary>
+              <ul className="space-y-2 border-t border-neutral-800 p-4">
+                {sortedDecisions.map((d, i) => (
+                  <li
+                    key={`${d.recommendation_id}-${i}`}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-800/80 bg-neutral-950/40 p-3 text-sm"
+                  >
+                    <Chip className={STATUS_STYLE[d.status]}>{d.status}</Chip>
+                    <span className="font-medium text-neutral-200">
+                      {d.title ?? 'Untitled recommendation'}
+                    </span>
+                    {d.outcome && <span className="text-neutral-400">— outcome: {d.outcome}</span>}
+                    {d.note && <span className="text-neutral-400">— note: {d.note}</span>}
+                    <span className="ml-auto text-xs text-neutral-600">
+                      {formatDateTime(d.decided_at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           {strategy.experiments.length > 0 && (
             <section className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-6 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">

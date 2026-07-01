@@ -3,16 +3,32 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { callLlm, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
 import { GROWTH_PLAN_SYSTEM_PROMPT } from './prompts/growth-prompt.js';
-import type { SiteScale } from './growth.js';
+import { getSiteScale, type SiteScale } from './growth.js';
+import { getBingDigest } from './bing.js';
 import type {
   ChatMessage,
   GrowthAction,
+  GrowthActionStatus,
   GrowthOpportunity,
   GrowthPlan,
   GrowthPlanBalance,
   GrowthRecommendation,
   Site,
 } from './types.js';
+
+/**
+ * Statuses that mean "this is done or discarded — don't re-pitch it."
+ * Everything else (planned, briefed, drafted, idea, needs_adjustment) is
+ * still open work the plan should build on rather than duplicate.
+ */
+const HANDLED_ACTION_STATUSES = new Set<GrowthActionStatus>([
+  'completed',
+  'ignored',
+  'published',
+  'updated',
+  'monitoring',
+  'actioned',
+]);
 
 const PLAN_TOOL: LlmTool = {
   name: 'submit_growth_plan',
@@ -171,6 +187,46 @@ function digestOpportunities(opportunities: GrowthOpportunity[], topN = 25) {
   }));
 }
 
+/**
+ * The evidence bundle behind a plan/discussion — GA4 traffic, Bing queries,
+ * and site scale. Shared by generation and chat so the discussion always has
+ * the same evidence the plan was actually built from (previously the chat
+ * prompt omitted all three, so it couldn't back up its own recommendations
+ * with the numbers that justified them).
+ */
+export async function getGrowthContextDigests(
+  site: Site,
+  weekStart: string,
+): Promise<{ ga4Digest: unknown; bingDigest: unknown; siteScale: SiteScale }> {
+  const supabase = getSupabase();
+
+  const [siteScale, bingDigest] = await Promise.all([
+    getSiteScale(site.id, weekStart),
+    process.env.BING_WEBMASTER_API_KEY
+      ? getBingDigest(site.id).catch((e) => {
+          console.error('[growth-context] bing digest failed:', e);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
+
+  // v1: only the primary product has a matching weekly_insights GA4 block;
+  // other sites get null and the prompt tolerates that (see growth-prompt.ts).
+  let ga4Digest: unknown = null;
+  if (site.name.toLowerCase() === 'llmnesia') {
+    const { data: latest } = await supabase
+      .from('weekly_insights')
+      .select('metrics_snapshot')
+      .order('week_start', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const m = (latest as { metrics_snapshot?: { ga4?: unknown } } | null)?.metrics_snapshot;
+    ga4Digest = m?.ga4 ?? null;
+  }
+
+  return { ga4Digest, bingDigest, siteScale };
+}
+
 export interface GrowthPlanInputs {
   site: Site;
   weekStart: string;
@@ -200,6 +256,8 @@ export async function generateGrowthPlan(
 
   const opportunityDigest = digestOpportunities(inputs.opportunities);
   const trimmedContext = inputs.generationContext?.trim();
+  const handledActions = inputs.priorActions.filter((a) => HANDLED_ACTION_STATUSES.has(a.status));
+  const openActions = inputs.priorActions.filter((a) => !HANDLED_ACTION_STATUSES.has(a.status));
 
   const { toolCall, text, modelUsed } = await callLlm({
     provider: resolved,
@@ -227,7 +285,8 @@ export async function generateGrowthPlan(
               `GA4 TRAFFIC DIGEST (this site, optional context):\n${JSON.stringify(inputs.ga4Digest ?? null)}\n\n` +
               `BING WEBMASTER DATA (top queries from Bing Search, optional context — null when not yet synced):\n${JSON.stringify(inputs.bingDigest ?? null)}\n\n` +
               `PRIOR PLAN THESES (oldest → newest):\n${JSON.stringify(inputs.priorPlans)}\n\n` +
-              `IN-FLIGHT / RECENT ACTIONS (respect status — don't re-pitch actioned/monitoring items; if needs_adjustment, propose a targeted follow-up):\n${JSON.stringify(inputs.priorActions)}`,
+              `ALREADY HANDLED — completed, published, or discarded. Do NOT re-suggest these queries/pages/actions or close variants, unless material new evidence justifies revisiting (say what changed):\n${JSON.stringify(handledActions)}\n\n` +
+              `STILL OPEN — planned or needs adjustment but not yet done. Build on these rather than duplicating with a new recommendation for the same query/page:\n${JSON.stringify(openActions)}`,
           },
         ],
       },
@@ -245,10 +304,27 @@ export async function generateGrowthPlan(
     balance: GrowthPlanBalance;
   };
 
+  // Recommendation ids reset every regeneration, so the LLM's "don't re-pitch
+  // handled work" instruction is a soft ask, not a guarantee (verified: it
+  // still re-suggested a reworded duplicate of a completed recommendation).
+  // `target_page` + `action_type` is the one part of a recommendation that
+  // stays stable across regenerations, so hard-filter on it as a backstop —
+  // any recommendation for a (page, action_type) already completed/ignored
+  // gets dropped before the plan is even saved, regardless of the LLM's title.
+  const handledPageActions = new Set(
+    handledActions
+      .filter((a) => a.target_page)
+      .map((a) => `${a.target_page}::${a.action_type}`),
+  );
+  const deduped = (raw.recommendations ?? []).filter(
+    (r) => !(r.target_page && handledPageActions.has(`${r.target_page}::${r.action_type}`)),
+  );
+
+  const recommendations = deduped.map((r) => ({ ...r, id: randomUUID() }));
   const plan: GrowthPlan = {
     thesis: raw.thesis,
-    balance: raw.balance,
-    recommendations: (raw.recommendations ?? []).map((r) => ({ ...r, id: randomUUID() })),
+    balance: balanceFor(recommendations),
+    recommendations,
     risks: raw.risks ?? [],
     experiments: raw.experiments ?? [],
     model_used: modelUsed,

@@ -121,7 +121,28 @@ export default async function GrowthPage({
     if (a.opportunity_id) acceptedOpportunityIds.push(a.opportunity_id);
   }
 
-  const thisWeekActions = data.actions.filter((a) => a.week_start === weekStart);
+  // The board shows all open work across every week — not just this week's —
+  // so an unresolved action from three weeks ago doesn't silently disappear
+  // just because you navigated to a different week. Completed/ignored items
+  // are tucked into a separate recent-history list instead of vanishing.
+  const openActions = data.actions.filter((a) => a.status !== 'completed' && a.status !== 'ignored');
+  const recentHandled = data.actions
+    .filter((a) => a.status === 'completed' || a.status === 'ignored')
+    .slice(0, 20);
+
+  // Recommendation ids reset on every plan regeneration, so a completed
+  // action's recommendation_id often no longer matches anything in the
+  // current plan — that recommendation then looks "new" again even though
+  // it was already done. target_page + action_type survives regeneration
+  // (it's the actual page/work, not the ephemeral wrapper id), so use that
+  // as a second, durable way to recognize already-handled recommendations.
+  const handledPageActionKeys = [
+    ...new Set(
+      data.actions
+        .filter((a) => (a.status === 'completed' || a.status === 'ignored') && a.target_page)
+        .map((a) => `${a.target_page}::${a.action_type}`),
+    ),
+  ];
 
   return (
     <AppShell
@@ -174,6 +195,7 @@ export default async function GrowthPage({
           weekStart={weekStart}
           initialPlan={data.plan}
           recommendationActions={recommendationActions}
+          handledPageActionKeys={handledPageActionKeys}
           opportunityCount={opportunities.length}
         />
       </section>
@@ -219,22 +241,63 @@ export default async function GrowthPage({
 
       <section id="actions" className="scroll-mt-36 mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          Action board — this week
+          Action board — all open work
           <span className="ml-2 font-normal text-neutral-500">
-            {thisWeekActions.length} action{thisWeekActions.length === 1 ? '' : 's'}
+            {openActions.length} action{openActions.length === 1 ? '' : 's'} across every week
           </span>
         </h2>
-        {thisWeekActions.length === 0 ? (
+        {openActions.length === 0 ? (
           <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-4 py-6 text-sm text-neutral-500">
-            Nothing planned yet for this week. Generate a plan or accept opportunities to populate
-            this board.
+            Nothing open right now. Generate a plan or accept opportunities to populate this board.
           </div>
         ) : (
           <ActionBoard
-            key={`${siteId}:${weekStart}`}
-            actions={thisWeekActions}
+            key={siteId}
+            actions={openActions}
             recommendations={data.plan?.recommendations ?? []}
           />
+        )}
+
+        {recentHandled.length > 0 && (
+          <details className="mt-4 rounded-lg border border-neutral-800/80 bg-neutral-900/50 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-300 hover:bg-neutral-900/70">
+              Recently completed/ignored ({recentHandled.length})
+            </summary>
+            <ul className="space-y-2 border-t border-neutral-800 p-4">
+              {recentHandled.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-800/80 bg-neutral-950/40 p-3 text-sm"
+                >
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[11px] capitalize ${
+                      a.status === 'completed'
+                        ? 'border-emerald-700 bg-emerald-900/40 text-emerald-200'
+                        : 'border-neutral-700 bg-neutral-900/60 text-neutral-500'
+                    }`}
+                  >
+                    {a.status}
+                  </span>
+                  <span className="font-medium text-neutral-200">
+                    {a.suggested_title ?? a.target_page ?? a.target_query ?? 'Growth action'}
+                  </span>
+                  {a.published_url && (
+                    <a
+                      href={a.published_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-400 hover:underline"
+                    >
+                      {a.published_url}
+                    </a>
+                  )}
+                  <span className="ml-auto text-xs text-neutral-600">
+                    week of {formatWeek(a.week_start)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </section>
 

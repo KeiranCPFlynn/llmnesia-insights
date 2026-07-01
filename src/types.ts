@@ -254,6 +254,13 @@ export interface StrategyDecision {
   /** What actually happened, recorded when marking shipped. */
   outcome?: string;
   decided_at: string;
+  /**
+   * Snapshot of the recommendation's title at decision time. Recommendation
+   * ids are only stable within one generation (regenerating mints new ids),
+   * so this is what lets a decision stay readable/traceable in history after
+   * the live recommendation it was made against is gone.
+   */
+  title?: string;
 }
 
 export interface WeeklyInsight {

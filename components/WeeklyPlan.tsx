@@ -75,6 +75,7 @@ export function WeeklyPlan({
   weekStart,
   initialPlan,
   recommendationActions,
+  handledPageActionKeys,
   opportunityCount,
 }: {
   siteId: string;
@@ -82,6 +83,14 @@ export function WeeklyPlan({
   initialPlan: GrowthPlan | null;
   /** Recommendation ids already turned into an action, keyed by recommendation id. */
   recommendationActions: Record<string, RecommendationActionState>;
+  /**
+   * `${target_page}::${action_type}` keys for completed/ignored actions,
+   * regardless of which (possibly now-regenerated) recommendation they came
+   * from. Recommendation ids reset on every regeneration, so this is the
+   * durable way to recognize "this exact page/work was already done" even
+   * when recommendationActions has no id match for the current plan.
+   */
+  handledPageActionKeys: string[];
   opportunityCount: number;
 }) {
   const router = useRouter();
@@ -199,10 +208,15 @@ export function WeeklyPlan({
   }
 
   const working = busy || polling;
+  const handledPageActionSet = new Set(handledPageActionKeys);
   const activeRecommendations =
     plan?.recommendations.filter((rec) => {
       const actionState = recommendationActions[rec.id];
-      return !actionState || !HANDLED_RECOMMENDATION_STATUSES.has(actionState.status);
+      if (actionState && HANDLED_RECOMMENDATION_STATUSES.has(actionState.status)) return false;
+      if (rec.target_page && handledPageActionSet.has(`${rec.target_page}::${rec.action_type}`)) {
+        return false;
+      }
+      return true;
     }) ?? [];
   const handledRecommendationCount =
     (plan?.recommendations.length ?? 0) - activeRecommendations.length;

@@ -155,6 +155,25 @@ export async function generateStrategy(
   const trimmedContext = inputs.generationContext?.trim();
   const trimmedGoal = inputs.strategyGoal?.trim();
 
+  // Pull decided titles into an explicit, unmissable list — the full
+  // priorDecisions JSON further down is easy to skim past, and recommendation
+  // ids reset every regeneration so this title list is the only durable
+  // "don't repeat this" signal the model gets.
+  const decidedTitled = inputs.priorDecisions
+    .flatMap((d) => d.decisions)
+    .filter((d) => d.title);
+  const doNotResuggest = decidedTitled
+    .filter((d) => d.status === 'rejected' || d.status === 'shipped')
+    .map(
+      (d) =>
+        `- [${d.status}] ${d.title}${d.outcome ? ` — outcome: ${d.outcome}` : ''}${d.note ? ` — note: ${d.note}` : ''}`,
+    )
+    .join('\n');
+  const stillOpen = decidedTitled
+    .filter((d) => d.status === 'accepted' || d.status === 'deferred')
+    .map((d) => `- [${d.status}] ${d.title}${d.note ? ` — note: ${d.note}` : ''}`)
+    .join('\n');
+
   const { text, toolCall, modelUsed } = await callLlm({
     provider: resolved,
     // Reasoning model; let it run to the model max (truncation > token cost).
@@ -176,7 +195,9 @@ export async function generateStrategy(
               `ADDITIONAL FOUNDER CONTEXT FOR THIS GENERATION — treat as authoritative if present:\n${trimmedContext || '(none)'}\n\n` +
               `RECENT PM CHAT — use founder-stated constraints, preferences, and corrections when regenerating. Assistant replies are conversational context, not facts unless the founder accepted or repeated them:\n${JSON.stringify(chatDigest)}\n\n` +
               `PRIOR STRATEGY THESES (oldest→newest):\n${JSON.stringify(inputs.priorStrategies)}\n\n` +
-              `FOUNDER DECISIONS ON PRIOR/CURRENT RECOMMENDATIONS — respect these (don't re-pitch rejected; build on accepted/shipped):\n${JSON.stringify(inputs.priorDecisions)}`,
+              `DO NOT RE-SUGGEST — these were explicitly rejected or already shipped. Do not propose these or close variants again unless material new evidence justifies it (say what changed):\n${doNotResuggest || '(none)'}\n\n` +
+              `STILL OPEN — accepted or deferred but not yet shipped. Build on these rather than replacing them with something new that serves the same purpose:\n${stillOpen || '(none)'}\n\n` +
+              `FULL FOUNDER DECISION LOG (all prior/current recommendations + decisions, for context):\n${JSON.stringify(inputs.priorDecisions)}`,
           },
         ],
       },
