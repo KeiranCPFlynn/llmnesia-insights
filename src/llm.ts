@@ -17,7 +17,7 @@ import type { ChatMessage } from './types.js';
 
 export type LlmProvider = 'claude' | 'deepseek' | 'openai';
 
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 // Anthropic requires an explicit max_tokens; use the model's ceiling when the
 // caller doesn't cap it. Claude only bills tokens actually produced.
 const CLAUDE_MAX_TOKENS = 64000;

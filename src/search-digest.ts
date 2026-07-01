@@ -1,6 +1,7 @@
 import './env.js';
 import { createClient } from '@supabase/supabase-js';
-import type { SearchPerformanceDigest, SearchQueryRow, SearchSourceDigest } from './types.js';
+import { getAccurateSiteTotals } from './gsc.js';
+import type { SearchPerformanceDigest, SearchQueryRow, SearchSourceDigest, Site } from './types.js';
 
 /**
  * Combined Google Search Console + Bing Webmaster Tools digest for the weekly
@@ -100,14 +101,34 @@ async function fetchRows(
   endDate: string,
 ): Promise<DatedRow[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  const pageSize = 1000;
+  const page = (from: number) =>
+    supabase
+      .from(table)
+      .select('query, clicks, impressions, position, date')
+      .eq('site_id', siteId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .range(from, from + pageSize - 1);
+
+  // Same 1000-row Supabase/PostgREST cap as elsewhere — a 14-day window
+  // (this week + prior week) for an active site already exceeds it.
+  const { count, error: countError } = await supabase
     .from(table)
-    .select('query, clicks, impressions, position, date')
+    .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
     .gte('date', startDate)
     .lte('date', endDate);
-  if (error) throw new Error(`${table} fetch failed: ${error.message}`);
-  return (data ?? []) as DatedRow[];
+  if (countError) throw new Error(`${table} count failed: ${countError.message}`);
+
+  const pages = Math.ceil((count ?? 0) / pageSize);
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => page(i * pageSize)));
+  const out: DatedRow[] = [];
+  for (const { data, error } of results) {
+    if (error) throw new Error(`${table} fetch failed: ${error.message}`);
+    out.push(...((data ?? []) as DatedRow[]));
+  }
+  return out;
 }
 
 /**
@@ -125,12 +146,13 @@ export async function getCombinedSearchDigest(
   // Resolve the llmnesia site row. Missing = growth not set up → no digest.
   const { data: siteRow, error: siteErr } = await supabase
     .from('sites')
-    .select('id')
+    .select('*')
     .ilike('name', SITE_NAME)
     .maybeSingle();
   if (siteErr) throw new Error(`sites lookup failed: ${siteErr.message}`);
-  const siteId = (siteRow as { id?: string } | null)?.id;
-  if (!siteId) return null;
+  const site = siteRow as Site | null;
+  if (!site) return null;
+  const siteId = site.id;
 
   const priorEnd = new Date(`${weekStart}T00:00:00Z`);
   priorEnd.setUTCDate(priorEnd.getUTCDate() - 1);
@@ -159,8 +181,33 @@ export async function getCombinedSearchDigest(
   // Nothing at all in the current week → omit the block entirely.
   if (gscCurrent.length === 0 && bingCurrent.length === 0) return null;
 
-  const google = gscCurrent.length > 0 ? aggregate(gscCurrent, gscPrior) : null;
+  // gscCurrent/gscPrior come from the query-dimensioned gsc_rows table, so
+  // they're fine for avg_position (an average survives a smaller sample) and
+  // for top_queries (inherently query-level), but summing their clicks/
+  // impressions as the headline Google numbers silently undercounts by ~20x
+  // — GSC anonymizes/drops rows once `query` is a dimension (see
+  // getAccurateSiteTotals). Pull the real totals from a query-free live call
+  // and only take avg_position from the local aggregate.
   const bing = bingCurrent.length > 0 ? aggregate(bingCurrent, bingPrior) : null;
+  let google: SearchSourceDigest | null = null;
+  if (gscCurrent.length > 0) {
+    const localAggregate = aggregate(gscCurrent, gscPrior);
+    const [current, prior] = await Promise.all([
+      getAccurateSiteTotals(site, weekStart, weekEnd),
+      getAccurateSiteTotals(site, priorStartIso, priorEndIso),
+    ]);
+    google = {
+      clicks: current.total_clicks,
+      impressions: current.total_impressions,
+      ctr:
+        current.total_impressions > 0
+          ? Number((current.total_clicks / current.total_impressions).toFixed(4))
+          : 0,
+      avg_position: localAggregate.avg_position,
+      prior_clicks: prior.total_clicks,
+      prior_impressions: prior.total_impressions,
+    };
+  }
 
   const combinedClicks = (google?.clicks ?? 0) + (bing?.clicks ?? 0);
   const combinedImpressions = (google?.impressions ?? 0) + (bing?.impressions ?? 0);

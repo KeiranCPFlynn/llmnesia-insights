@@ -201,7 +201,7 @@ export async function getGrowthContextDigests(
   const supabase = getSupabase();
 
   const [siteScale, bingDigest] = await Promise.all([
-    getSiteScale(site.id, weekStart),
+    getSiteScale(site, weekStart),
     process.env.BING_WEBMASTER_API_KEY
       ? getBingDigest(site.id).catch((e) => {
           console.error('[growth-context] bing digest failed:', e);

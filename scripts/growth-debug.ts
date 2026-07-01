@@ -39,7 +39,7 @@ async function main() {
 
   for (const site of (sites as Site[]) ?? []) {
     console.log(`══ ${site.name} ══ (${site.gsc_property})`);
-    const scale = await getSiteScale(site.id);
+    const scale = await getSiteScale(site);
     console.log(`Scale: ${JSON.stringify(scale)}`);
 
     const opps = await computeOpportunities({ siteId: site.id, weekStart: week });

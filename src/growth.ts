@@ -1,11 +1,13 @@
 import './env.js';
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import { getAccurateSiteTotals } from './gsc.js';
 import type {
   GSCRow,
   GrowthOpportunity,
   GrowthOpportunityEvidence,
   GrowthOpportunityType,
+  Site,
 } from './types.js';
 
 /**
@@ -520,15 +522,30 @@ export function summariseSiteScale(rows: GSCRow[]): SiteScale {
   };
 }
 
-export async function getSiteScale(siteId: string, weekStart?: string): Promise<SiteScale> {
+/**
+ * Site scale for the LLM prompt + UI. Total clicks/impressions/is_small_site
+ * come from a live GSC query with no `query` dimension — GSC anonymizes rows
+ * once `query` is included, which drops the vast majority of clicks for a
+ * site with a long tail of one-off search terms (752 real clicks over 90d
+ * for LLMnesia vs. 36 once `query` is added — see getAccurateSiteTotals).
+ * `unique_queries` still comes from the stored query-level rows since that's
+ * only ever used as a rough "how many distinct things get searched" hint,
+ * not summed into a total that needs to be accurate.
+ */
+export async function getSiteScale(site: Site, weekStart?: string): Promise<SiteScale> {
   const { current } = detectionWindow({ weekStart });
-  const rows = await fetchAllGscRows(
-    siteId,
-    current.startDate,
-    current.endDate,
-    'query, page, clicks, impressions',
-  );
-  return summariseSiteScale(rows);
+  const [totals, rows] = await Promise.all([
+    getAccurateSiteTotals(site, current.startDate, current.endDate),
+    fetchAllGscRows(site.id, current.startDate, current.endDate, 'query'),
+  ]);
+  const queries = new Set(rows.map((r) => r.query));
+  return {
+    total_impressions: totals.total_impressions,
+    total_clicks: totals.total_clicks,
+    unique_queries: queries.size,
+    unique_pages: totals.unique_pages,
+    is_small_site: totals.total_impressions < 500,
+  };
 }
 
 export async function getOpportunities(
@@ -536,14 +553,34 @@ export async function getOpportunities(
   weekStart: string,
 ): Promise<GrowthOpportunity[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  const pageSize = 1000;
+  const page = (from: number) =>
+    supabase
+      .from('growth_opportunities')
+      .select('*')
+      .eq('site_id', siteId)
+      .eq('week_start', weekStart)
+      .order('score', { ascending: false })
+      .range(from, from + pageSize - 1);
+
+  // Same 1000-row cap as gsc_rows — an active site now regularly detects
+  // 1000+ opportunities in one week, so this needs the same pagination fix.
+  const { count, error: countError } = await supabase
     .from('growth_opportunities')
-    .select('*')
+    .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
-    .eq('week_start', weekStart)
-    .order('score', { ascending: false });
-  if (error) throw new Error(`growth_opportunities fetch failed: ${error.message}`);
-  return (data as GrowthOpportunity[]) ?? [];
+    .eq('week_start', weekStart);
+  if (countError) throw new Error(`growth_opportunities count failed: ${countError.message}`);
+
+  const pages = Math.ceil((count ?? 0) / pageSize);
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => page(i * pageSize)));
+
+  const out: GrowthOpportunity[] = [];
+  for (const { data, error } of results) {
+    if (error) throw new Error(`growth_opportunities fetch failed: ${error.message}`);
+    out.push(...((data as unknown as GrowthOpportunity[]) ?? []));
+  }
+  return out;
 }
 
 /**

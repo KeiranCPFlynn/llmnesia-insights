@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getOpportunities } from '../src/growth.js';
 import { calendarWeekStart } from './week.js';
 import type {
   GSCRow,
@@ -356,7 +357,7 @@ export async function getGrowthPageData(
   weekStart: string,
 ): Promise<GrowthPageData | null> {
   const supabase = getClient();
-  const [siteRes, sitesRes, planRes, oppsRes, actionsRes, syncRes, countRes, digest] = await Promise.all([
+  const [siteRes, sitesRes, planRes, opportunities, actionsRes, syncRes, countRes, digest] = await Promise.all([
     supabase.from('sites').select('*').eq('id', siteId).maybeSingle(),
     supabase
       .from('sites')
@@ -369,12 +370,10 @@ export async function getGrowthPageData(
       .eq('site_id', siteId)
       .eq('week_start', weekStart)
       .maybeSingle(),
-    supabase
-      .from('growth_opportunities')
-      .select('*')
-      .eq('site_id', siteId)
-      .eq('week_start', weekStart)
-      .order('score', { ascending: false }),
+    // Same 1000-row cap as gsc_rows applies here — a well-detected week can
+    // exceed 1000 opportunities, so this needs getOpportunities' pagination
+    // rather than a raw unpaginated select.
+    getOpportunities(siteId, weekStart),
     supabase
       .from('growth_actions')
       .select('*')
@@ -400,7 +399,7 @@ export async function getGrowthPageData(
     weekStart,
     allSites: (sitesRes.data as Site[]) ?? [],
     plan: ((planRes.data as { plan: GrowthPlan } | null)?.plan) ?? null,
-    opportunities: (oppsRes.data as GrowthOpportunity[]) ?? [],
+    opportunities,
     actions: (actionsRes.data as GrowthAction[]) ?? [],
     lastSyncedAt: ((syncRes.data as { synced_at: string } | null)?.synced_at) ?? null,
     rowCount: countRes.count ?? 0,

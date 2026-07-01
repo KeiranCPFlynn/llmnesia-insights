@@ -123,7 +123,7 @@ export function WeeklyPlan({
     if (pollTimer.current) clearTimeout(pollTimer.current);
   }
 
-  function runPoll(startMs: number) {
+  function runPoll(startMs: number, previousGeneratedAt: string | null) {
     pollStop.current = false;
     baseOffset.current = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
     setPolling(true);
@@ -133,7 +133,12 @@ export function WeeklyPlan({
         const r = await fetch(`/api/growth/plan?site=${siteId}&week=${weekStart}`);
         if (r.ok) {
           const b = await r.json();
-          if (b.plan) {
+          // A plan existing isn't enough — regenerating an already-planned
+          // week means GET returns the *old* plan on the very first poll
+          // (the background job hasn't saved yet), which used to get treated
+          // as "done" after ~4s and silently show stale data. Only accept it
+          // once generated_at has actually moved past what we started with.
+          if (b.plan && b.plan.generated_at !== previousGeneratedAt) {
             setPlan(b.plan as GrowthPlan);
             localStorage.removeItem(pendingKey(siteId, weekStart));
             setPolling(false);
@@ -165,12 +170,18 @@ export function WeeklyPlan({
       return;
     }
     const raw = localStorage.getItem(pendingKey(siteId, weekStart));
-    const start = raw ? Number(raw) : 0;
-    if (!start || Date.now() - start > STALE_MS) {
-      if (raw) localStorage.removeItem(pendingKey(siteId, weekStart));
+    if (!raw) return;
+    let marker: { start: number; previousGeneratedAt: string | null } | null = null;
+    try {
+      marker = JSON.parse(raw);
+    } catch {
+      marker = null;
+    }
+    if (!marker?.start || Date.now() - marker.start > STALE_MS) {
+      localStorage.removeItem(pendingKey(siteId, weekStart));
       return;
     }
-    runPoll(start);
+    runPoll(marker.start, marker.previousGeneratedAt);
     return () => stopPoll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId, weekStart, initialPlan]);
@@ -182,7 +193,11 @@ export function WeeklyPlan({
     setBusy(true);
     setError(null);
     const start = Date.now();
-    localStorage.setItem(pendingKey(siteId, weekStart), String(start));
+    const previousGeneratedAt = plan?.generated_at ?? null;
+    localStorage.setItem(
+      pendingKey(siteId, weekStart),
+      JSON.stringify({ start, previousGeneratedAt }),
+    );
     try {
       const res = await fetch('/api/growth/plan', {
         method: 'POST',
@@ -198,7 +213,7 @@ export function WeeklyPlan({
         const b = await res.json().catch(() => ({}));
         throw new Error(b.error || `Failed (${res.status})`);
       }
-      runPoll(start);
+      runPoll(start, previousGeneratedAt);
     } catch (e) {
       localStorage.removeItem(pendingKey(siteId, weekStart));
       setError(e instanceof Error ? e.message : 'Failed');

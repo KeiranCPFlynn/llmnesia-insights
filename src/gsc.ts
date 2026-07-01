@@ -72,15 +72,15 @@ interface GSCApiRow {
 }
 
 /**
- * One paginated call to `searchAnalytics.query`. Returns up to 25000 rows of
- * (date, query, page) for the given date range. Iterates `startRow` until
- * fewer than `rowLimit` rows come back.
+ * One paginated call to `searchAnalytics.query` for the given dimensions.
+ * Iterates `startRow` until fewer than `rowLimit` rows come back.
  */
-async function querySearchAnalytics(
+async function querySearchAnalyticsWithDimensions(
   client: OAuth2Client,
   gscProperty: string,
   startDate: string,
   endDate: string,
+  dimensions: string[],
 ): Promise<GSCApiRow[]> {
   const rowLimit = 25000;
   const url = `${GSC_BASE}/sites/${encodeURIComponent(gscProperty)}/searchAnalytics/query`;
@@ -93,7 +93,7 @@ async function querySearchAnalytics(
       data: {
         startDate,
         endDate,
-        dimensions: ['date', 'query', 'page'],
+        dimensions,
         rowLimit,
         startRow,
         // 'all' = include fresh data even if still being aggregated. Default
@@ -107,6 +107,60 @@ async function querySearchAnalytics(
     startRow += rows.length;
   }
   return out;
+}
+
+/** (date, query, page) rows for `gsc_rows` sync — see the `query`-dimension
+ * anonymization caveat on `getAccurateSiteTotals` below; this is fine for
+ * naming specific opportunities but must never be summed for site totals. */
+async function querySearchAnalytics(
+  client: OAuth2Client,
+  gscProperty: string,
+  startDate: string,
+  endDate: string,
+): Promise<GSCApiRow[]> {
+  return querySearchAnalyticsWithDimensions(client, gscProperty, startDate, endDate, [
+    'date',
+    'query',
+    'page',
+  ]);
+}
+
+/**
+ * Site-wide totals (clicks/impressions), queried live from GSC without the
+ * `query` dimension.
+ *
+ * GSC applies privacy anonymization keyed off the `query` dimension: any
+ * (query, ...) row combination rare enough to plausibly identify a searcher
+ * is omitted from the response entirely — not merged into an "(other)"
+ * bucket, just dropped. For a site with a long tail of one-off search
+ * terms, that silently drops the vast majority of clicks/impressions from
+ * any query-dimensioned pull. Verified directly against this property: the
+ * same 90-day window returns 752 clicks/322,606 impressions with
+ * `dimensions: ['page']` (or no dimensions at all — matches the GSC UI) but
+ * only 36 clicks/23,439 impressions with `query` included. `gsc_rows` (used
+ * for opportunity detection, which is inherently query-keyed) is fine for
+ * naming specific query/page opportunities, but it must never be summed to
+ * represent site-wide scale — use this instead for that.
+ */
+export async function getAccurateSiteTotals(
+  site: Site,
+  startDate: string,
+  endDate: string,
+): Promise<{ total_clicks: number; total_impressions: number; unique_pages: number }> {
+  const oauth = getOAuthClient();
+  const rows = await querySearchAnalyticsWithDimensions(oauth, site.gsc_property, startDate, endDate, [
+    'page',
+  ]);
+  const pages = new Set<string>();
+  let clicks = 0;
+  let impressions = 0;
+  for (const r of rows) {
+    const [page] = r.keys ?? [];
+    if (page) pages.add(page);
+    clicks += r.clicks ?? 0;
+    impressions += r.impressions ?? 0;
+  }
+  return { total_clicks: clicks, total_impressions: impressions, unique_pages: pages.size };
 }
 
 function chunk<T>(arr: T[], n: number): T[][] {
