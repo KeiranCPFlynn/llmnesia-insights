@@ -138,5 +138,29 @@ export async function analyseMetrics(
     );
   }
 
-  return { result: toolCall.input as unknown as AnalysisResult, modelUsed };
+  const result = toolCall.input as unknown as AnalysisResult;
+  assertValidAnalysisResult(result, resolved);
+  return { result, modelUsed };
+}
+
+/**
+ * The tool's JSON Schema `required` list is advisory only — providers can and
+ * do return a syntactically valid tool call missing a required field (seen in
+ * practice on a sparse week-to-date run). Several of these fields are NOT NULL
+ * columns in `weekly_insights`, so an unvalidated gap here surfaces later as an
+ * opaque Postgres constraint violation instead of a clear, actionable error.
+ * Validate at this boundary — the LLM response is untrusted external input.
+ */
+function assertValidAnalysisResult(result: AnalysisResult, provider: LlmProvider): void {
+  const missing: string[] = [];
+  if (typeof result?.summary !== 'string' || !result.summary.trim()) missing.push('summary');
+  if (!Array.isArray(result?.findings)) missing.push('findings');
+  if (!Array.isArray(result?.action_items)) missing.push('action_items');
+  if (!Array.isArray(result?.open_threads)) missing.push('open_threads');
+  if (!Array.isArray(result?.resolved_threads)) missing.push('resolved_threads');
+  if (missing.length) {
+    throw new Error(
+      `${provider} returned an incomplete submit_analysis call — missing/invalid field(s): ${missing.join(', ')}. Not saving; try re-running (a different provider may help).`,
+    );
+  }
 }
