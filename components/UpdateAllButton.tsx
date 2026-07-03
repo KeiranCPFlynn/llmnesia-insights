@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useProvider } from './ProviderSelect';
+import { ProviderSelect, useProvider } from './ProviderSelect';
 
 /** ISO Monday of the current calendar week, in UTC — matches src getCurrentWeek(). */
 function currentMonday(): string {
@@ -35,7 +35,12 @@ const PHASES: { key: Phase; label: string }[] = [
  */
 export function UpdateAllButton() {
   const router = useRouter();
-  const [provider] = useProvider();
+  // Shared with the Insights Toolbar — drives the insights + growth-plan calls.
+  const [provider, setProvider] = useProvider();
+  // Strategy remembers its own preference separately (StrategyPanel defaults it
+  // to GPT-5.5) — mirror that here so "Update all" matches what the Strategy
+  // tab would actually generate on its own.
+  const [strategyProvider] = useProvider({ storageKey: 'llm-provider-strategy', fallback: 'openai' });
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [states, setStates] = useState<Record<Phase, PhaseState>>({
@@ -125,13 +130,13 @@ export function UpdateAllButton() {
           fetch('/api/growth/plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ siteId: s.id, weekStart: week }),
+            body: JSON.stringify({ siteId: s.id, weekStart: week, provider }),
           }),
         ),
         fetch('/api/strategy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ week }),
+          body: JSON.stringify({ week, provider: strategyProvider }),
         }),
       ]);
       set('downstream', 'done');
@@ -158,6 +163,12 @@ export function UpdateAllButton() {
 
   return (
     <div className="flex flex-col gap-1.5">
+      <ProviderSelect
+        provider={provider}
+        onChange={setProvider}
+        disabled={running}
+        title="Model for insights + growth plan (Strategy uses its own saved choice)"
+      />
       {!confirming ? (
         <button
           onClick={() => (running ? undefined : setConfirming(true))}

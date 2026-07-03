@@ -12,12 +12,17 @@ export const PROVIDER_LABEL: Record<Provider, string> = {
 
 const ALL: Provider[] = ['claude', 'deepseek', 'openai'];
 
+/** Fired on every `set()` so same-tab instances sharing a key stay in sync ('storage' only fires cross-tab). */
+const PROVIDER_CHANGE_EVENT = 'llm-provider-change';
+
 /**
  * Remembers the chosen model in localStorage so selectors stay in sync and the
  * choice survives reloads. Starts on `fallback` to avoid an SSR/CSR hydration
  * mismatch, then reads the stored value. The analyst surfaces share the default
  * key; the strategist uses its own key so it can default to GPT-5.5
- * independently.
+ * independently. Multiple instances on the same page with the same key (e.g.
+ * the Insights Toolbar and the sidebar's "Update all" picker) stay in sync via
+ * a same-tab custom event, not just localStorage.
  */
 export function useProvider(opts?: {
   storageKey?: string;
@@ -30,11 +35,19 @@ export function useProvider(opts?: {
   useEffect(() => {
     const saved = window.localStorage.getItem(key);
     if (saved && (ALL as string[]).includes(saved)) setProvider(saved as Provider);
+
+    function onChange(e: Event) {
+      const detail = (e as CustomEvent<{ key: string; provider: Provider }>).detail;
+      if (detail?.key === key) setProvider(detail.provider);
+    }
+    window.addEventListener(PROVIDER_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(PROVIDER_CHANGE_EVENT, onChange);
   }, [key]);
 
   const set = (p: Provider) => {
     setProvider(p);
     window.localStorage.setItem(key, p);
+    window.dispatchEvent(new CustomEvent(PROVIDER_CHANGE_EVENT, { detail: { key, provider: p } }));
   };
 
   return [provider, set];
