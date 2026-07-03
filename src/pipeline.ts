@@ -41,6 +41,30 @@ export function getWeekFromArg(weekStartArg: string): { weekStart: string; weekE
   return { weekStart: formatDate(start), weekEnd: formatDate(end) };
 }
 
+/**
+ * The CURRENT, in-progress calendar week — Monday of this week through today.
+ * Used by the mid-week "Update all" refresh so the founder can watch the week
+ * fill in day by day. `weekStart` is this week's Monday (so it upserts into the
+ * same row Monday's completed-week cron will later finalize); `weekEnd` is
+ * today, giving a week-to-date data window. `daysElapsed` (1–7) drives the
+ * partial-week framing in the analysis so incomplete totals aren't misread.
+ */
+export function getCurrentWeek(now: Date = new Date()): {
+  weekStart: string;
+  weekEnd: string;
+  daysElapsed: number;
+} {
+  const day = now.getUTCDay(); // 0=Sun … 6=Sat
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(now);
+  monday.setUTCDate(now.getUTCDate() - daysSinceMonday);
+  return {
+    weekStart: formatDate(monday),
+    weekEnd: formatDate(now),
+    daysElapsed: daysSinceMonday + 1,
+  };
+}
+
 export interface PipelineResult {
   weekStart: string;
   weekEnd: string;
@@ -60,17 +84,30 @@ export interface PipelineResult {
  */
 export async function runPipeline(opts: {
   weekStart?: string | null;
+  /**
+   * 'complete' (default) analyses the most recently finished Mon–Sun week —
+   * the weekly cron and normal "Run analysis now". 'current' analyses the
+   * in-progress week to date, for mid-week "Update all" refreshes. An explicit
+   * `weekStart` always wins and is treated as a completed week.
+   */
+  mode?: 'complete' | 'current';
   dryRun?: boolean;
   log?: (msg: string) => void;
   provider?: LlmProvider | string | null;
   generationContext?: string | null;
 }): Promise<PipelineResult> {
   const log = opts.log ?? ((m: string) => console.log(m));
+  const current = !opts.weekStart && opts.mode === 'current' ? getCurrentWeek() : null;
   const { weekStart, weekEnd } = opts.weekStart
     ? getWeekFromArg(opts.weekStart)
-    : getDefaultWeek();
+    : current ?? getDefaultWeek();
+  const partial = current
+    ? { as_of: current.weekEnd, days_elapsed: current.daysElapsed }
+    : null;
 
-  log(`LLMnesia insights — ${weekStart} → ${weekEnd}${opts.dryRun ? ' [DRY RUN]' : ''}`);
+  log(
+    `LLMnesia insights — ${weekStart} → ${weekEnd}${partial ? ` [WEEK-TO-DATE · day ${partial.days_elapsed}/7]` : ''}${opts.dryRun ? ' [DRY RUN]' : ''}`,
+  );
 
   const [posthogMetrics, ga4, history, existingRow, searchPerformance] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
@@ -88,6 +125,7 @@ export async function runPipeline(opts: {
     ...posthogMetrics,
     ga4,
     ...(searchPerformance ? { search_performance: searchPerformance } : {}),
+    ...(partial ? { partial } : {}),
   };
   const trimmedContext = opts.generationContext?.trim();
   const generationCorrection: Correction | null = trimmedContext
@@ -110,6 +148,7 @@ export async function runPipeline(opts: {
     history,
     corrections,
     opts.provider,
+    partial,
   );
 
   if (opts.dryRun) {

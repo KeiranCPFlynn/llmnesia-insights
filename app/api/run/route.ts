@@ -16,21 +16,27 @@ async function run(req: Request) {
     let provider: string | undefined;
     let weekStart: string | undefined;
     let generationContext: string | undefined;
+    // 'current' = mid-week week-to-date refresh ("Update all"); default
+    // 'complete' = the finished week (cron + normal "Run analysis now").
+    let mode: 'complete' | 'current' | undefined;
     if (req.method === 'POST') {
       const body = (await req.json().catch(() => ({}))) as {
         provider?: string;
         weekStart?: string;
         generationContext?: string;
+        mode?: 'complete' | 'current';
       };
       provider = body.provider;
       weekStart = body.weekStart;
       generationContext = body.generationContext;
+      mode = body.mode;
     }
     const result = await runPipeline({
       log: (m) => console.log(`[run] ${m}`),
       provider,
       weekStart,
       generationContext,
+      mode,
     });
     return NextResponse.json({
       ok: true,

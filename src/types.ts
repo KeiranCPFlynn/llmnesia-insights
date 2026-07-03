@@ -68,6 +68,13 @@ export interface MetricsSnapshot {
    * up; the pipeline omits it rather than failing.
    */
   search_performance?: SearchPerformanceDigest;
+  /**
+   * Present only on a mid-week "week-to-date" run (the "Update all" button).
+   * Marks the snapshot as an in-progress partial week so the analysis frames it
+   * by run-rate rather than comparing incomplete totals to prior full weeks, and
+   * the dashboard can badge it. Absent on normal completed-week runs.
+   */
+  partial?: { as_of: string; days_elapsed: number };
 }
 
 /** One search engine's aggregate for the insights week, with prior-week comparison. */
@@ -304,8 +311,8 @@ export interface HistoricalInsight {
 
 /**
  * A property the planner tracks. Sites are configured in Supabase (the `sites`
- * table) rather than in code so adding LunaCradle / a new site is just a row
- * insert. `gsc_property` is the verified Search Console property string
+ * table) rather than in code so adding a new site is just a row insert.
+ * `gsc_property` is the verified Search Console property string
  * (e.g. `sc-domain:llmnesia.com` for a Domain property, or
  * `https://llmnesia.com/` for a URL-prefix property).
  */
@@ -420,6 +427,14 @@ export interface GrowthOpportunity {
   evidence: GrowthOpportunityEvidence;
   /** 0–100 transparent weighted score. Higher = more leverage. */
   score: number;
+  /**
+   * Which search engine's rows this was detected from. Absent on rows
+   * written before Bing detection existed — treat missing as 'google'.
+   * Bing rows carry no page dimension (GetQueryStats is query-only), so
+   * `declining`/`proven_expander` (page-keyed) never fire for source
+   * 'bing', and `target_page` is typically null.
+   */
+  source?: 'google' | 'bing';
   created_at?: string;
 }
 

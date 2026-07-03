@@ -84,11 +84,12 @@ export async function analyseMetrics(
   history: HistoricalInsight[],
   corrections: Correction[] = [],
   provider?: LlmProvider | string | null,
+  partial?: { as_of: string; days_elapsed: number } | null,
 ): Promise<{ result: AnalysisResult; modelUsed: string }> {
   const resolved = resolveProvider(provider ?? undefined);
 
   console.log(
-    `Running analysis via ${resolved}…${corrections.length ? ` (${corrections.length} caveat(s) applied)` : ''}`,
+    `Running analysis via ${resolved}…${partial ? ` [week-to-date, day ${partial.days_elapsed}/7]` : ''}${corrections.length ? ` (${corrections.length} caveat(s) applied)` : ''}`,
   );
 
   const caveats = corrections.filter((c) => c.kind !== 'context');
@@ -102,6 +103,10 @@ export async function analyseMetrics(
     ? `\n\nFOUNDER CONTEXT — real-world facts the data doesn't capture. Treat as AUTHORITATIVE. Use them to explain movements (don't attribute a change to a user-behaviour cause a context note already accounts for) and factor them into your conclusions:\n${contexts
         .map((c) => `- [${c.affected_metric}] ${c.note}`)
         .join('\n')}`
+    : '';
+
+  const partialBlock = partial
+    ? `\n\n⚠️ WEEK-TO-DATE SNAPSHOT — this is an IN-PROGRESS week: only ${partial.days_elapsed} of 7 days have elapsed (Monday through ${partial.as_of}). The cumulative counts below (installs, searches, WAU, sessions, impressions, clicks, etc.) are PARTIAL and are NOT comparable to the completed prior weeks in the history — they are lower purely because the week isn't over, not because anything regressed. Judge this week by RUN-RATE and TRAJECTORY, not cumulative totals: is it on pace to match/beat recent weeks (roughly, a full week ≈ this-far ÷ ${partial.days_elapsed} × 7)? Do NOT raise a 'concern' or 'critical' finding solely because a total is below a finished week. Rates (activation %, CTR, retention %, zero-result %) are still meaningful and comparable. Make the headline explicitly a mid-week / on-pace read, not a final verdict. Rolling W1/W4 retention windows may also be incomplete this early — note that rather than over-reading them.`
     : '';
 
   const { text, toolCall, modelUsed } = await callLlm({
@@ -120,7 +125,7 @@ export async function analyseMetrics(
           // but ~20-30% fewer tokens than 2-space-indented data.
           { text: `PREVIOUS 6 WEEKS OF ANALYSIS:\n${JSON.stringify(history)}`, cache: true },
           {
-            text: `THIS WEEK'S METRICS:\n${JSON.stringify(metrics)}${caveatBlock}${contextBlock}`,
+            text: `THIS WEEK'S METRICS:\n${JSON.stringify(metrics)}${partialBlock}${caveatBlock}${contextBlock}`,
           },
         ],
       },

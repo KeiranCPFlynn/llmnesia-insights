@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { formatWeek } from '../lib/format';
 import { calendarWeekStart } from '../lib/week';
 import { PageNav } from './PageNav';
+import { UpdateAllButton } from './UpdateAllButton';
 
 export type SectionLink = {
   href: string;
@@ -49,6 +50,18 @@ export function AppShell({
           <PageNav week={week} variant="rail" />
         </div>
 
+        <div className="mt-6 border-t border-white/[0.07] pt-5">
+          <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-600">
+            Mid-week refresh
+          </div>
+          <div className="px-1">
+            <UpdateAllButton />
+          </div>
+          <p className="mt-2 px-3 text-[11px] leading-relaxed text-neutral-600">
+            Updates all three workspaces for the current week-to-date. Safe to run daily.
+          </p>
+        </div>
+
         <div className="mt-auto rounded-xl border border-white/[0.07] bg-white/[0.025] p-3.5">
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-600">
             Active period
@@ -71,6 +84,9 @@ export function AppShell({
             <span className="text-sm font-semibold text-neutral-100">LLMnesia workspace</span>
           </div>
           <PageNav week={week} variant="tabs" />
+          <div className="mt-3">
+            <UpdateAllButton />
+          </div>
         </div>
 
         <main className="mx-auto w-full max-w-[86rem] px-4 pb-16 pt-6 sm:px-6 lg:px-8 lg:pt-8">

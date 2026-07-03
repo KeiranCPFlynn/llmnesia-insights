@@ -149,8 +149,13 @@ export default async function Page({
 
       {/* Hero — the one thing to take away */}
       <section id="overview" className="scroll-mt-36 mb-8 rounded-xl border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(23,23,23,0.92),rgba(6,78,59,0.18))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
-        <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+        <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
           Current readout
+          {m.partial && (
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/12 px-2 py-0.5 text-amber-200">
+              Week-to-date · day {m.partial.days_elapsed}/7
+            </span>
+          )}
         </div>
         <p className="max-w-4xl text-xl font-semibold leading-relaxed text-neutral-50">
           {headline}
