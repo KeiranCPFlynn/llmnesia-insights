@@ -81,6 +81,64 @@ async function fetchQueryStats(apiKey: string, siteUrl: string): Promise<BingApi
   return [];
 }
 
+interface BingTrafficApiRow {
+  Clicks?: number;
+  Impressions?: number;
+  Date?: string;
+}
+
+/**
+ * `GetRankAndTrafficStats` — site-level daily Clicks/Impressions with no
+ * query breakdown (no `AvgClickPosition`/`AvgImpressionPosition` either).
+ *
+ * `GetQueryStats` only surfaces a subset of queries (apparently whatever
+ * Bing considers worth breaking out per-query), so summing its rows
+ * silently undercounts site-wide impressions by an order of magnitude —
+ * verified directly against this property: the same history totals 2,656
+ * impressions via `GetQueryStats` but 33,276 via this endpoint, which
+ * matches the Bing Webmaster Tools dashboard. Same class of bug as GSC's
+ * query-dimension anonymization (see `getAccurateSiteTotals` in gsc.ts) —
+ * use this for site-wide totals, and `GetQueryStats`/`bing_rows` only for
+ * per-query drill-down.
+ */
+async function fetchRankAndTrafficStats(apiKey: string, siteUrl: string): Promise<BingTrafficApiRow[]> {
+  const params = new URLSearchParams({ apikey: apiKey, siteUrl });
+  const res = await fetch(`${BING_API_BASE}/GetRankAndTrafficStats?${params}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Bing API ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const json = await res.json() as { d?: BingTrafficApiRow[] | { RankAndTrafficStats?: BingTrafficApiRow[] } };
+  const d = json?.d;
+  if (Array.isArray(d)) return d;
+  if (d && 'RankAndTrafficStats' in d) return (d as { RankAndTrafficStats?: BingTrafficApiRow[] }).RankAndTrafficStats ?? [];
+  return [];
+}
+
+/**
+ * Site-wide Bing totals for a date window, queried live (no persistence) —
+ * see `fetchRankAndTrafficStats` for why this doesn't come from `bing_rows`.
+ */
+export async function getAccurateBingTotals(
+  site: Site,
+  startDate: string,
+  endDate: string,
+): Promise<{ total_clicks: number; total_impressions: number }> {
+  const apiKey = getApiKey();
+  const siteUrl = site.bing_site_url ?? site.root_url;
+  const rows = await fetchRankAndTrafficStats(apiKey, siteUrl);
+  let clicks = 0;
+  let impressions = 0;
+  for (const r of rows) {
+    if (!r.Date) continue;
+    const date = parseWcfDate(r.Date);
+    if (date < startDate || date > endDate) continue;
+    clicks += r.Clicks ?? 0;
+    impressions += r.Impressions ?? 0;
+  }
+  return { total_clicks: clicks, total_impressions: impressions };
+}
+
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -150,10 +208,11 @@ export interface BingDigest {
  * digest suitable for feeding to the LLM. Returns null when no data exists yet.
  */
 export async function getBingDigest(
-  siteId: string,
+  site: Site,
   windowDays = 90,
   asOf: Date = new Date(),
 ): Promise<BingDigest | null> {
+  const siteId = site.id;
   const supabase = getSupabase();
   const endDate = new Date(asOf);
   endDate.setUTCDate(endDate.getUTCDate() - 1);
@@ -209,16 +268,24 @@ export async function getBingDigest(
     }))
     .sort((a, b) => b.clicks - a.clicks);
 
-  const totalClicks = aggregated.reduce((s, r) => s + r.clicks, 0);
-  const totalImpressions = aggregated.reduce((s, r) => s + r.impressions, 0);
   const avgPosition =
     aggregated.length > 0
       ? Number((aggregated.reduce((s, r) => s + r.position, 0) / aggregated.length).toFixed(1))
       : 0;
 
+  // bing_rows only carries whatever subset of queries GetQueryStats chose to
+  // break out, so summing it undercounts site-wide totals — see
+  // fetchRankAndTrafficStats. Pull the real totals from the query-free
+  // endpoint; avg_position and top_queries stay query-level/directional.
+  const { total_clicks, total_impressions } = await getAccurateBingTotals(
+    site,
+    isoDate(startDate),
+    isoDate(endDate),
+  );
+
   return {
-    total_clicks: totalClicks,
-    total_impressions: totalImpressions,
+    total_clicks,
+    total_impressions,
     avg_position: avgPosition,
     top_queries: aggregated.slice(0, 20),
     window_days: windowDays,

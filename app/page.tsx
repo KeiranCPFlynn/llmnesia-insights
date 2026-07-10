@@ -7,7 +7,9 @@ import { AppShell } from '../components/AppShell';
 import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
 import { ChatPanel } from '../components/ChatPanel';
+import { KnownFacts } from '../components/KnownFacts';
 import { getDefaultWeek } from '../src/pipeline.js';
+import { getStandingCaveats } from '../src/supabase.js';
 import type { DataSource } from '../src/types.js';
 
 export const dynamic = 'force-dynamic';
@@ -86,6 +88,10 @@ export default async function Page({
   const insights = await getAllInsights();
   if (insights.length === 0) return <Empty />;
 
+  // Persistent "known facts" — fail-soft so a pre-DDL / missing table never
+  // takes down the whole dashboard.
+  const standingCaveats = await getStandingCaveats(false).catch(() => []);
+
   const { week, period } = await searchParams;
   const { weeks, current, prev } = selectWeek(insights, week, period);
   const latestRunWeek = getDefaultWeek();
@@ -140,6 +146,7 @@ export default async function Page({
       sections={[
         { href: '#overview', label: 'Overview' },
         { href: '#discuss', label: 'Discuss' },
+        { href: '#known-facts', label: 'Known facts' },
         { href: '#attention', label: 'Needs attention' },
         { href: '#metrics', label: 'Metrics & trends' },
         ...(m.search_performance ? [{ href: '#search', label: 'Search visibility' }] : []),
@@ -238,6 +245,10 @@ export default async function Page({
           initialChat={current.chat ?? []}
         />
       </section>
+
+      {/* Known facts — persistent caveats/context applied to every week's
+          analysis, so confirmed non-issues stop getting re-flagged. */}
+      <KnownFacts week={current.week_start} initial={standingCaveats} />
 
       {/* Needs attention — concern/critical findings + high-priority actions only */}
       <section id="attention" className="scroll-mt-36 mb-8">

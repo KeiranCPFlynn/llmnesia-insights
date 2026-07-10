@@ -136,6 +136,11 @@ function OpportunityCard({
             <code className="rounded bg-neutral-900 px-1 text-[12px]">{pageOnlyDomain(opportunity.target_page)}</code>
           </span>
         )}
+        {opportunity.source === 'bing' && (
+          <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] text-cyan-300">
+            Bing
+          </span>
+        )}
         <span className="ml-auto rounded-full border border-neutral-700 bg-neutral-900/60 px-2 py-0.5 text-[11px] text-neutral-300">
           score {opportunity.score}
         </span>

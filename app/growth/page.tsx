@@ -185,6 +185,7 @@ export default async function GrowthPage({
           site={data.site}
           lastSyncedAt={data.lastSyncedAt}
           rowCount={data.rowCount}
+          bingRowCount={data.bingRowCount}
         />
       </section>
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import type {
   AnalysisResult,
@@ -5,6 +6,7 @@ import type {
   Correction,
   HistoricalInsight,
   Revision,
+  StandingCaveat,
   StrategyDecision,
   StrategyRecommendation,
   StrategyResult,
@@ -139,6 +141,60 @@ export async function saveChat(weekStart: string, chat: ChatMessage[]): Promise<
     .eq('week_start', weekStart);
 
   if (error) throw new Error(`Supabase update failed: ${error.message}`);
+}
+
+// --- Standing caveats (persistent, cross-week "known facts") ---
+
+/**
+ * Persistent caveats/context notes injected into EVERY week's analysis.
+ * `activeOnly` (the default) is what the pipeline uses; the management panel
+ * passes `false` to also list retired ones.
+ */
+export async function getStandingCaveats(activeOnly = true): Promise<StandingCaveat[]> {
+  const supabase = getClient();
+  let query = supabase
+    .from('standing_caveats')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (activeOnly) query = query.eq('active', true);
+  const { data, error } = await query;
+  if (error) throw new Error(`standing_caveats fetch failed: ${error.message}`);
+  return (data as StandingCaveat[]) ?? [];
+}
+
+export async function addStandingCaveat(
+  input: Pick<StandingCaveat, 'kind' | 'affected_metric' | 'note'>,
+): Promise<StandingCaveat> {
+  const supabase = getClient();
+  const caveat: StandingCaveat = {
+    id: randomUUID(),
+    created_at: new Date().toISOString(),
+    kind: input.kind === 'context' ? 'context' : 'caveat',
+    affected_metric: input.affected_metric,
+    note: input.note,
+    active: true,
+  };
+  const { error } = await supabase.from('standing_caveats').insert(caveat);
+  if (error) throw new Error(`standing_caveats insert failed: ${error.message}`);
+  return caveat;
+}
+
+export async function updateStandingCaveat(
+  id: string,
+  patch: Partial<Pick<StandingCaveat, 'kind' | 'affected_metric' | 'note' | 'active'>>,
+): Promise<void> {
+  const supabase = getClient();
+  const { error } = await supabase
+    .from('standing_caveats')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw new Error(`standing_caveats update failed: ${error.message}`);
+}
+
+export async function deleteStandingCaveat(id: string): Promise<void> {
+  const supabase = getClient();
+  const { error } = await supabase.from('standing_caveats').delete().eq('id', id);
+  if (error) throw new Error(`standing_caveats delete failed: ${error.message}`);
 }
 
 // --- PM / revenue strategist ---

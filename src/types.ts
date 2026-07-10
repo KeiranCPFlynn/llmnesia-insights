@@ -160,6 +160,27 @@ export interface Correction {
 }
 
 /**
+ * A PERSISTENT, cross-week caveat/context note — the founder's "known facts"
+ * store. Unlike a `Correction` (scoped to one week's row), an active standing
+ * caveat is injected into EVERY week's analysis so a confirmed non-issue (e.g.
+ * "the PostHog vs GA4 install gap is expected, not a bug") is never re-flagged
+ * from scratch. Shares the `Correction` shape so it flows through the same
+ * caveat/context prompt machinery unchanged; `active` lets one be retired
+ * without losing the record.
+ */
+export interface StandingCaveat {
+  id: string;
+  created_at: string;
+  updated_at?: string;
+  /** 'caveat' = this data is wrong/skewed; 'context' = real-world info the data can't show. */
+  kind: 'caveat' | 'context';
+  affected_metric: string;
+  note: string;
+  /** Inactive caveats are kept for the record but not injected into analysis. */
+  active: boolean;
+}
+
+/**
  * A point-in-time snapshot of the report taken *before* a correction
  * regenerated it. Append-only history so the pre-change analysis is never
  * lost — the audit trail for chat-driven data changes.

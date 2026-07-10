@@ -6,15 +6,37 @@ import {
   getHistoryBefore,
   getInsightByWeek,
   getRecentInsights,
+  getStandingCaveats,
   insertInsight,
   updateAnalysis,
 } from './supabase.js';
 import { analyseMetrics } from './analyse.js';
 import type { LlmProvider } from './llm.js';
-import type { AnalysisResult, Correction, MetricsSnapshot, WeeklyInsight } from './types.js';
+import type {
+  AnalysisResult,
+  Correction,
+  MetricsSnapshot,
+  StandingCaveat,
+  WeeklyInsight,
+} from './types.js';
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Standing caveats share the `Correction` shape, so they slot straight into
+ * the analysis prompt's existing caveat/context machinery — this just drops
+ * the store-only fields (`active`, `updated_at`) the analyser doesn't read.
+ */
+function standingCaveatsAsCorrections(caveats: StandingCaveat[]): Correction[] {
+  return caveats.map((c) => ({
+    id: c.id,
+    created_at: c.created_at,
+    kind: c.kind,
+    affected_metric: c.affected_metric,
+    note: c.note,
+  }));
 }
 
 /**
@@ -109,18 +131,26 @@ export async function runPipeline(opts: {
     `LLMnesia insights — ${weekStart} → ${weekEnd}${partial ? ` [WEEK-TO-DATE · day ${partial.days_elapsed}/7]` : ''}${opts.dryRun ? ' [DRY RUN]' : ''}`,
   );
 
-  const [posthogMetrics, ga4, history, existingRow, searchPerformance] = await Promise.all([
-    collectMetrics(weekStart, weekEnd),
-    collectGA4Metrics(weekStart, weekEnd),
-    getRecentInsights(6),
-    getInsightByWeek(weekStart),
-    // Top-of-funnel search visibility (Google + Bing). Fail-soft: a missing
-    // growth table or unconfigured search source must never break the run.
-    getCombinedSearchDigest(weekStart, weekEnd).catch((e) => {
-      log(`Search digest skipped: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
-    }),
-  ]);
+  const [posthogMetrics, ga4, history, existingRow, searchPerformance, standingCaveats] =
+    await Promise.all([
+      collectMetrics(weekStart, weekEnd),
+      collectGA4Metrics(weekStart, weekEnd),
+      getRecentInsights(6),
+      getInsightByWeek(weekStart),
+      // Top-of-funnel search visibility (Google + Bing). Fail-soft: a missing
+      // growth table or unconfigured search source must never break the run.
+      getCombinedSearchDigest(weekStart, weekEnd).catch((e) => {
+        log(`Search digest skipped: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }),
+      // Persistent "known facts" the founder has confirmed once and should not
+      // be re-flagged every week. Fail-soft: if the table doesn't exist yet
+      // (pre-DDL) the weekly run must still complete.
+      getStandingCaveats().catch((e) => {
+        log(`Standing caveats skipped: ${e instanceof Error ? e.message : String(e)}`);
+        return [];
+      }),
+    ]);
   const metrics = {
     ...posthogMetrics,
     ga4,
@@ -138,15 +168,20 @@ export async function runPipeline(opts: {
         source_excerpt: trimmedContext.slice(0, 280),
       }
     : null;
+  // Per-week corrections are the only ones persisted onto this row. Standing
+  // caveats are cross-week and live in their own table, so they're merged into
+  // the analysis input each run but never copied onto the week's `corrections`
+  // (that would duplicate them onto every row and let edits/removals drift).
   const corrections = [
     ...(existingRow?.corrections ?? []),
     ...(generationCorrection ? [generationCorrection] : []),
   ];
+  const analysisCorrections = [...standingCaveatsAsCorrections(standingCaveats), ...corrections];
 
   const { result: analysis, modelUsed } = await analyseMetrics(
     metrics,
     history,
-    corrections,
+    analysisCorrections,
     opts.provider,
     partial,
   );
@@ -187,11 +222,14 @@ export async function reanalyseWeek(
   const row = await getInsightByWeek(weekStart);
   if (!row) throw new Error(`No insight for week ${weekStart}`);
 
-  const history = await getHistoryBefore(weekStart, 6);
+  const [history, standingCaveats] = await Promise.all([
+    getHistoryBefore(weekStart, 6),
+    getStandingCaveats().catch(() => [] as StandingCaveat[]),
+  ]);
   const { result, modelUsed } = await analyseMetrics(
     row.metrics_snapshot,
     history,
-    row.corrections ?? [],
+    [...standingCaveatsAsCorrections(standingCaveats), ...(row.corrections ?? [])],
     provider,
   );
 

@@ -168,6 +168,7 @@ function digestOpportunities(opportunities: GrowthOpportunity[], topN = 25) {
   return opportunities.slice(0, topN).map((o) => ({
     id: o.id,
     type: o.type,
+    source: o.source ?? 'google',
     target_query: o.target_query,
     target_page: o.target_page,
     score: o.score,
@@ -203,7 +204,7 @@ export async function getGrowthContextDigests(
   const [siteScale, bingDigest] = await Promise.all([
     getSiteScale(site, weekStart),
     process.env.BING_WEBMASTER_API_KEY
-      ? getBingDigest(site.id).catch((e) => {
+      ? getBingDigest(site).catch((e) => {
           console.error('[growth-context] bing digest failed:', e);
           return null;
         })

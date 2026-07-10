@@ -21,10 +21,12 @@ export function GrowthSyncToolbar({
   site,
   lastSyncedAt,
   rowCount,
+  bingRowCount,
 }: {
   site: Site;
   lastSyncedAt: string | null;
   rowCount: number;
+  bingRowCount: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -86,12 +88,12 @@ export function GrowthSyncToolbar({
     if (stableTicks.current >= STABLE_POLLS_TO_FINISH) {
       setSyncing(false);
       setStatus(
-        rowCount > 0
-          ? `Sync complete — ${rowCount.toLocaleString('en-GB')} rows in DB.`
-          : 'Sync finished. No rows returned — check the GSC property string in the sites table.',
+        rowCount > 0 || bingRowCount > 0
+          ? `Sync complete — ${rowCount.toLocaleString('en-GB')} GSC rows, ${bingRowCount.toLocaleString('en-GB')} Bing rows in DB.`
+          : 'Sync finished. No rows returned — check the GSC property string / Bing site URL in the sites table.',
       );
     }
-  }, [lastSyncedAt, syncing, rowCount]);
+  }, [lastSyncedAt, syncing, rowCount, bingRowCount]);
 
   async function sync(mode: 'auto' | 'backfill' | 'delta') {
     if (busy || syncing) return;
@@ -156,15 +158,15 @@ export function GrowthSyncToolbar({
     <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.16)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm">
-          <div className="font-semibold text-neutral-200">{site.name} — Google Search Console</div>
+          <div className="font-semibold text-neutral-200">{site.name} — Google Search Console + Bing</div>
           <div className="text-xs text-neutral-500">
-            {rowCount > 0
-              ? `${rowCount.toLocaleString('en-GB')} rows · last synced ${synced}`
-              : `No data yet — run a backfill to pull the last 90 days from GSC.`}
+            {rowCount > 0 || bingRowCount > 0
+              ? `${rowCount.toLocaleString('en-GB')} GSC rows · ${bingRowCount.toLocaleString('en-GB')} Bing rows · last synced ${synced}`
+              : `No data yet — run a backfill to pull the last 90 days from GSC + Bing.`}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {rowCount === 0 && !syncing ? (
+          {rowCount === 0 && bingRowCount === 0 && !syncing ? (
             <button
               onClick={() => sync('backfill')}
               disabled={busy || syncing}
@@ -199,7 +201,9 @@ export function GrowthSyncToolbar({
             <div className="h-full w-1/3 animate-[loader_1.4s_ease-in-out_infinite] rounded-full bg-emerald-500" />
           </div>
           <p className="mt-1 text-xs text-neutral-500">
-            {rowCount > 0 ? `${rowCount.toLocaleString('en-GB')} rows so far` : 'Waiting for first rows'}
+            {rowCount > 0 || bingRowCount > 0
+              ? `${rowCount.toLocaleString('en-GB')} GSC / ${bingRowCount.toLocaleString('en-GB')} Bing rows so far`
+              : 'Waiting for first rows'}
             {` · ${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, '0')}`}
           </p>
         </div>

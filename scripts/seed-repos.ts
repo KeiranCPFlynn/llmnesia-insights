@@ -21,7 +21,6 @@ async function main() {
 
   const updates = [
     { name: 'LLMnesia', repo: 'llmnesia-site njs' },
-    { name: 'LunaCradle', repo: 'lunacradle' },
   ];
 
   for (const u of updates) {

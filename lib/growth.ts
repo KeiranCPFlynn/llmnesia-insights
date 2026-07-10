@@ -127,10 +127,12 @@ export interface GrowthPageData {
   plan: GrowthPlan | null;
   opportunities: GrowthOpportunity[];
   actions: GrowthAction[];
-  /** Most recent gsc_rows.synced_at for this site (null if never synced). */
+  /** Most recent synced_at across gsc_rows and bing_rows (null if never synced). */
   lastSyncedAt: string | null;
   /** Total gsc_rows for this site (0 = never synced). */
   rowCount: number;
+  /** Total bing_rows for this site (0 = never synced, or Bing not configured). */
+  bingRowCount: number;
   gscDigest: GscDigest;
 }
 
@@ -357,42 +359,60 @@ export async function getGrowthPageData(
   weekStart: string,
 ): Promise<GrowthPageData | null> {
   const supabase = getClient();
-  const [siteRes, sitesRes, planRes, opportunities, actionsRes, syncRes, countRes, digest] = await Promise.all([
-    supabase.from('sites').select('*').eq('id', siteId).maybeSingle(),
-    supabase
-      .from('sites')
-      .select('*')
-      .eq('enabled', true)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('growth_plans')
-      .select('plan')
-      .eq('site_id', siteId)
-      .eq('week_start', weekStart)
-      .maybeSingle(),
-    // Same 1000-row cap as gsc_rows applies here — a well-detected week can
-    // exceed 1000 opportunities, so this needs getOpportunities' pagination
-    // rather than a raw unpaginated select.
-    getOpportunities(siteId, weekStart),
-    supabase
-      .from('growth_actions')
-      .select('*')
-      .eq('site_id', siteId)
-      .order('status_updated_at', { ascending: false }),
-    supabase
-      .from('gsc_rows')
-      .select('synced_at')
-      .eq('site_id', siteId)
-      .order('synced_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase.from('gsc_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
-    getGscDigest(siteId, weekStart),
-  ]);
+  const [siteRes, sitesRes, planRes, opportunities, actionsRes, syncRes, countRes, bingSyncRes, bingCountRes, digest] =
+    await Promise.all([
+      supabase.from('sites').select('*').eq('id', siteId).maybeSingle(),
+      supabase
+        .from('sites')
+        .select('*')
+        .eq('enabled', true)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('growth_plans')
+        .select('plan')
+        .eq('site_id', siteId)
+        .eq('week_start', weekStart)
+        .maybeSingle(),
+      // Same 1000-row cap as gsc_rows applies here — a well-detected week can
+      // exceed 1000 opportunities, so this needs getOpportunities' pagination
+      // rather than a raw unpaginated select.
+      getOpportunities(siteId, weekStart),
+      supabase
+        .from('growth_actions')
+        .select('*')
+        .eq('site_id', siteId)
+        .order('status_updated_at', { ascending: false }),
+      supabase
+        .from('gsc_rows')
+        .select('synced_at')
+        .eq('site_id', siteId)
+        .order('synced_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from('gsc_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
+      supabase
+        .from('bing_rows')
+        .select('synced_at')
+        .eq('site_id', siteId)
+        .order('synced_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from('bing_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
+      getGscDigest(siteId, weekStart),
+    ]);
 
   if (siteRes.error) throw new Error(`site fetch failed: ${siteRes.error.message}`);
   const site = siteRes.data as Site | null;
   if (!site) return null;
+
+  // Toolbar polls `lastSyncedAt` to detect when a backfill has finished;
+  // GSC and Bing sync concurrently in the background job, so the later of
+  // the two is what "done" actually means (using GSC alone made the
+  // toolbar report completion while Bing was still mid-sync).
+  const gscSyncedAt = ((syncRes.data as { synced_at: string } | null)?.synced_at) ?? null;
+  const bingSyncedAt = ((bingSyncRes.data as { synced_at: string } | null)?.synced_at) ?? null;
+  const lastSyncedAt =
+    gscSyncedAt && bingSyncedAt ? (gscSyncedAt > bingSyncedAt ? gscSyncedAt : bingSyncedAt) : (gscSyncedAt ?? bingSyncedAt);
 
   return {
     site,
@@ -401,8 +421,9 @@ export async function getGrowthPageData(
     plan: ((planRes.data as { plan: GrowthPlan } | null)?.plan) ?? null,
     opportunities,
     actions: (actionsRes.data as GrowthAction[]) ?? [],
-    lastSyncedAt: ((syncRes.data as { synced_at: string } | null)?.synced_at) ?? null,
+    lastSyncedAt,
     rowCount: countRes.count ?? 0,
+    bingRowCount: bingCountRes.count ?? 0,
     gscDigest: digest,
   };
 }

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { getAccurateSiteTotals } from './gsc.js';
 import type {
+  BingRow,
   GSCRow,
   GrowthOpportunity,
   GrowthOpportunityEvidence,
@@ -11,7 +12,8 @@ import type {
 } from './types.js';
 
 /**
- * Deterministic opportunity detection over `gsc_rows`. Five queues:
+ * Deterministic opportunity detection over `gsc_rows` and, when configured,
+ * `bing_rows`. Five queues:
  *   near_win        — pos 11–30 with real impressions: push to page 1
  *   low_ctr         — pos ≤ 10 with CTR well below benchmark: fix the snippet
  *   gap             — query has demand but no page ranks well: new content
@@ -21,7 +23,26 @@ import type {
  * All detection is pure rules over the data — no LLM. The LLM only composes
  * the weekly plan from these ranked candidates, so scores stay legible and
  * the founder can sanity-check each one.
+ *
+ * Bing (`GetQueryStats`, see bing.ts) never returns a page dimension — only
+ * query/clicks/impressions/position — so a Bing-sourced `DetectionRow` never
+ * has `page` set. `declining`/`proven_expander` are page-keyed and simply
+ * produce nothing for an all-pageless row set, so they naturally end up
+ * Google-only without extra branching. `near_win`/`low_ctr`/`gap` are
+ * query-keyed and run for both sources unmodified; each opportunity is
+ * tagged `source` so a Bing-only signal isn't confused for Google's (their
+ * position/CTR scales aren't directly comparable) and so the UI/LLM can
+ * attribute it correctly.
  */
+
+/** The subset of GSCRow/BingRow shape the detectors actually need. */
+interface DetectionRow {
+  query: string;
+  page?: string;
+  clicks: number;
+  impressions: number;
+  position: number;
+}
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -70,6 +91,42 @@ async function fetchAllGscRows(
   for (const { data, error } of results) {
     if (error) throw new Error(`gsc_rows fetch failed: ${error.message}`);
     out.push(...((data as unknown as GSCRow[]) ?? []));
+  }
+  return out;
+}
+
+/**
+ * Same pagination concern as `fetchAllGscRows`, over `bing_rows`. No `page`/
+ * `device` columns exist there — `GetQueryStats` (bing.ts) never returns a
+ * page dimension.
+ */
+async function fetchAllBingRows(siteId: string, startDate: string, endDate: string): Promise<BingRow[]> {
+  const supabase = getSupabase();
+  const pageSize = 1000;
+  const page = (from: number) =>
+    supabase
+      .from('bing_rows')
+      .select('site_id, query, date, country, clicks, impressions, ctr, position')
+      .eq('site_id', siteId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .range(from, from + pageSize - 1);
+
+  const { count, error: countError } = await supabase
+    .from('bing_rows')
+    .select('*', { count: 'exact', head: true })
+    .eq('site_id', siteId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (countError) throw new Error(`bing_rows count failed: ${countError.message}`);
+
+  const pages = Math.ceil((count ?? 0) / pageSize);
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => page(i * pageSize)));
+
+  const out: BingRow[] = [];
+  for (const { data, error } of results) {
+    if (error) throw new Error(`bing_rows fetch failed: ${error.message}`);
+    out.push(...((data as unknown as BingRow[]) ?? []));
   }
   return out;
 }
@@ -141,7 +198,7 @@ interface Agg {
   ctr: number;
 }
 
-function aggregate(rows: GSCRow[]): Agg {
+function aggregate(rows: DetectionRow[]): Agg {
   let impressions = 0;
   let clicks = 0;
   let posWeighted = 0;
@@ -199,12 +256,17 @@ function stableId(key: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
-/** Top-ranked page for each query, by impression-weighted position. */
-function topPageByQuery(rows: GSCRow[]): Map<string, { page: string; agg: Agg }> {
+/**
+ * Top-ranked page for each query, by impression-weighted position. Rows
+ * without a `page` (Bing) are skipped — there's nothing to group by — so
+ * this naturally returns an empty map for an all-pageless row set.
+ */
+function topPageByQuery(rows: DetectionRow[]): Map<string, { page: string; agg: Agg }> {
   // Group by (query -> page -> rows) using nested maps to avoid composite
   // string keys (queries / URLs can contain any separator we'd pick).
-  const byQueryPage = new Map<string, Map<string, GSCRow[]>>();
+  const byQueryPage = new Map<string, Map<string, DetectionRow[]>>();
   for (const r of rows) {
+    if (!r.page) continue;
     let pageMap = byQueryPage.get(r.query);
     if (!pageMap) {
       pageMap = new Map();
@@ -230,11 +292,12 @@ interface DetectorContext {
   site_id: string;
   week_start: string;
   asOf: string;
-  current: GSCRow[];
-  prior: GSCRow[];
+  source: 'google' | 'bing';
+  current: DetectionRow[];
+  prior: DetectionRow[];
   /** Per-query rollup for the current window. */
   byQuery: Map<string, Agg>;
-  /** Per-page rollup for the current window. */
+  /** Per-page rollup for the current window. Empty for source 'bing'. */
   byPage: Map<string, Agg>;
   /** Per-page rollup for the prior window (for trend detection). */
   byPagePrior: Map<string, Agg>;
@@ -246,15 +309,18 @@ function buildContext(opts: {
   site_id: string;
   week_start: string;
   asOf: string;
-  current: GSCRow[];
-  prior: GSCRow[];
+  source: 'google' | 'bing';
+  current: DetectionRow[];
+  prior: DetectionRow[];
 }): DetectorContext {
   const byQuery = new Map<string, Agg>();
   for (const [q, rs] of groupBy(opts.current, (r) => r.query)) byQuery.set(q, aggregate(rs));
+  // Pageless rows (Bing) are skipped rather than grouped under a shared ''
+  // key — that would wrongly merge every Bing query's rows into one "page".
   const byPage = new Map<string, Agg>();
-  for (const [p, rs] of groupBy(opts.current, (r) => r.page)) byPage.set(p, aggregate(rs));
+  for (const [p, rs] of groupBy(opts.current.filter((r) => r.page), (r) => r.page!)) byPage.set(p, aggregate(rs));
   const byPagePrior = new Map<string, Agg>();
-  for (const [p, rs] of groupBy(opts.prior, (r) => r.page)) byPagePrior.set(p, aggregate(rs));
+  for (const [p, rs] of groupBy(opts.prior.filter((r) => r.page), (r) => r.page!)) byPagePrior.set(p, aggregate(rs));
   return { ...opts, byQuery, byPage, byPagePrior, topPage: topPageByQuery(opts.current) };
 }
 
@@ -281,7 +347,7 @@ function makeOpportunity(
   };
   return {
     id: stableId(
-      [ctx.site_id, ctx.week_start, type, target.query ?? '', target.page ?? ''].join('|'),
+      [ctx.site_id, ctx.week_start, ctx.source, type, target.query ?? '', target.page ?? ''].join('|'),
     ),
     site_id: ctx.site_id,
     week_start: ctx.week_start,
@@ -290,6 +356,7 @@ function makeOpportunity(
     target_page: target.page ?? null,
     evidence,
     score: clamp(Math.round(score)),
+    source: ctx.source,
   };
 }
 
@@ -430,10 +497,10 @@ function detectProvenExpanders(ctx: DetectorContext): GrowthOpportunity[] {
 }
 
 /**
- * Pull GSC rows for both windows in one query and run all 5 detectors.
- * Persists the result to `growth_opportunities` (upsert on deterministic id),
- * so subsequent reads don't recompute — and `growth_actions.opportunity_id`
- * references remain stable across re-runs.
+ * Pull GSC (and, when configured, Bing) rows for both windows and run the
+ * detectors over each source. Persists the result to `growth_opportunities`
+ * (upsert on deterministic id), so subsequent reads don't recompute — and
+ * `growth_actions.opportunity_id` references remain stable across re-runs.
  */
 export async function computeOpportunities(opts: {
   siteId: string;
@@ -445,12 +512,16 @@ export async function computeOpportunities(opts: {
     now: opts.now,
   });
   const supabase = getSupabase();
-  const all = await fetchAllGscRows(
-    opts.siteId,
-    prior.startDate,
-    current.endDate,
-    'site_id, query, page, date, country, device, clicks, impressions, ctr, position',
-  );
+  const hasBing = !!process.env.BING_WEBMASTER_API_KEY;
+  const [all, allBing] = await Promise.all([
+    fetchAllGscRows(
+      opts.siteId,
+      prior.startDate,
+      current.endDate,
+      'site_id, query, page, date, country, device, clicks, impressions, ctr, position',
+    ),
+    hasBing ? fetchAllBingRows(opts.siteId, prior.startDate, current.endDate) : Promise.resolve([] as BingRow[]),
+  ]);
 
   const currentRows = all.filter((r) => r.date >= current.startDate && r.date <= current.endDate);
   const priorRows = all.filter((r) => r.date >= prior.startDate && r.date <= prior.endDate);
@@ -459,6 +530,7 @@ export async function computeOpportunities(opts: {
     site_id: opts.siteId,
     week_start: opts.weekStart,
     asOf,
+    source: 'google',
     current: currentRows,
     prior: priorRows,
   });
@@ -469,7 +541,27 @@ export async function computeOpportunities(opts: {
     ...detectGaps(ctx),
     ...detectDeclining(ctx),
     ...detectProvenExpanders(ctx),
-  ].sort((a, b) => b.score - a.score);
+  ];
+
+  if (allBing.length > 0) {
+    const bingCurrentRows = allBing.filter((r) => r.date >= current.startDate && r.date <= current.endDate);
+    const bingPriorRows = allBing.filter((r) => r.date >= prior.startDate && r.date <= prior.endDate);
+    const bingCtx = buildContext({
+      site_id: opts.siteId,
+      week_start: opts.weekStart,
+      asOf,
+      source: 'bing',
+      current: bingCurrentRows,
+      prior: bingPriorRows,
+    });
+    // low_ctr benchmarks against a Google-specific expected-CTR curve —
+    // skip it for Bing rather than compare against the wrong engine's
+    // curve. declining/proven_expander are page-keyed and naturally
+    // produce nothing since Bing rows carry no page dimension.
+    opportunities.push(...detectNearWins(bingCtx), ...detectGaps(bingCtx));
+  }
+
+  opportunities.sort((a, b) => b.score - a.score);
 
   // Wipe-then-insert (not upsert) so detector tweaks don't leave stale rows
   // from prior definitions sitting alongside the fresh ones. `growth_actions`
@@ -601,20 +693,31 @@ export async function ensureOpportunities(opts: {
   const existing = await getOpportunities(opts.siteId, opts.weekStart);
   if (existing.length === 0) return computeOpportunities(opts);
 
-  // Recompute if a sync has landed since these were detected.
+  // Recompute if a GSC or Bing sync has landed since these were detected.
   const supabase = getSupabase();
-  const { data: latest } = await supabase
-    .from('gsc_rows')
-    .select('synced_at')
-    .eq('site_id', opts.siteId)
-    .order('synced_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [{ data: latestGsc }, { data: latestBing }] = await Promise.all([
+    supabase
+      .from('gsc_rows')
+      .select('synced_at')
+      .eq('site_id', opts.siteId)
+      .order('synced_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('bing_rows')
+      .select('synced_at')
+      .eq('site_id', opts.siteId)
+      .order('synced_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const oldestCreated = existing
     .map((o) => o.created_at ?? '')
     .filter(Boolean)
     .sort()[0];
-  const latestSync = (latest as { synced_at?: string } | null)?.synced_at ?? '';
+  const gscSync = (latestGsc as { synced_at?: string } | null)?.synced_at ?? '';
+  const bingSync = (latestBing as { synced_at?: string } | null)?.synced_at ?? '';
+  const latestSync = gscSync > bingSync ? gscSync : bingSync;
   if (latestSync && oldestCreated && latestSync > oldestCreated) {
     return computeOpportunities(opts);
   }

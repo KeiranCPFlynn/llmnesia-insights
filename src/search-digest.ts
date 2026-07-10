@@ -1,6 +1,7 @@
 import './env.js';
 import { createClient } from '@supabase/supabase-js';
 import { getAccurateSiteTotals } from './gsc.js';
+import { getAccurateBingTotals } from './bing.js';
 import type { SearchPerformanceDigest, SearchQueryRow, SearchSourceDigest, Site } from './types.js';
 
 /**
@@ -188,7 +189,29 @@ export async function getCombinedSearchDigest(
   // — GSC anonymizes/drops rows once `query` is a dimension (see
   // getAccurateSiteTotals). Pull the real totals from a query-free live call
   // and only take avg_position from the local aggregate.
-  const bing = bingCurrent.length > 0 ? aggregate(bingCurrent, bingPrior) : null;
+  //
+  // bing_rows has the same shape of bug: GetQueryStats (its source) only
+  // surfaces a subset of queries, so summing it undercounts site-wide
+  // impressions by ~12x (see getAccurateBingTotals in bing.ts). Same fix.
+  let bing: SearchSourceDigest | null = null;
+  if (bingCurrent.length > 0) {
+    const localAggregate = aggregate(bingCurrent, bingPrior);
+    const [current, prior] = await Promise.all([
+      getAccurateBingTotals(site, weekStart, weekEnd),
+      getAccurateBingTotals(site, priorStartIso, priorEndIso),
+    ]);
+    bing = {
+      clicks: current.total_clicks,
+      impressions: current.total_impressions,
+      ctr:
+        current.total_impressions > 0
+          ? Number((current.total_clicks / current.total_impressions).toFixed(4))
+          : 0,
+      avg_position: localAggregate.avg_position,
+      prior_clicks: prior.total_clicks,
+      prior_impressions: prior.total_impressions,
+    };
+  }
   let google: SearchSourceDigest | null = null;
   if (gscCurrent.length > 0) {
     const localAggregate = aggregate(gscCurrent, gscPrior);

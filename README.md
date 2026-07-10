@@ -48,6 +48,24 @@ create index on public.weekly_insights (week_start desc);
 > alter table public.weekly_insights add column if not exists strategy_decisions jsonb not null default '[]';
 > alter table public.weekly_insights add column if not exists strategy_chat jsonb not null default '[]';
 > ```
+>
+> **Migration (Known facts / standing caveats):** persistent caveats & context
+> notes that apply to *every* week's analysis (so a confirmed non-issue — e.g.
+> the PostHog vs GA4 install gap — stops being re-flagged). Managed from the
+> "Known facts" panel on the Insights page. Run once:
+>
+> ```sql
+> create table if not exists public.standing_caveats (
+>   id uuid primary key,
+>   created_at timestamptz not null default now(),
+>   updated_at timestamptz,
+>   kind text not null default 'caveat',   -- 'caveat' | 'context'
+>   affected_metric text not null,
+>   note text not null,
+>   active boolean not null default true
+> );
+> alter table public.standing_caveats enable row level security;  -- service key bypasses RLS; no policies = anon locked out (safe)
+> ```
 
 ### 1b. Traffic Growth Planner schema (`/growth`)
 
@@ -148,13 +166,11 @@ create index if not exists growth_actions_recommendation on public.growth_action
 -- (the modern default), or `https://example.com/` for a URL-prefix property
 -- (note the trailing slash — must match GSC verbatim).
 insert into public.sites (name, root_url, gsc_property, sitemap_url, repo) values
-  ('LLMnesia',   'https://llmnesia.com',   'sc-domain:llmnesia.com',   'https://llmnesia.com/sitemap.xml',   'llmnesia-site njs'),
-  ('LunaCradle', 'https://lunacradle.com', 'sc-domain:lunacradle.com', 'https://lunacradle.com/sitemap.xml', 'lunacradle')
+  ('LLMnesia',   'https://llmnesia.com',   'sc-domain:llmnesia.com',   'https://llmnesia.com/sitemap.xml',   'llmnesia-site njs')
 on conflict (gsc_property) do nothing;
 
 -- Backfill repo for sites already seeded before the `repo` column existed:
 update public.sites set repo = 'llmnesia-site njs' where name = 'LLMnesia'   and repo is null;
-update public.sites set repo = 'lunacradle'        where name = 'LunaCradle' and repo is null;
 ```
 
 > **Migration (Bing Webmaster Tools):** if you are adding Bing to an existing
@@ -184,6 +200,14 @@ update public.sites set repo = 'lunacradle'        where name = 'LunaCradle' and
 > backfill. If the site URL in Bing WMT differs from `root_url` (e.g. it has a
 > trailing slash), update the row:
 > `update public.sites set bing_site_url = 'https://llmnesia.com/' where name = 'LLMnesia';`
+>
+> **Migration (Bing opportunity detection):** run once to let opportunity
+> detection tag which engine a candidate came from (existing rows default to
+> 'google'):
+>
+> ```sql
+> alter table public.growth_opportunities add column if not exists source text not null default 'google';
+> ```
 >
 > **Bing + Google feed two places:** (1) the `/growth` planner, where the raw
 > multi-site query data drives opportunity detection and the weekly SEO plan,
@@ -325,8 +349,8 @@ prior action history, and proposes a **balanced** weekly plan — not just
 How it works:
 
 - **Site switcher** — every row in `public.sites` shows up as a pill in the
-  page header. The data model is multi-site from day 1; adding LunaCradle or
-  any other property is just another row.
+  page header. The data model is multi-site from day 1; adding a new site is
+  just another row.
 - **GSC sync** — manual on first run (the **Backfill 90 days** button) and
   then a **Sync latest data** button to catch up from the newest stored GSC date. No cron
   yet; sync before generating the weekly plan.
