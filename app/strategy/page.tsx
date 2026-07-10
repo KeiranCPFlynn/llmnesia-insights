@@ -7,6 +7,7 @@ import { WeekSelect } from '../../components/WeekSelect';
 import { StrategyPanel } from '../../components/StrategyPanel';
 import { StrategyChat } from '../../components/StrategyChat';
 import { StrategyGoalEditor } from '../../components/StrategyGoalEditor';
+import { resolveStrategyGoal } from '../../src/strategy-goal.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,14 @@ export default async function StrategyPage({
   // weeks as Insights — every option loads.
   const allWeeks = [...weeks].reverse();
 
+  // Never show an empty goal: a week with no saved goal inherits the most
+  // recent prior week's goal, else a stage-aware default. The founder can still
+  // edit and pin one to this week.
+  const { goal: effectiveGoal, source: goalSource } = resolveStrategyGoal(
+    insights,
+    current.week_start,
+  );
+
   return (
     <AppShell
       week={current.week_start}
@@ -62,7 +71,9 @@ export default async function StrategyPage({
         <StrategyGoalEditor
           key={current.week_start}
           week={current.week_start}
-          initialGoal={current.strategy_goal}
+          initialGoal={effectiveGoal}
+          savedGoal={current.strategy_goal}
+          goalSource={goalSource}
         />
       </section>
 
@@ -83,7 +94,7 @@ export default async function StrategyPage({
           key={current.week_start}
           week={current.week_start}
           strategy={current.strategy ?? null}
-          strategyGoal={current.strategy_goal}
+          strategyGoal={effectiveGoal}
           decisions={current.strategy_decisions ?? []}
           recommendationChats={current.strategy_recommendation_chats ?? {}}
         />

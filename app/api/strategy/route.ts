@@ -1,5 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import {
+  getEffectiveStrategyGoal,
   getInsightByWeek,
   getStrategyHistoryBefore,
   saveStrategy,
@@ -116,7 +117,7 @@ export async function POST(req: Request) {
         },
         metrics: metricsDigest(insight.metrics_snapshot),
         corrections: insight.corrections ?? [],
-        strategyGoal: strategyGoal?.trim() || insight.strategy_goal,
+        strategyGoal: await getEffectiveStrategyGoal(week, strategyGoal, insight.strategy_goal),
         priorStrategies,
         priorDecisions,
         strategyChat: insight.strategy_chat ?? [],

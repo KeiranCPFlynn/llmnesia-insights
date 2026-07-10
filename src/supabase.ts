@@ -12,6 +12,7 @@ import type {
   StrategyResult,
   WeeklyInsight,
 } from './types.js';
+import { pickStrategyGoal } from './strategy-goal.js';
 
 function getClient() {
   const url = process.env.SUPABASE_URL;
@@ -289,6 +290,40 @@ export async function getStrategyHistoryBefore(
     (data as { week_start: string; strategy: StrategyResult | null; strategy_decisions: StrategyDecision[] }[]) ??
     []
   ).reverse();
+}
+
+/** Most recent week before `weekStart` that has a non-empty strategy goal. */
+export async function getStrategyGoalBefore(weekStart: string): Promise<string | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('weekly_insights')
+    .select('strategy_goal')
+    .lt('week_start', weekStart)
+    .not('strategy_goal', 'is', null)
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  return (data?.strategy_goal as string | null)?.trim() || null;
+}
+
+/**
+ * The effective strategy goal for a week: the first non-empty of `preferred`
+ * (e.g. a client-supplied goal, then the week's own saved goal), else the most
+ * recent prior week's goal (carry-forward), else the stage-aware default. Never
+ * returns empty, so callers always have a goal to steer on. Mirrors the pure
+ * `resolveStrategyGoal` used on the page, but for callers holding a single week.
+ */
+export async function getEffectiveStrategyGoal(
+  weekStart: string,
+  ...preferred: (string | null | undefined)[]
+): Promise<string> {
+  for (const c of preferred) {
+    const t = c?.trim();
+    if (t) return t;
+  }
+  return pickStrategyGoal(await getStrategyGoalBefore(weekStart));
 }
 
 export async function saveStrategyChat(

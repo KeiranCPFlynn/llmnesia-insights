@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getInsightByWeek, saveStrategyChat } from '../../../../src/supabase.js';
+import {
+  getEffectiveStrategyGoal,
+  getInsightByWeek,
+  saveStrategyChat,
+} from '../../../../src/supabase.js';
 import { readBrief } from '../../../../src/brief.js';
 import type { ChatMessage, StrategyRecommendation } from '../../../../src/types.js';
 import { callLlm, chatToLlmMessages, resolveProvider, type LlmTool } from '../../../../src/llm.js';
@@ -107,6 +111,7 @@ function formatRevisionReply(text: string, revision: StrategyRevision | null): s
 function systemPrompt(
   insight: NonNullable<Awaited<ReturnType<typeof getInsightByWeek>>>,
   brief: string,
+  strategyGoal: string,
   focusedRecommendationId?: string,
 ) {
   const focusedRecommendation = focusedRecommendationId
@@ -137,7 +142,7 @@ CURRENT STRATEGY:
 ${JSON.stringify(insight.strategy ?? null)}
 
 CURRENT STRATEGY GOAL:
-${insight.strategy_goal?.trim() || '(none set — infer the stage from the data)'}
+${strategyGoal}
 
 FOUNDER DECISIONS THIS WEEK (respect them — don't re-push rejected):
 ${JSON.stringify(insight.strategy_decisions ?? [])}
@@ -177,13 +182,16 @@ export async function POST(req: Request) {
   }
 
   try {
-    const brief = await readBrief();
+    const [brief, strategyGoal] = await Promise.all([
+      readBrief(),
+      getEffectiveStrategyGoal(week, insight.strategy_goal),
+    ]);
     const response = await callLlm({
       provider: resolveProvider(provider ?? process.env.STRATEGY_PROVIDER ?? 'openai'),
       maxTokens: 8000,
       tools: [REVISE_TOOL],
       toolChoice: 'auto',
-      system: [{ text: systemPrompt(insight, brief, recommendationId), cache: true }],
+      system: [{ text: systemPrompt(insight, brief, strategyGoal, recommendationId), cache: true }],
       messages: chatToLlmMessages(messages),
     });
 

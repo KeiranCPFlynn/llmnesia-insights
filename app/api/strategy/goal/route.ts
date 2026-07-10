@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getInsightByWeek } from '../../../../src/supabase.js';
+import { getEffectiveStrategyGoal, getInsightByWeek } from '../../../../src/supabase.js';
 import { readBrief } from '../../../../src/brief.js';
 import { callLlm, resolveProvider, type LlmTool } from '../../../../src/llm.js';
 import { isAuthorized } from '../../../../lib/session';
@@ -69,6 +69,7 @@ export async function POST(req: Request) {
   if (action === 'suggest') {
     try {
       const brief = await readBrief();
+      const existingGoal = await getEffectiveStrategyGoal(week, strategyGoal, insight.strategy_goal);
       const response = await callLlm({
         provider: resolveProvider(provider ?? process.env.STRATEGY_PROVIDER ?? 'openai'),
         maxTokens: 2000,
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
               {
                 text:
                   `WEEK: ${insight.week_start} → ${insight.week_end}\n\n` +
-                  `EXISTING STRATEGY GOAL:\n${strategyGoal?.trim() || insight.strategy_goal?.trim() || '(none)'}\n\n` +
+                  `EXISTING STRATEGY GOAL:\n${existingGoal}\n\n` +
                   `CURRENT REPORT:\n${JSON.stringify({
                     headline: insight.headline,
                     summary: insight.summary,

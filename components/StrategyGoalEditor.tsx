@@ -7,9 +7,15 @@ import { ProviderSelect, useProvider } from './ProviderSelect';
 export function StrategyGoalEditor({
   week,
   initialGoal,
+  savedGoal,
+  goalSource = 'own',
 }: {
   week: string;
+  /** Effective goal to display (own goal, carried-forward, or default). */
   initialGoal?: string | null;
+  /** This week's own saved goal, if any — null when inherited/default. */
+  savedGoal?: string | null;
+  goalSource?: 'own' | 'inherited' | 'default';
 }) {
   const router = useRouter();
   const [goal, setGoal] = useState(initialGoal ?? '');
@@ -22,8 +28,11 @@ export function StrategyGoalEditor({
     storageKey: 'llm-provider-strategy',
     fallback: 'openai',
   });
-  const changed = goal.trim() !== (initialGoal ?? '').trim();
+  // Compare against this week's OWN saved goal, so an inherited/default value
+  // shows as saveable — one click pins it to this week.
+  const changed = goal.trim() !== (savedGoal ?? '').trim();
   const busy = saving || suggesting;
+  const notPinned = !savedGoal?.trim();
 
   useEffect(() => {
     window.dispatchEvent(
@@ -89,6 +98,13 @@ export function StrategyGoalEditor({
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-neutral-500">
             Persistent objective for this week’s PM strategy.
           </p>
+          {notPinned && (
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-amber-400/80">
+              {goalSource === 'inherited'
+                ? 'Carried forward from an earlier week — already steering strategy. Edit and save to pin one to this week.'
+                : 'Using a stage-aware default — already steering strategy. Edit and save to set your own.'}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <ProviderSelect
