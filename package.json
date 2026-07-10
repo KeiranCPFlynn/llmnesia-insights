@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "pipeline": "tsx src/index.ts"
+    "pipeline": "tsx src/index.ts",
+    "check-schema": "tsx scripts/check-schema.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
