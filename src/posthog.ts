@@ -53,32 +53,40 @@ export async function getActivationRate(
   weekStart: string,
   weekEnd: string,
 ): Promise<{ installs: number; activated_within_24h: number; rate: number }> {
-  // Count installs in the week
-  const installRows = await runQuery(`
-    SELECT uniq(properties.anonymous_install_id) AS installs
-    FROM events
-    WHERE event = 'extension_installed'
-      AND toDate(timestamp) >= toDate('${weekStart}')
-      AND toDate(timestamp) <= toDate('${weekEnd}')
-  `);
-  const installs = Number(installRows[0]?.[0] ?? 0);
-
-  // Count installs where the same ID had a search within the week (approx 24h activation)
-  const activatedRows = await runQuery(`
-    SELECT uniq(properties.anonymous_install_id) AS activated
-    FROM events
-    WHERE event = 'extension_installed'
-      AND toDate(timestamp) >= toDate('${weekStart}')
-      AND toDate(timestamp) <= toDate('${weekEnd}')
-      AND properties.anonymous_install_id IN (
-        SELECT properties.anonymous_install_id
+  // Activation = a real (search_submitted) search within 24h of install, where
+  // the search timestamp is >= the install timestamp. The old query had no lower
+  // bound and counted ANY search_performed in the window (even ones before the
+  // install, and keystroke-level noise), returning an inflated ~97% artifact.
+  // We join each install's install time to its search_submitted timestamps and
+  // require at least one in the half-open window [install_ts, install_ts + 24h].
+  const rows = await runQuery(`
+    SELECT
+      uniq(install_id) AS installs,
+      uniqIf(install_id, activated = 1) AS activated
+    FROM (
+      SELECT
+        i.install_id AS install_id,
+        max(if(s.ts >= i.install_ts AND s.ts <= i.install_ts + INTERVAL 24 HOUR, 1, 0)) AS activated
+      FROM (
+        SELECT properties.anonymous_install_id AS install_id, min(timestamp) AS install_ts
         FROM events
-        WHERE event = 'search_performed'
+        WHERE event = 'extension_installed'
           AND toDate(timestamp) >= toDate('${weekStart}')
-          AND toDate(timestamp) <= toDate('${weekEnd}') + INTERVAL 1 DAY
-      )
+          AND toDate(timestamp) <= toDate('${weekEnd}')
+        GROUP BY install_id
+      ) AS i
+      LEFT JOIN (
+        SELECT properties.anonymous_install_id AS install_id, timestamp AS ts
+        FROM events
+        WHERE event = 'search_submitted'
+          AND toDate(timestamp) >= toDate('${weekStart}')
+          AND toDate(timestamp) <= toDate('${weekEnd}') + 2
+      ) AS s ON i.install_id = s.install_id
+      GROUP BY i.install_id
+    )
   `);
-  const activated_within_24h = Number(activatedRows[0]?.[0] ?? 0);
+  const installs = Number(rows[0]?.[0] ?? 0);
+  const activated_within_24h = Number(rows[0]?.[1] ?? 0);
 
   return {
     installs,
@@ -92,10 +100,15 @@ async function getRetentionWindow(
   weekEnd: string,
   offsetDays: number,
 ): Promise<{ active_prior: number; returned: number; rate: number }> {
+  // Retention is now defined on genuine search activity: an install is "active"
+  // in a window if it fired search_submitted there, and "returned" if it fired
+  // search_submitted in both the prior window and the current one. Previously
+  // this counted ANY event, so passive background traffic looked like retention.
   const priorRows = await runQuery(`
     SELECT uniq(properties.anonymous_install_id) AS cnt
     FROM events
-    WHERE toDate(timestamp) >= toDate('${weekStart}') - ${offsetDays}
+    WHERE event = 'search_submitted'
+      AND toDate(timestamp) >= toDate('${weekStart}') - ${offsetDays}
       AND toDate(timestamp) <= toDate('${weekEnd}') - ${offsetDays}
   `);
   const active_prior = Number(priorRows[0]?.[0] ?? 0);
@@ -103,12 +116,14 @@ async function getRetentionWindow(
   const returnedRows = await runQuery(`
     SELECT uniq(properties.anonymous_install_id) AS cnt
     FROM events
-    WHERE toDate(timestamp) >= toDate('${weekStart}')
+    WHERE event = 'search_submitted'
+      AND toDate(timestamp) >= toDate('${weekStart}')
       AND toDate(timestamp) <= toDate('${weekEnd}')
       AND properties.anonymous_install_id IN (
         SELECT DISTINCT properties.anonymous_install_id
         FROM events
-        WHERE toDate(timestamp) >= toDate('${weekStart}') - ${offsetDays}
+        WHERE event = 'search_submitted'
+          AND toDate(timestamp) >= toDate('${weekStart}') - ${offsetDays}
           AND toDate(timestamp) <= toDate('${weekEnd}') - ${offsetDays}
       )
   `);
@@ -132,30 +147,46 @@ export async function getRetention(weekStart: string, weekEnd: string) {
 export async function getEngagement(
   weekStart: string,
   weekEnd: string,
-): Promise<{ wau: number; total_searches: number; searches_per_wau: number }> {
+): Promise<{ wau: number; wau_any_event: number; total_searches: number; searches_per_wau: number }> {
+  // WAU is now distinct installs with at least one USER-INITIATED event in the
+  // week (properties.user_initiated = 'true' — properties surface as strings in
+  // this schema). This excludes passive lifecycle/impression/backfill traffic
+  // that inflated the old count. `wau_any_event` reproduces the OLD definition
+  // (any event at all) and is reported alongside for one month so the
+  // discontinuity is visible rather than silent — REMOVE around 2026-08-10.
+  // Because `user_initiated` only exists on events emitted after this instrument
+  // change shipped, `wau` will read low until the new build has propagated.
+  // total_searches now counts search_submitted (intentional searches), never the
+  // keystroke-level search_performed.
   const rows = await runQuery(`
     SELECT
-      uniq(properties.anonymous_install_id) AS wau,
-      countIf(event = 'search_performed') AS total_searches
+      uniqIf(properties.anonymous_install_id, properties.user_initiated = 'true') AS wau,
+      uniq(properties.anonymous_install_id) AS wau_any_event,
+      countIf(event = 'search_submitted') AS total_searches
     FROM events
     WHERE toDate(timestamp) >= toDate('${weekStart}')
       AND toDate(timestamp) <= toDate('${weekEnd}')
   `);
   const wau = Number(rows[0]?.[0] ?? 0);
-  const total_searches = Number(rows[0]?.[1] ?? 0);
-  return { wau, total_searches, searches_per_wau: wau > 0 ? round(total_searches / wau, 2) : 0 };
+  const wau_any_event = Number(rows[0]?.[1] ?? 0);
+  const total_searches = Number(rows[0]?.[2] ?? 0);
+  return { wau, wau_any_event, total_searches, searches_per_wau: wau > 0 ? round(total_searches / wau, 2) : 0 };
 }
 
 export async function getSearchQuality(weekStart: string, weekEnd: string) {
+  // Click rate and zero-result rate are now measured against search_submitted
+  // (intentional searches), with zero-results counted from zero_results_submitted
+  // so numerator and denominator share the same event definition. The keystroke
+  // events (search_performed / zero_results_returned) are never used here.
   const rows = await runQuery(`
     SELECT
-      countIf(event = 'search_performed') AS searches,
+      countIf(event = 'search_submitted') AS searches,
       countIf(event = 'result_opened') AS clicks,
-      countIf(event = 'zero_results_returned') AS zero_results
+      countIf(event = 'zero_results_submitted') AS zero_results
     FROM events
     WHERE toDate(timestamp) >= toDate('${weekStart}')
       AND toDate(timestamp) <= toDate('${weekEnd}')
-      AND event IN ('search_performed', 'result_opened', 'zero_results_returned')
+      AND event IN ('search_submitted', 'result_opened', 'zero_results_submitted')
   `);
   const searches = Number(rows[0]?.[0] ?? 0);
   const clicks = Number(rows[0]?.[1] ?? 0);
@@ -305,6 +336,64 @@ export async function getVersionAdoption(
   };
 }
 
+/**
+ * Correlates completing the initial backfill with subsequent search engagement.
+ * Lets us test DIRECTLY whether search activity rises after a user's historical
+ * import finishes, rather than inferring it. Keyed on `backfill_first_completed`
+ * (fired once per platform per install when the initial import finishes) joined
+ * to `search_submitted` events that happen AFTER completion.
+ *
+ * Reports: how many installs finished a backfill this week, how many of those
+ * searched afterward, that share, and searches per backfilled install.
+ */
+export async function getBackfillSearchCorrelation(
+  weekStart: string,
+  weekEnd: string,
+): Promise<{
+  backfilled_installs: number;
+  searched_after: number;
+  rate: number;
+  searches_per_backfilled_install: number;
+}> {
+  const rows = await runQuery(`
+    SELECT
+      uniq(install_id) AS backfilled_installs,
+      uniqIf(install_id, searches_after > 0) AS searched_after,
+      sum(searches_after) AS total_searches_after
+    FROM (
+      SELECT
+        b.install_id AS install_id,
+        countIf(s.ts > b.completed_ts) AS searches_after
+      FROM (
+        SELECT properties.anonymous_install_id AS install_id, min(timestamp) AS completed_ts
+        FROM events
+        WHERE event = 'backfill_first_completed'
+          AND toDate(timestamp) >= toDate('${weekStart}')
+          AND toDate(timestamp) <= toDate('${weekEnd}')
+        GROUP BY install_id
+      ) AS b
+      LEFT JOIN (
+        SELECT properties.anonymous_install_id AS install_id, timestamp AS ts
+        FROM events
+        WHERE event = 'search_submitted'
+          AND toDate(timestamp) >= toDate('${weekStart}')
+          AND toDate(timestamp) <= toDate('${weekEnd}') + 14
+      ) AS s ON b.install_id = s.install_id
+      GROUP BY b.install_id
+    )
+  `);
+  const backfilled_installs = Number(rows[0]?.[0] ?? 0);
+  const searched_after = Number(rows[0]?.[1] ?? 0);
+  const total_searches_after = Number(rows[0]?.[2] ?? 0);
+  return {
+    backfilled_installs,
+    searched_after,
+    rate: backfilled_installs > 0 ? round(searched_after / backfilled_installs) : 0,
+    searches_per_backfilled_install:
+      backfilled_installs > 0 ? round(total_searches_after / backfilled_installs, 2) : 0,
+  };
+}
+
 export async function collectMetrics(weekStart: string, weekEnd: string): Promise<Omit<MetricsSnapshot, 'ga4'>> {
   console.log(`Fetching PostHog metrics for ${weekStart} → ${weekEnd}…`);
 
@@ -317,6 +406,7 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     platforms,
     email_capture,
     version_adoption,
+    backfill_correlation,
   ] = await Promise.all([
     getWeeklyInstalls(weekStart, weekEnd),
     getActivationRate(weekStart, weekEnd),
@@ -326,6 +416,7 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     getPlatformDistribution(weekStart, weekEnd),
     getEmailCaptureRate(weekStart, weekEnd),
     getVersionAdoption(weekStart, weekEnd),
+    getBackfillSearchCorrelation(weekStart, weekEnd),
   ]);
 
   return {
@@ -339,5 +430,6 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     platforms,
     email_capture,
     version_adoption,
+    backfill_correlation,
   };
 }

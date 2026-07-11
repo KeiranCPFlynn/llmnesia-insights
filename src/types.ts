@@ -36,7 +36,11 @@ export interface MetricsSnapshot {
     w1_rolling: { active_prior_week: number; returned: number; rate: number };
     w4_rolling: { active_4w_ago: number; returned: number; rate: number };
   };
-  engagement: { wau: number; total_searches: number; searches_per_wau: number };
+  // wau: distinct installs with a user_initiated event in the week (new, intent-
+  // based). wau_any_event: the OLD definition (any event) reported alongside for
+  // one month so the series discontinuity is visible — remove ~2026-08-10.
+  // total_searches counts search_submitted, never the keystroke search_performed.
+  engagement: { wau: number; wau_any_event: number; total_searches: number; searches_per_wau: number };
   search_quality: {
     searches: number;
     clicks: number;
@@ -49,6 +53,18 @@ export interface MetricsSnapshot {
     clicks: Record<string, number>;
   };
   email_capture: { wau: number; identified: number; rate: number };
+  /**
+   * Correlates finishing the initial backfill (`backfill_first_completed`) with
+   * subsequent search engagement (`search_submitted` after completion). Tests
+   * directly whether search activity rises after a user's historical import
+   * finishes. `rate` = share of backfilled installs that searched afterward.
+   */
+  backfill_correlation: {
+    backfilled_installs: number;
+    searched_after: number;
+    rate: number;
+    searches_per_backfilled_install: number;
+  };
   /**
    * Daily unique users per extension version (from PostHog
    * `properties.extension_version`). `daily` is day-by-day for tracking a
@@ -229,7 +245,7 @@ export type StrategyArea =
 
 /** Which repo a recommendation's coding work targets (for the handoff prompt). */
 export type StrategyTargetRepo =
-  | 'llmnesia-site'
+  | 'llmnesia-site njs'
   | 'LLMnesia'
   | 'llmnesia-insights'
   | 'none';
