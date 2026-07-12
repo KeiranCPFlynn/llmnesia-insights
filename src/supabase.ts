@@ -117,6 +117,52 @@ export async function addCorrection(
 }
 
 /**
+ * Edit a single per-week correction in place (its label/note/kind). Returns the
+ * updated corrections array. Used by the editable caveats panel.
+ */
+export async function updateCorrection(
+  weekStart: string,
+  id: string,
+  patch: Partial<Pick<Correction, 'kind' | 'affected_metric' | 'note'>>,
+): Promise<Correction[]> {
+  const row = await getInsightByWeek(weekStart);
+  if (!row) throw new Error(`No insight for week ${weekStart}`);
+  const existing = row.corrections ?? [];
+  if (!existing.some((c) => c.id === id)) {
+    throw new Error(`No correction ${id} in week ${weekStart}`);
+  }
+  const corrections = existing.map((c) => (c.id === id ? { ...c, ...patch } : c));
+
+  const supabase = getClient();
+  const { error } = await supabase
+    .from('weekly_insights')
+    .update({ corrections })
+    .eq('week_start', weekStart);
+
+  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  return corrections;
+}
+
+/** Delete a single per-week correction. Returns the remaining corrections. */
+export async function deleteCorrection(
+  weekStart: string,
+  id: string,
+): Promise<Correction[]> {
+  const row = await getInsightByWeek(weekStart);
+  if (!row) throw new Error(`No insight for week ${weekStart}`);
+  const corrections = (row.corrections ?? []).filter((c) => c.id !== id);
+
+  const supabase = getClient();
+  const { error } = await supabase
+    .from('weekly_insights')
+    .update({ corrections })
+    .eq('week_start', weekStart);
+
+  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  return corrections;
+}
+
+/**
  * Append a pre-change snapshot of the analysis to the week's append-only
  * `revisions` history. Call this BEFORE a correction regenerates the report.
  */

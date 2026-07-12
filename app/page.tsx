@@ -8,6 +8,7 @@ import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
 import { ChatPanel } from '../components/ChatPanel';
 import { KnownFacts } from '../components/KnownFacts';
+import { WeekCaveats } from '../components/WeekCaveats';
 import { getDefaultWeek } from '../src/pipeline.js';
 import { getStandingCaveats } from '../src/supabase.js';
 import type { DataSource } from '../src/types.js';
@@ -174,65 +175,9 @@ export default async function Page({
         )}
       </section>
 
-      {/* Confirmed caveats & context — applied to the analysis above */}
-      {(() => {
-        const all = current.corrections ?? [];
-        const caveats = all.filter((c) => c.kind !== 'context');
-        const ctx = all.filter((c) => c.kind === 'context');
-        const Block = ({
-          title,
-          items,
-          tone,
-        }: {
-          title: string;
-          items: typeof all;
-          tone: 'amber' | 'sky';
-        }) =>
-          items.length === 0 ? null : (
-            <section
-              className={`mb-4 rounded-lg border p-4 shadow-[0_10px_28px_rgba(0,0,0,0.14)] ${
-                tone === 'amber'
-                  ? 'border-amber-500/25 bg-amber-500/10'
-                  : 'border-sky-500/25 bg-sky-500/10'
-              }`}
-            >
-              <h2
-                className={`mb-2 text-xs font-semibold uppercase tracking-wide ${
-                  tone === 'amber' ? 'text-amber-400' : 'text-sky-400'
-                }`}
-              >
-                {title}
-              </h2>
-              <ul className="space-y-2">
-                {items.map((c) => (
-                  <li
-                    key={c.id}
-                    className={`text-sm ${tone === 'amber' ? 'text-amber-100' : 'text-sky-100'}`}
-                  >
-                    <span className="font-medium">{c.affected_metric}:</span> {c.note}{' '}
-                    <span className={tone === 'amber' ? 'text-amber-500/70' : 'text-sky-500/70'}>
-                      · {formatWeek(c.created_at.slice(0, 10))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        return (
-          <div className="mb-4">
-            <Block
-              title="Known data caveats — analysis adjusted for these"
-              items={caveats}
-              tone="amber"
-            />
-            <Block
-              title="Founder context — factored into the analysis"
-              items={ctx}
-              tone="sky"
-            />
-          </div>
-        );
-      })()}
+      {/* Confirmed caveats & context — applied to the analysis above.
+          Collapsible + editable so long entries don't dominate the page. */}
+      <WeekCaveats week={current.week_start} initial={current.corrections ?? []} />
 
       {/* Chat — interrogate the report, flag bad data, regenerate. Kept high
           on the page so it's the first thing you can act on. */}

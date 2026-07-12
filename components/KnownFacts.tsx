@@ -26,9 +26,14 @@ export function KnownFacts({
   const [metric, setMetric] = useState('');
   const [note, setNote] = useState('');
   const [applyNow, setApplyNow] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editMetric, setEditMetric] = useState('');
+  const [editNote, setEditNote] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const elapsed = useElapsed(busy === 'add' || busy === 'rerun');
+  const elapsed = useElapsed(
+    busy === 'add' || busy === 'rerun' || (busy?.startsWith('edit-') ?? false),
+  );
 
   const caveats = initial.filter((c) => c.kind !== 'context');
   const contexts = initial.filter((c) => c.kind === 'context');
@@ -74,6 +79,33 @@ export function KnownFacts({
     setNote('');
   }
 
+  function startEdit(c: StandingCaveat) {
+    setEditingId(c.id);
+    setEditMetric(c.affected_metric);
+    setEditNote(c.note);
+    setError(null);
+  }
+
+  async function saveEdit(c: StandingCaveat) {
+    if (!editMetric.trim() || !editNote.trim()) {
+      setError('Label and note are both required.');
+      return;
+    }
+    await mutate(`edit-${c.id}`, () =>
+      fetch(`/api/standing-caveats/${c.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          affected_metric: editMetric,
+          note: editNote,
+          applyWeek: week,
+          provider,
+        }),
+      }),
+    );
+    setEditingId(null);
+  }
+
   async function toggle(c: StandingCaveat) {
     await mutate(`toggle-${c.id}`, () =>
       fetch(`/api/standing-caveats/${c.id}`, {
@@ -93,7 +125,8 @@ export function KnownFacts({
     );
   }
 
-  const rerunning = busy === 'add' || busy === 'rerun';
+  const rerunning =
+    busy === 'add' || busy === 'rerun' || (busy?.startsWith('edit-') ?? false);
 
   return (
     <section id="known-facts" className="scroll-mt-36 mb-10">
@@ -152,27 +185,71 @@ export function KnownFacts({
                           : 'border-neutral-800 bg-neutral-900/50 text-neutral-500'
                       }`}
                     >
-                      <div className="flex-1">
-                        <span className="font-medium">{c.affected_metric}:</span> {c.note}
-                        {!c.active && <span className="ml-2 text-[11px] uppercase">retired</span>}
-                      </div>
-                      {open && (
-                        <div className="flex shrink-0 gap-2">
-                          <button
-                            onClick={() => toggle(c)}
-                            disabled={!!busy}
-                            className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
-                          >
-                            {c.active ? 'Retire' : 'Reactivate'}
-                          </button>
-                          <button
-                            onClick={() => remove(c)}
-                            disabled={!!busy}
-                            className="rounded border border-rose-500/30 px-2 py-0.5 text-[11px] text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
-                          >
-                            Delete
-                          </button>
+                      {open && editingId === c.id ? (
+                        <div className="flex-1 space-y-2">
+                          <input
+                            value={editMetric}
+                            onChange={(e) => setEditMetric(e.target.value)}
+                            placeholder="Short label"
+                            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
+                          />
+                          <textarea
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                            rows={3}
+                            className="w-full resize-y rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setEditingId(null)}
+                              disabled={!!busy}
+                              className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => saveEdit(c)}
+                              disabled={!!busy}
+                              className="rounded bg-emerald-600 px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                            >
+                              {busy === `edit-${c.id}` ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <>
+                          <div className="flex-1">
+                            <span className="font-medium">{c.affected_metric}:</span> {c.note}
+                            {!c.active && (
+                              <span className="ml-2 text-[11px] uppercase">retired</span>
+                            )}
+                          </div>
+                          {open && (
+                            <div className="flex shrink-0 gap-2">
+                              <button
+                                onClick={() => startEdit(c)}
+                                disabled={!!busy}
+                                className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => toggle(c)}
+                                disabled={!!busy}
+                                className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                              >
+                                {c.active ? 'Retire' : 'Reactivate'}
+                              </button>
+                              <button
+                                onClick={() => remove(c)}
+                                disabled={!!busy}
+                                className="rounded border border-rose-500/30 px-2 py-0.5 text-[11px] text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </li>
                   ))}
@@ -231,7 +308,7 @@ export function KnownFacts({
         </div>
       )}
 
-      {rerunning && applyNow && (
+      {rerunning && (applyNow || busy?.startsWith('edit-')) && (
         <div className="mt-3">
           <ProgressBar
             seconds={elapsed}

@@ -23,6 +23,12 @@ const NAV_ITEMS = [
     description: 'Plan organic acquisition',
     path: '/growth',
   },
+  {
+    key: 'data',
+    label: 'Data',
+    description: 'Explore the raw numbers',
+    path: '/data',
+  },
 ] as const;
 
 /** Primary workspace navigation. The selected week follows the user between tabs. */
@@ -38,7 +44,9 @@ export function PageNav({
     ? 'strategy'
     : path.startsWith('/growth')
       ? 'growth'
-      : 'insights';
+      : path.startsWith('/data')
+        ? 'data'
+        : 'insights';
 
   // All workspaces share this canonical Monday. Each route resolves it to its
   // own stored record, whose exact week_start may differ.
@@ -47,16 +55,12 @@ export function PageNav({
   return (
     <nav
       aria-label="Primary"
-      className={variant === 'rail' ? 'space-y-1' : 'grid grid-cols-3 gap-1 rounded-lg bg-white/[0.035] p-1'}
+      className={variant === 'rail' ? 'space-y-1' : 'grid grid-cols-4 gap-1 rounded-lg bg-white/[0.035] p-1'}
     >
       {NAV_ITEMS.map((item) => {
         const active = activeKey === item.key;
         const href =
-          item.path === '/'
-            ? `/?period=${period}`
-            : item.path === '/strategy'
-              ? `/strategy?period=${period}`
-              : `/growth?period=${period}`;
+          item.path === '/' ? `/?period=${period}` : `${item.path}?period=${period}`;
         return (
           <Link
             key={item.key}
