@@ -51,9 +51,9 @@ const STRATEGY_TOOL: LlmTool = {
             },
             target_repo: {
               type: 'string',
-              enum: ['llmnesia-site', 'LLMnesia', 'llmnesia-insights', 'none'],
+              enum: ['llmnesia-site njs', 'LLMnesia', 'llmnesia-insights', 'none'],
               description:
-                'Where the code change lands: llmnesia-site (marketing site), LLMnesia (the extension), llmnesia-insights (this dashboard), or none (ops/marketing only).',
+                'Where the code change lands: llmnesia-site njs (marketing site), LLMnesia (the extension), llmnesia-insights (this dashboard), or none (ops/marketing only).',
             },
             recommendation: { type: 'string', description: 'What to do, concretely.' },
             rationale: { type: 'string', description: 'Why — tied to the thesis and the metrics.' },

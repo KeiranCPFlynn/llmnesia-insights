@@ -35,7 +35,7 @@ const REVISE_TOOL: LlmTool = {
           },
           target_repo: {
             type: 'string',
-            enum: ['llmnesia-site', 'LLMnesia', 'llmnesia-insights', 'none'],
+            enum: ['llmnesia-site njs', 'LLMnesia', 'llmnesia-insights', 'none'],
           },
           recommendation: { type: 'string' },
           rationale: { type: 'string' },
