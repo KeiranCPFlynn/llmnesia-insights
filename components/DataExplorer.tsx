@@ -14,6 +14,8 @@ type PostHogData = Omit<MetricsSnapshot, 'ga4'>;
 interface DataResponse {
   range: { start: string; end: string };
   posthog: PostHogData;
+  /** Ground-truth event-name → count for the range. */
+  events: Array<{ event: string; count: number }>;
   ga4: GA4Metrics;
   search: SearchPerformanceDigest | null;
 }
@@ -100,15 +102,21 @@ function Panel({ title, badge, children }: { title: string; badge?: string; chil
   );
 }
 
-/** Sorted breakdown table for a Record<string, number>. */
+/**
+ * Sorted breakdown table for a Record<string, number>. `mode`:
+ * - 'count' (default): values are raw counts, shown with a share-of-total column.
+ * - 'share': values are already 0–1 ratios, shown as percentages (no extra column).
+ */
 function BreakdownTable({
   title,
   rows,
   limit = 12,
+  mode = 'count',
 }: {
   title: string;
   rows: Record<string, number> | undefined;
   limit?: number;
+  mode?: 'count' | 'share';
 }) {
   const entries = Object.entries(rows ?? {})
     .filter(([, v]) => v > 0)
@@ -126,10 +134,14 @@ function BreakdownTable({
           {entries.map(([k, v]) => (
             <tr key={k} className="border-b border-neutral-800/40 last:border-0">
               <td className="px-4 py-1.5 text-neutral-300 truncate max-w-[260px]">{k}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-neutral-400">{num(v)}</td>
-              <td className="px-4 py-1.5 text-right tabular-nums text-neutral-600 w-16">
-                {pct(v / total)}
+              <td className="px-3 py-1.5 text-right tabular-nums text-neutral-400">
+                {mode === 'share' ? pct(v) : num(v)}
               </td>
+              {mode === 'count' && (
+                <td className="px-4 py-1.5 text-right tabular-nums text-neutral-600 w-16">
+                  {pct(v / total)}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -191,34 +203,35 @@ function line(label: string, value: string) {
 
 function buildDigest(d: DataResponse): string {
   const { posthog: ph, ga4, search: sp, range } = d;
+  const counts = new Map(d.events.map((e) => [e.event, e.count]));
+  const ev = (n: string) => counts.get(n) ?? 0;
+  const ratePct = (n: number, den: number) => (den > 0 ? `${((n / den) * 100).toFixed(1)}%` : '—');
+  const searches = ev('search_performed');
+  const opens = ev('result_opened');
+  const hasSubmitted = ev('search_submitted') > 0;
+
   const out: string[] = [];
   out.push(`# LLMnesia data — ${range.start} → ${range.end}`);
   out.push('');
 
   out.push('## PostHog (in-product)');
   out.push(line('Installs (extension_installed)', num(ph.installs?.total)));
+  out.push(line('Active users (any event)', num(ph.engagement?.wau_any_event)));
+  out.push(line('Searches (search_performed)', num(searches)));
+  out.push(line('Result opens (result_opened)', num(opens)));
+  out.push(line('Click rate (opens / searches)', ratePct(opens, searches)));
+  out.push(line('Zero-result rate', ratePct(ev('zero_results_returned'), searches)));
   out.push(
-    line(
-      'Activation (search within 24h)',
-      `${pct(ph.activation?.rate)} (${num(ph.activation?.activated_within_24h)} of ${num(ph.activation?.installs)})`,
-    ),
-  );
-  out.push(line('Weekly active users (intent-based)', num(ph.engagement?.wau)));
-  out.push(line('Total searches (search_submitted)', num(ph.engagement?.total_searches)));
-  out.push(line('Searches per WAU', String(ph.engagement?.searches_per_wau ?? '—')));
-  out.push(
-    line(
-      'Search quality',
-      `${num(ph.search_quality?.searches)} searches · ${pct(ph.search_quality?.click_rate)} click rate · ${pct(ph.search_quality?.zero_result_rate)} zero-result rate`,
-    ),
+    line('Email capture', `${pct(ph.email_capture?.rate)} (${num(ph.email_capture?.identified)} identified)`),
   );
   out.push(
     line(
-      'Retention (rolling)',
-      `W1 ${pct(ph.retention?.w1_rolling?.rate)} · W4 ${pct(ph.retention?.w4_rolling?.rate)}`,
+      'Activation / intent-WAU / retention',
+      hasSubmitted
+        ? `activation ${pct(ph.activation?.rate)} · W1 ${pct(ph.retention?.w1_rolling?.rate)} · W4 ${pct(ph.retention?.w4_rolling?.rate)}`
+        : 'unavailable (no search_submitted / user_initiated events in range yet)',
     ),
   );
-  out.push(line('Email capture', `${pct(ph.email_capture?.rate)} (${num(ph.email_capture?.identified)} identified)`));
   if (ph.version_adoption?.weekly?.length) {
     out.push(
       line(
@@ -230,6 +243,10 @@ function buildDigest(d: DataResponse): string {
           .join(', '),
       ),
     );
+  }
+  if (d.events.length) {
+    out.push('All events (raw counts):');
+    for (const e of d.events) out.push(`  - ${e.event}: ${num(e.count)}`);
   }
   out.push('');
 
@@ -364,6 +381,24 @@ export function DataExplorer() {
   const ga4 = data?.ga4;
   const sp = data?.search;
 
+  // Ground-truth event counts. The weekly metrics key off newer events
+  // (search_submitted / user_initiated) the shipped extension isn't emitting yet,
+  // so they read 0; for a raw explorer we derive the headline numbers from the
+  // events that actually carry data (search_performed, result_opened, etc.) and
+  // mark the not-yet-instrumented ones as unavailable instead of a false 0.
+  const evCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of data?.events ?? []) map.set(e.event, e.count);
+    return map;
+  }, [data]);
+  const ev = (name: string) => evCount.get(name) ?? 0;
+  const searchesPerformed = ev('search_performed');
+  const resultOpens = ev('result_opened');
+  const zeroResults = ev('zero_results_returned');
+  // These metrics depend on search_submitted, which isn't in the data yet.
+  const hasSubmitted = ev('search_submitted') > 0;
+  const rate = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '—');
+
   return (
     <div>
       {/* Range picker — GA4-style presets + a custom range */}
@@ -448,42 +483,71 @@ export function DataExplorer() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label="Installs" value={num(ph.installs?.total)} />
             <Stat
-              label="Activated in 24h"
-              value={pct(ph.activation?.rate)}
-              hint={`${num(ph.activation?.activated_within_24h)} of ${num(ph.activation?.installs)}`}
-            />
-            <Stat label="Weekly active users" value={num(ph.engagement?.wau)} />
-            <Stat label="Total searches" value={num(ph.engagement?.total_searches)} />
-            <Stat
-              label="Search click rate"
-              value={pct(ph.search_quality?.click_rate)}
-              hint={`${num(ph.search_quality?.clicks)} clicks / ${num(ph.search_quality?.searches)} searches`}
-            />
-            <Stat label="Zero-result rate" value={pct(ph.search_quality?.zero_result_rate)} />
-            <Stat
-              label="Retention W1 (rolling)"
-              value={pct(ph.retention?.w1_rolling?.rate)}
+              label="Active users (any event)"
+              value={num(ph.engagement?.wau_any_event)}
+              hint="distinct installs with activity"
             />
             <Stat
-              label="Retention W4 (rolling)"
-              value={pct(ph.retention?.w4_rolling?.rate)}
+              label="Searches"
+              value={num(searchesPerformed)}
+              hint="search_performed"
+            />
+            <Stat label="Result opens" value={num(resultOpens)} hint="result_opened" />
+            <Stat
+              label="Click rate"
+              value={rate(resultOpens, searchesPerformed)}
+              hint={`${num(resultOpens)} opens / ${num(searchesPerformed)} searches`}
+            />
+            <Stat
+              label="Zero-result rate"
+              value={rate(zeroResults, searchesPerformed)}
+              hint={`${num(zeroResults)} zero-result searches`}
             />
             <Stat
               label="Email capture"
               value={pct(ph.email_capture?.rate)}
-              hint={`${num(ph.email_capture?.identified)} identified`}
+              hint={`${num(ph.email_capture?.identified)} identified of ${num(ph.email_capture?.wau)}`}
             />
-            <Stat label="Searches / WAU" value={String(ph.engagement?.searches_per_wau ?? '—')} />
+            <Stat
+              label="Activated in 24h"
+              value={hasSubmitted ? pct(ph.activation?.rate) : '—'}
+              hint={hasSubmitted ? `${num(ph.activation?.activated_within_24h)} of ${num(ph.activation?.installs)}` : 'needs search_submitted'}
+            />
           </div>
+
+          {!hasSubmitted && (
+            <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200/90">
+              Activation, intent-based WAU and rolling retention are defined on the newer{' '}
+              <code className="rounded bg-black/30 px-1">search_submitted</code> event and{' '}
+              <code className="rounded bg-black/30 px-1">user_initiated</code> property, which the
+              shipped extension isn&apos;t emitting for this range yet — so they read as “—” rather
+              than a misleading 0. The numbers above come from the events that are live
+              (search_performed, result_opened). The weekly Insights report keeps the strict
+              definitions on purpose, for trend continuity.
+            </p>
+          )}
+
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <BreakdownTable title="Searches by platform" rows={ph.platforms?.searches} />
-            <BreakdownTable title="Clicks by platform" rows={ph.platforms?.clicks} />
+            <BreakdownTable title="Searches by platform" rows={ph.platforms?.searches} mode="share" />
+            <BreakdownTable title="Result opens by platform" rows={ph.platforms?.clicks} mode="share" />
           </div>
           {ph.version_adoption?.weekly?.length > 0 && (
             <div className="mt-3">
               <BreakdownTable
                 title="Users by extension version"
                 rows={Object.fromEntries(ph.version_adoption.weekly.map((v) => [v.version, v.users]))}
+              />
+            </div>
+          )}
+
+          {/* Ground truth: every event name + raw count for the range. Never a
+              misleading 0 — if an event isn't here, it genuinely didn't fire. */}
+          {data && data.events.length > 0 && (
+            <div className="mt-4">
+              <BreakdownTable
+                title="All events (raw counts)"
+                rows={Object.fromEntries(data.events.map((e) => [e.event, e.count]))}
+                limit={100}
               />
             </div>
           )}

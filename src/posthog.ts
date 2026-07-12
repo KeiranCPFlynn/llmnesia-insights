@@ -49,6 +49,28 @@ export async function getWeeklyInstalls(
   return { total: Number(rows[0]?.[0] ?? 0) };
 }
 
+/**
+ * Ground-truth event-name → count for a range. Unlike the weekly metrics (which
+ * intentionally key off the newer `search_submitted` / `user_initiated`
+ * instrumentation and read 0 until the new extension build propagates), this is
+ * the raw picture of what's actually in the data — used by the Data explorer so
+ * nothing shows a misleading 0.
+ */
+export async function getEventBreakdown(
+  weekStart: string,
+  weekEnd: string,
+): Promise<Array<{ event: string; count: number }>> {
+  const rows = await runQuery(`
+    SELECT event, count() AS c
+    FROM events
+    WHERE toDate(timestamp) >= toDate('${weekStart}')
+      AND toDate(timestamp) <= toDate('${weekEnd}')
+    GROUP BY event
+    ORDER BY c DESC
+  `);
+  return rows.map((r) => ({ event: String(r[0]), count: Number(r[1] ?? 0) }));
+}
+
 export async function getActivationRate(
   weekStart: string,
   weekEnd: string,
