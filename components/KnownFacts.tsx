@@ -21,6 +21,7 @@ export function KnownFacts({
 }) {
   const router = useRouter();
   const [provider] = useProvider();
+  const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<'caveat' | 'context'>('caveat');
   const [metric, setMetric] = useState('');
@@ -138,14 +139,27 @@ export function KnownFacts({
           {activeCount} active
         </span>
         <div className="h-px flex-1 bg-neutral-800/80" />
+        {expanded && (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="rounded-md border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+          >
+            {open ? 'Done' : 'Manage'}
+          </button>
+        )}
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            setExpanded((v) => !v);
+            if (expanded) setOpen(false);
+          }}
           className="rounded-md border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
         >
-          {open ? 'Done' : 'Manage'}
+          {expanded ? 'Hide' : 'Show'}
         </button>
       </div>
 
+      {expanded && (
+        <>
       <p className="mb-4 max-w-3xl text-sm leading-relaxed text-neutral-500">
         Facts that hold every week — a confirmed non-issue or real-world context the analysis
         keeps re-discovering. These are injected into every report as authoritative, so the AI
@@ -306,6 +320,8 @@ export function KnownFacts({
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {rerunning && (applyNow || busy?.startsWith('edit-')) && (
