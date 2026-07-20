@@ -1,6 +1,6 @@
 import { collectMetrics } from './posthog.js';
 import { collectGA4Metrics } from './ga4.js';
-import { getCombinedSearchDigest } from './search-digest.js';
+import { getCombinedSearchDigest, syncSearchForInsights } from './search-digest.js';
 import { randomUUID } from 'node:crypto';
 import {
   getHistoryBefore,
@@ -131,26 +131,36 @@ export async function runPipeline(opts: {
     `LLMnesia insights — ${weekStart} → ${weekEnd}${partial ? ` [WEEK-TO-DATE · day ${partial.days_elapsed}/7]` : ''}${opts.dryRun ? ' [DRY RUN]' : ''}`,
   );
 
-  const [posthogMetrics, ga4, history, existingRow, searchPerformance, standingCaveats] =
-    await Promise.all([
-      collectMetrics(weekStart, weekEnd),
-      collectGA4Metrics(weekStart, weekEnd),
-      getRecentInsights(6),
-      getInsightByWeek(weekStart),
-      // Top-of-funnel search visibility (Google + Bing). Fail-soft: a missing
-      // growth table or unconfigured search source must never break the run.
-      getCombinedSearchDigest(weekStart, weekEnd).catch((e) => {
-        log(`Search digest skipped: ${e instanceof Error ? e.message : String(e)}`);
-        return null;
-      }),
-      // Persistent "known facts" the founder has confirmed once and should not
-      // be re-flagged every week. Fail-soft: if the table doesn't exist yet
-      // (pre-DDL) the weekly run must still complete.
-      getStandingCaveats().catch((e) => {
-        log(`Standing caveats skipped: ${e instanceof Error ? e.message : String(e)}`);
-        return [];
-      }),
-    ]);
+  // Refresh Google + Bing search rows first so the digest reads current data
+  // instead of whatever the last growth sync happened to leave behind. Kicked
+  // off up front so it overlaps PostHog/GA4 collection; awaited before the
+  // digest reads the rows. Fully fail-soft inside syncSearchForInsights.
+  const searchSync = syncSearchForInsights(log);
+
+  const [posthogMetrics, ga4, history, existingRow, standingCaveats] = await Promise.all([
+    collectMetrics(weekStart, weekEnd),
+    collectGA4Metrics(weekStart, weekEnd),
+    getRecentInsights(6),
+    getInsightByWeek(weekStart),
+    // Persistent "known facts" the founder has confirmed once and should not
+    // be re-flagged every week. Fail-soft: if the table doesn't exist yet
+    // (pre-DDL) the weekly run must still complete.
+    getStandingCaveats().catch((e) => {
+      log(`Standing caveats skipped: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }),
+  ]);
+
+  // Ensure the just-synced rows are committed before we aggregate them. The
+  // sync is fail-soft, but await it here so a slow sync doesn't race the digest.
+  await searchSync;
+
+  // Top-of-funnel search visibility (Google + Bing). Fail-soft: a missing
+  // growth table or unconfigured search source must never break the run.
+  const searchPerformance = await getCombinedSearchDigest(weekStart, weekEnd).catch((e) => {
+    log(`Search digest skipped: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  });
   const metrics = {
     ...posthogMetrics,
     ga4,

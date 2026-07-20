@@ -1,7 +1,15 @@
 import './env.js';
 import { createClient } from '@supabase/supabase-js';
-import { getAccurateSiteTotals } from './gsc.js';
-import { getAccurateBingTotals } from './bing.js';
+import {
+  deltaRange as gscDeltaRange,
+  getAccurateSiteTotals,
+  syncSite as gscSyncSite,
+} from './gsc.js';
+import {
+  deltaRange as bingDeltaRange,
+  getAccurateBingTotals,
+  syncSite as bingSyncSite,
+} from './bing.js';
 import type { SearchPerformanceDigest, SearchQueryRow, SearchSourceDigest, Site } from './types.js';
 
 /**
@@ -30,6 +38,65 @@ function getSupabase() {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Resolve the single llmnesia `sites` row the insights pipeline reports on.
+ * Returns null when growth isn't set up (no matching site), so every caller can
+ * degrade gracefully rather than throw.
+ */
+async function getInsightsSite(): Promise<Site | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('sites')
+    .select('*')
+    .ilike('name', SITE_NAME)
+    .maybeSingle();
+  if (error) throw new Error(`sites lookup failed: ${error.message}`);
+  return (data as Site | null) ?? null;
+}
+
+/**
+ * Refresh the insights site's search rows (Google Search Console + Bing
+ * Webmaster Tools) for the trailing delta window, so a run reads current data
+ * instead of whatever a past growth sync happened to leave behind.
+ *
+ * Bing is deliberately synced here alongside GSC: insights depends on the same
+ * `bing_rows`/`gsc_rows` tables the growth planner fills, but nothing guaranteed
+ * they were fresh at analysis time. Wiring the sync into the pipeline keeps Bing
+ * up to date on every relevant update rather than drifting between growth syncs.
+ *
+ * Fail-soft by contract: no llmnesia site, an unconfigured Bing key, or a
+ * transient API/auth error must never break the insights run — we log and move
+ * on, and the digest falls back to whatever rows are already stored.
+ */
+export async function syncSearchForInsights(
+  log: (msg: string) => void = (m) => console.log(m),
+): Promise<void> {
+  let site: Site | null;
+  try {
+    site = await getInsightsSite();
+  } catch (e) {
+    log(`Search sync skipped: ${e instanceof Error ? e.message : String(e)}`);
+    return;
+  }
+  if (!site) return; // growth not set up → nothing to sync
+
+  const resolved = site;
+  const hasBing = !!process.env.BING_WEBMASTER_API_KEY;
+  const results = await Promise.allSettled([
+    gscSyncSite(resolved, gscDeltaRange(), (m) => log(`[search-sync] ${m}`)),
+    hasBing
+      ? bingSyncSite(resolved, bingDeltaRange(), (m) => log(`[search-sync] ${m}`))
+      : Promise.resolve(0),
+  ]);
+  const [gsc, bing] = results;
+  if (gsc.status === 'rejected') {
+    log(`GSC sync failed (continuing): ${gsc.reason instanceof Error ? gsc.reason.message : String(gsc.reason)}`);
+  }
+  if (bing.status === 'rejected') {
+    log(`Bing sync failed (continuing): ${bing.reason instanceof Error ? bing.reason.message : String(bing.reason)}`);
+  }
 }
 
 interface RawSearchRow {
@@ -142,16 +209,8 @@ export async function getCombinedSearchDigest(
   weekStart: string,
   weekEnd: string,
 ): Promise<SearchPerformanceDigest | null> {
-  const supabase = getSupabase();
-
   // Resolve the llmnesia site row. Missing = growth not set up → no digest.
-  const { data: siteRow, error: siteErr } = await supabase
-    .from('sites')
-    .select('*')
-    .ilike('name', SITE_NAME)
-    .maybeSingle();
-  if (siteErr) throw new Error(`sites lookup failed: ${siteErr.message}`);
-  const site = siteRow as Site | null;
+  const site = await getInsightsSite();
   if (!site) return null;
   const siteId = site.id;
 
