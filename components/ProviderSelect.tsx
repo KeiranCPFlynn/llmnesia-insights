@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from 'react';
 
-export type Provider = 'claude' | 'deepseek' | 'openai' | 'qwen' | 'glm';
+export type Provider = 'claude' | 'deepseek' | 'openai' | 'qwen';
 
 export const PROVIDER_LABEL: Record<Provider, string> = {
   claude: 'Claude',
   deepseek: 'DeepSeek',
   openai: 'GPT-5.5',
   qwen: 'Qwen',
-  glm: 'GLM',
 };
 
-const ALL: Provider[] = ['claude', 'deepseek', 'openai', 'qwen', 'glm'];
+const ALL: Provider[] = ['claude', 'deepseek', 'openai', 'qwen'];
 
 /** Fired on every `set()` so same-tab instances sharing a key stay in sync ('storage' only fires cross-tab). */
 const PROVIDER_CHANGE_EVENT = 'llm-provider-change';
@@ -62,8 +61,6 @@ const PROVIDER_MODELS: Record<Provider, ModelDef[]> = {
     { id: 'qwen-long', label: 'Qwen Long (1M ctx)' },
     { id: 'qwen-plus-latest', label: 'Qwen Plus Latest' },
     { id: 'qwen-max-latest', label: 'Qwen Max Latest' },
-  ],
-  glm: [
     { id: 'glm-5.2', label: 'GLM 5.2' },
   ],
 };
@@ -74,7 +71,6 @@ const DEFAULT_MODEL: Record<Provider, string> = {
   deepseek: 'deepseek-v4-pro',
   openai: 'gpt-5.5',
   qwen: 'qwen-plus',
-  glm: 'glm-5.2',
 };
 
 /** Storage key suffixes — one localStorage key per provider. */
@@ -83,7 +79,6 @@ const MODEL_STORAGE_KEY_SUFFIX: Record<Provider, string> = {
   deepseek: 'model-deepseek',
   openai: 'model-openai',
   qwen: 'model-qwen',
-  glm: 'model-glm',
 };
 
 // ─── Provider selection ──────────────────────────────────────────────
