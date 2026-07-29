@@ -10,7 +10,7 @@ import type {
   Thread,
 } from './types.js';
 import { STRATEGY_SYSTEM_PROMPT } from './prompts/strategy-prompt.js';
-import { callLlm, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
+import { callLlm, coerceStringArray, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
 
 const STRATEGY_TOOL: LlmTool = {
   name: 'submit_strategy',
@@ -222,7 +222,7 @@ export async function generateStrategy(
       ...r,
       id: randomUUID(),
     })),
-    risks: raw.risks ?? [],
+    risks: coerceStringArray(raw.risks),
     experiments: raw.experiments ?? [],
     model_used: modelUsed,
     generated_at: new Date().toISOString(),

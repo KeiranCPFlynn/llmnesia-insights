@@ -1,7 +1,7 @@
 import './env.js';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { callLlm, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
+import { callLlm, coerceStringArray, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
 import { GROWTH_PLAN_SYSTEM_PROMPT } from './prompts/growth-prompt.js';
 import { getSiteScale, type SiteScale } from './growth.js';
 import { getBingDigest } from './bing.js';
@@ -326,7 +326,7 @@ export async function generateGrowthPlan(
     thesis: raw.thesis,
     balance: balanceFor(recommendations),
     recommendations,
-    risks: raw.risks ?? [],
+    risks: coerceStringArray(raw.risks),
     experiments: raw.experiments ?? [],
     model_used: modelUsed,
     generated_at: new Date().toISOString(),

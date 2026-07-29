@@ -75,6 +75,25 @@ export function resolveProvider(p?: string | null): LlmProvider {
   return v === 'deepseek' ? 'deepseek' : v === 'openai' ? 'openai' : 'claude';
 }
 
+/**
+ * Tool-call args aren't schema-validated by the provider — a model can fill an
+ * `array` field with a plain string instead (seen once in production: the
+ * whole risks array plus the next field's JSON ended up stuffed into a single
+ * string). Coerce defensively so a malformed field degrades to one ugly item
+ * instead of crashing every `.map()` call downstream.
+ */
+export function coerceStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string');
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === 'string');
+  } catch {
+    // Not valid JSON — fall through and keep the raw string as one item.
+  }
+  return [value];
+}
+
 export interface LlmTool {
   name: string;
   description: string;

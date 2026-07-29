@@ -571,7 +571,7 @@ export function StrategyPanel({
             </details>
           )}
 
-          {strategy.experiments.length > 0 && (
+          {Array.isArray(strategy.experiments) && strategy.experiments.length > 0 && (
             <section className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-6 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
               <h3 className="mb-3 text-base font-bold text-neutral-100">Experiments</h3>
               <ul className="space-y-2 text-[15px] leading-relaxed text-neutral-200">
@@ -585,7 +585,7 @@ export function StrategyPanel({
             </section>
           )}
 
-          {strategy.risks.length > 0 && (
+          {Array.isArray(strategy.risks) && strategy.risks.length > 0 && (
             <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-6 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
               <h3 className="mb-3 text-base font-bold text-amber-300">Risks</h3>
               <ul className="list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-amber-100">
