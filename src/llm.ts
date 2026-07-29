@@ -15,15 +15,11 @@ import type { ChatMessage } from './types.js';
  * with `cache: true` and only the Claude path acts on it.
  */
 
-export type LlmProvider = 'claude' | 'deepseek' | 'openai' | 'qwen';
+export type LlmProvider = 'claude' | 'deepseek' | 'openai' | 'qwen' | 'glm';
 
 // ─── Claude (Anthropic) ──────────────────────────────────────────────
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const CLAUDE_MAX_TOKENS = 64000;
-
-// ─── Qwen (Alibaba Cloud DashScope, OpenAI-compatible) ──────────────
-const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen-plus';
 
 /** Anthropic requires an explicit max_tokens; use the model's ceiling when the
  * caller doesn't cap it. Claude only bills tokens actually produced. */
@@ -36,7 +32,7 @@ const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen-plus';
 type ReasoningEffort = 'low' | 'medium' | 'high';
 
 interface OpenAICompatConfig {
-  label: 'deepseek' | 'openai' | 'qwen';
+  label: 'deepseek' | 'openai' | 'qwen' | 'glm';
   apiKeyEnv: string;
   baseURL?: string;
   model: string;
@@ -85,11 +81,26 @@ const OPENAI_COMPAT: Record<'deepseek' | 'openai', OpenAICompatConfig> = {
 //   qwen-coder-plus — code-specialized
 //   qwen-long   — 1M-token context window
 //   qwen-plus-latest / qwen-max-latest — latest checkpoint variants
+const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen-plus';
 const QWEN_COMPAT: OpenAICompatConfig = {
   label: 'qwen',
   apiKeyEnv: 'DASHSCOPE_API_KEY',
   baseURL: QWEN_BASE_URL,
   model: QWEN_MODEL,
+  maxTokensDefault: 32768,
+  tokenParam: 'max_completion_tokens',
+};
+
+// Zhipu AI GLM (OpenAI-compatible)
+// Base URL: https://open.bigmodel.cn/api/paas/v4/chat/completions
+const GLM_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
+const GLM_MODEL = process.env.GLM_MODEL ?? 'glm-5.2';
+const GLM_COMPAT: OpenAICompatConfig = {
+  label: 'glm',
+  apiKeyEnv: 'GLM_API_KEY', // Zhipu uses standard API key auth
+  baseURL: GLM_BASE_URL,
+  model: GLM_MODEL,
   maxTokensDefault: 32768,
   tokenParam: 'max_completion_tokens',
 };
@@ -100,6 +111,7 @@ export function resolveProvider(p?: string | null): LlmProvider {
   if (v === 'deepseek') return 'deepseek';
   if (v === 'openai') return 'openai';
   if (v === 'qwen') return 'qwen';
+  if (v === 'glm') return 'glm';
   return 'claude';
 }
 
@@ -191,6 +203,7 @@ export function chatToLlmMessages(messages: ChatMessage[]): LlmMessage[] {
 export async function callLlm(req: LlmRequest): Promise<LlmResponse> {
   if (req.provider === 'claude') return callClaude(req);
   if (req.provider === 'qwen') return callOpenAICompatible(req, QWEN_COMPAT);
+  if (req.provider === 'glm') return callOpenAICompatible(req, GLM_COMPAT);
   return callOpenAICompatible(req, OPENAI_COMPAT[req.provider]);
 }
 
