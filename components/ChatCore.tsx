@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatAttachment, ChatMessage } from '../src/types.js';
-import { ProviderSelect, type Provider } from './ProviderSelect';
+import { ProviderSelect, type Provider, ModelSelect, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 
 /** GA4 exports are tiny; this is a generous guard against pasting a huge file. */
@@ -42,6 +42,8 @@ export function ChatCore<E>({
   defaultOpen,
   provider,
   setProvider,
+  model,
+  setModel,
   providerOptions,
   providerTitle,
   busyLabel,
@@ -58,10 +60,13 @@ export function ChatCore<E>({
   defaultOpen?: boolean;
   provider: Provider;
   setProvider: (p: Provider) => void;
+  /** Model ID for the current provider — overrides the env default at runtime. */
+  model?: string;
+  setModel?: (m: string) => void;
   providerOptions: Provider[];
   providerTitle: string;
   busyLabel: (p: Provider) => string;
-  onSend: (messages: ChatMessage[], provider: Provider) => Promise<SendResult<E>>;
+  onSend: (messages: ChatMessage[], provider: Provider, model?: string) => Promise<SendResult<E>>;
   renderExtra?: (args: {
     extra: E;
     clear: () => void;
@@ -131,7 +136,7 @@ export function ChatCore<E>({
     if (taRef.current) taRef.current.style.height = 'auto';
     setBusy(true);
     try {
-      const res = await onSend(next, provider);
+      const res = await onSend(next, provider, model);
       if (res.replaceMessages) setMessages(res.replaceMessages);
       else setMessages((m) => [...m, res.reply]);
       if (res.extra) setExtra(res.extra);
@@ -157,7 +162,7 @@ export function ChatCore<E>({
     <div className="overflow-hidden rounded-lg border border-neutral-800/80 bg-neutral-900/70 shadow-[0_16px_42px_rgba(0,0,0,0.22)]">
       <div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-950/45 px-4 py-3">
         <h2 className="text-sm font-semibold text-neutral-100">{title}</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <ProviderSelect
             provider={provider}
             onChange={setProvider}
@@ -165,6 +170,15 @@ export function ChatCore<E>({
             title={providerTitle}
             disabled={busy}
           />
+          {setModel && (
+            <ModelSelect
+              provider={provider}
+              model={model || ''}
+              onChange={setModel}
+              disabled={busy}
+              title={`Model variant for ${PROVIDER_LABEL[provider]}`}
+            />
+          )}
           <button
             onClick={() => setOpen(false)}
             className="rounded px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-800/80 hover:text-neutral-300"
@@ -183,11 +197,10 @@ export function ChatCore<E>({
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
             <div
-              className={`max-w-[85%] rounded-lg px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_6px_18px_rgba(0,0,0,0.14)] ${
-                m.role === 'user'
-                  ? 'whitespace-pre-wrap bg-emerald-600/25 text-emerald-50 ring-1 ring-emerald-500/20'
-                  : 'bg-neutral-800/90 text-neutral-100 ring-1 ring-neutral-700/50'
-              }`}
+              className={`max-w-[85%] rounded-lg px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_6px_18px_rgba(0,0,0,0.14)] ${m.role === 'user'
+                ? 'whitespace-pre-wrap bg-emerald-600/25 text-emerald-50 ring-1 ring-emerald-500/20'
+                : 'bg-neutral-800/90 text-neutral-100 ring-1 ring-neutral-700/50'
+                }`}
             >
               {m.role === 'user' ? (
                 <>

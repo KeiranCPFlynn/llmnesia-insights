@@ -47,11 +47,11 @@ THE WEEK (${insight.week_start} → ${insight.week_end}):
 
 CURRENT REPORT:
 ${JSON.stringify({
-  headline: insight.headline,
-  summary: insight.summary,
-  findings: insight.findings,
-  action_items: insight.action_items,
-})}
+    headline: insight.headline,
+    summary: insight.summary,
+    findings: insight.findings,
+    action_items: insight.action_items,
+  })}
 
 ALREADY-CONFIRMED CAVEATS (treat as fact, don't re-suggest):
 ${JSON.stringify(insight.corrections ?? [])}
@@ -68,10 +68,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, messages, provider } = (await req.json().catch(() => ({}))) as {
+  const { week, messages, provider, model } = (await req.json().catch(() => ({}))) as {
     week?: string;
     messages?: ChatMessage[];
     provider?: string;
+    model?: string;
   };
   if (!week || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'week and messages are required' }, { status: 400 });
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
   try {
     const response = await callLlm({
       provider: resolveProvider(provider),
+      model,
       // Headroom so DeepSeek's reasoning tokens don't crowd out the reply.
       // Claude only bills what it uses, so a short answer stays cheap.
       maxTokens: 8000,
@@ -96,10 +98,10 @@ export async function POST(req: Request) {
 
     const suggestion = response.toolCall
       ? (response.toolCall.input as {
-          kind: 'caveat' | 'context';
-          affected_metric: string;
-          note: string;
-        })
+        kind: 'caveat' | 'context';
+        affected_metric: string;
+        note: string;
+      })
       : null;
 
     const reply =

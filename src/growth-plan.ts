@@ -179,11 +179,11 @@ function digestOpportunities(opportunities: GrowthOpportunity[], topN = 25) {
     reasons: o.evidence.reasons,
     prior: o.evidence.prior
       ? {
-          impressions: o.evidence.prior.impressions,
-          clicks: o.evidence.prior.clicks,
-          ctr: Number((o.evidence.prior.ctr * 100).toFixed(2)),
-          position: Number(o.evidence.prior.position.toFixed(1)),
-        }
+        impressions: o.evidence.prior.impressions,
+        clicks: o.evidence.prior.clicks,
+        ctr: Number((o.evidence.prior.ctr * 100).toFixed(2)),
+        position: Number(o.evidence.prior.position.toFixed(1)),
+      }
       : undefined,
   }));
 }
@@ -205,9 +205,9 @@ export async function getGrowthContextDigests(
     getSiteScale(site, weekStart),
     process.env.BING_WEBMASTER_API_KEY
       ? getBingDigest(site).catch((e) => {
-          console.error('[growth-context] bing digest failed:', e);
-          return null;
-        })
+        console.error('[growth-context] bing digest failed:', e);
+        return null;
+      })
       : Promise.resolve(null),
   ]);
 
@@ -244,6 +244,7 @@ export interface GrowthPlanInputs {
   priorPlans: { week_start: string; thesis: string }[];
   priorActions: Pick<GrowthAction, 'site_id' | 'week_start' | 'action_type' | 'status' | 'target_query' | 'target_page' | 'published_url'>[];
   provider?: LlmProvider | string | null;
+  model?: string;
 }
 
 export async function generateGrowthPlan(
@@ -262,6 +263,7 @@ export async function generateGrowthPlan(
 
   const { toolCall, text, modelUsed } = await callLlm({
     provider: resolved,
+    model: inputs.model,
     tools: [PLAN_TOOL],
     toolChoice: { type: 'tool', name: 'submit_growth_plan' },
     system: [{ text: GROWTH_PLAN_SYSTEM_PROMPT, cache: true }],
@@ -373,12 +375,12 @@ export async function saveGrowthPlanChat(
   const supabase = getSupabase();
   const nextPlan = recommendationId
     ? {
-        ...plan,
-        recommendation_chats: {
-          ...(plan.recommendation_chats ?? {}),
-          [recommendationId]: chat,
-        },
-      }
+      ...plan,
+      recommendation_chats: {
+        ...(plan.recommendation_chats ?? {}),
+        [recommendationId]: chat,
+      },
+    }
     : { ...plan, chat };
   const { error } = await supabase
     .from('growth_plans')

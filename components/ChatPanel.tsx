@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ChatMessage } from '../src/types.js';
-import { useProvider, type Provider } from './ProviderSelect';
+import { useProvider, useModel, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { ChatCore } from './ChatCore';
 
@@ -51,14 +51,12 @@ function CorrectionCard({
   const isContext = suggestion.kind === 'context';
   return (
     <div
-      className={`rounded-lg border p-3 ${
-        isContext ? 'border-sky-800 bg-sky-950/40' : 'border-amber-800 bg-amber-950/40'
-      }`}
+      className={`rounded-lg border p-3 ${isContext ? 'border-sky-800 bg-sky-950/40' : 'border-amber-800 bg-amber-950/40'
+        }`}
     >
       <div
-        className={`text-xs font-semibold uppercase tracking-wide ${
-          isContext ? 'text-sky-300' : 'text-amber-300'
-        }`}
+        className={`text-xs font-semibold uppercase tracking-wide ${isContext ? 'text-sky-300' : 'text-amber-300'
+          }`}
       >
         Proposed {isContext ? 'context note' : 'data caveat'} · {suggestion.affected_metric}
       </div>
@@ -85,9 +83,8 @@ function CorrectionCard({
         <div className="mt-3">
           <ProgressBar
             seconds={elapsed}
-            label={`Regenerating the report on ${
-              provider === 'deepseek' ? 'DeepSeek (~3–4 min)' : 'Claude (~1 min)'
-            }`}
+            label={`Regenerating the report on ${provider === 'deepseek' ? 'DeepSeek (~3–4 min)' : 'Claude (~1 min)'
+              }`}
           />
         </div>
       )}
@@ -104,24 +101,27 @@ export function ChatPanel({
   initialChat: ChatMessage[];
 }) {
   const [provider, setProvider] = useProvider();
+  const [model, setModel] = useModel(provider);
 
   return (
     <ChatCore<Suggestion>
       title="Discuss this week"
-      collapsedLabel="💬 Discuss this week — question the numbers, flag bad data"
-      placeholder="Ask or challenge the data…  (Enter to send, Shift+Enter for a new line)"
-      emptyHint="Ask anything about this week, or point out data that looks wrong (e.g. “the zero-result spike is a PostHog misconfig, not real users”). If we agree it’s skewed, I’ll offer to save a caveat and regenerate the report."
+      collapsedLabel={'\u{1F4AC} Discuss this week \u2014 question the numbers, flag bad data'}
+      placeholder="Ask or challenge the data\u2026  (Enter to send, Shift+Enter for a new line)"
+      emptyHint={`Ask anything about this week, or point out data that looks wrong (e.g. "the zero-result spike is a PostHog misconfig, not real users"). If we agree it's skewed, I'll offer to save a caveat and regenerate the report.`}
       initialChat={initialChat}
       provider={provider}
       setProvider={setProvider}
+      model={model}
+      setModel={setModel}
       providerOptions={['claude', 'deepseek']}
       providerTitle="Which model answers / regenerates the analysis"
       busyLabel={(p) => `${p === 'deepseek' ? 'DeepSeek' : 'Claude'} is thinking`}
-      onSend={async (messages, p) => {
+      onSend={async (messages, p, m) => {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ week, messages, provider: p }),
+          body: JSON.stringify({ week, messages, provider: p, model: m }),
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Chat failed');

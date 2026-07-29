@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { ChatMessage, GrowthRecommendation } from '../src/types.js';
 import { ChatCore } from './ChatCore';
 import { ProgressBar, useElapsed } from './ProgressBar';
-import { useProvider, type Provider } from './ProviderSelect';
+import { useProvider, useModel, type Provider } from './ProviderSelect';
 
 type GrowthRevision = {
   replaces_id?: string;
@@ -82,9 +82,8 @@ function RevisionCard({
           >
             {copied
               ? '✓ Copied — paste into Claude Code / Codex'
-              : `Copy coding-agent prompt${
-                  rec.target_repo && rec.target_repo !== 'none' ? ` · ${rec.target_repo}` : ''
-                }`}
+              : `Copy coding-agent prompt${rec.target_repo && rec.target_repo !== 'none' ? ` · ${rec.target_repo}` : ''
+              }`}
           </button>
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-violet-300/80 hover:text-violet-200">
@@ -144,6 +143,7 @@ export function GrowthPlanChat({
     storageKey: 'llm-provider-growth-chat',
     fallback: 'claude',
   });
+  const [model, setModel] = useModel(provider);
 
   const label = (p: Provider) =>
     p === 'openai' ? 'GPT-5.5' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
@@ -176,42 +176,44 @@ export function GrowthPlanChat({
       defaultOpen={focused}
       provider={provider}
       setProvider={setProvider}
+      model={model}
+      setModel={setModel}
       providerOptions={['claude', 'openai', 'deepseek']}
       providerTitle="Which model discusses the growth plan"
       busyLabel={(p) => `${label(p)} is reviewing the plan`}
       suggestedPrompts={
         focused
           ? [
-              {
-                label: 'Regenerate',
-                prompt:
-                  'Regenerate this recommendation from scratch using the same evidence and goal. Keep it concrete and return a complete replacement for my review.',
-              },
-              {
-                label: 'Make smaller',
-                prompt:
-                  'Revise this into the smallest useful version that can be completed quickly this week.',
-              },
-              {
-                label: 'New handoff prompt',
-                prompt:
-                  'Keep the recommendation, but regenerate a stronger, self-contained coding-agent handoff prompt.',
-              },
-            ]
+            {
+              label: 'Regenerate',
+              prompt:
+                'Regenerate this recommendation from scratch using the same evidence and goal. Keep it concrete and return a complete replacement for my review.',
+            },
+            {
+              label: 'Make smaller',
+              prompt:
+                'Revise this into the smallest useful version that can be completed quickly this week.',
+            },
+            {
+              label: 'New handoff prompt',
+              prompt:
+                'Keep the recommendation, but regenerate a stronger, self-contained coding-agent handoff prompt.',
+            },
+          ]
           : [
-              {
-                label: 'Challenge priorities',
-                prompt:
-                  'Challenge the ranking of this plan. Which recommendation should actually be first, and why?',
-              },
-              {
-                label: 'Add recommendation',
-                prompt:
-                  'Propose one additional recommendation that fills the biggest gap in the current plan.',
-              },
-            ]
+            {
+              label: 'Challenge priorities',
+              prompt:
+                'Challenge the ranking of this plan. Which recommendation should actually be first, and why?',
+            },
+            {
+              label: 'Add recommendation',
+              prompt:
+                'Propose one additional recommendation that fills the biggest gap in the current plan.',
+            },
+          ]
       }
-      onSend={async (messages, p) => {
+      onSend={async (messages, p, m) => {
         const res = await fetch('/api/growth/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -220,6 +222,7 @@ export function GrowthPlanChat({
             weekStart,
             messages,
             provider: p,
+            model: m,
             recommendationId: recommendation?.id,
           }),
         });

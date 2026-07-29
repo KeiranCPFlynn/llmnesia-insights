@@ -84,6 +84,7 @@ export async function analyseMetrics(
   history: HistoricalInsight[],
   corrections: Correction[] = [],
   provider?: LlmProvider | string | null,
+  model?: string,
   partial?: { as_of: string; days_elapsed: number } | null,
 ): Promise<{ result: AnalysisResult; modelUsed: string }> {
   const resolved = resolveProvider(provider ?? undefined);
@@ -96,13 +97,13 @@ export async function analyseMetrics(
   const contexts = corrections.filter((c) => c.kind === 'context');
   const caveatBlock = caveats.length
     ? `\n\nKNOWN DATA CAVEATS — the founder has confirmed these. Treat them as AUTHORITATIVE and override the raw numbers accordingly. Do NOT flag a problem that a caveat explains away; if a caveat invalidates a metric, say the metric is unreliable this week rather than drawing a negative conclusion from it:\n${caveats
-        .map((c) => `- [${c.affected_metric}] ${c.note}`)
-        .join('\n')}`
+      .map((c) => `- [${c.affected_metric}] ${c.note}`)
+      .join('\n')}`
     : '';
   const contextBlock = contexts.length
     ? `\n\nFOUNDER CONTEXT — real-world facts the data doesn't capture. Treat as AUTHORITATIVE. Use them to explain movements (don't attribute a change to a user-behaviour cause a context note already accounts for) and factor them into your conclusions:\n${contexts
-        .map((c) => `- [${c.affected_metric}] ${c.note}`)
-        .join('\n')}`
+      .map((c) => `- [${c.affected_metric}] ${c.note}`)
+      .join('\n')}`
     : '';
 
   const partialBlock = partial
@@ -111,6 +112,7 @@ export async function analyseMetrics(
 
   const { text, toolCall, modelUsed } = await callLlm({
     provider: resolved,
+    model,
     // No max_tokens: this is a weekly batch analytics run — a truncated report
     // is far worse than the token cost. Each provider runs to its model max
     // (DeepSeek reasoning models need the headroom for reasoning + the JSON).

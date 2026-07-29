@@ -65,14 +65,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, provider, generationContext, strategyGoal } = (await req
+  const { week, provider, model, generationContext, strategyGoal } = (await req
     .json()
     .catch(() => ({}))) as {
-    week?: string;
-    provider?: string;
-    generationContext?: string;
-    strategyGoal?: string;
-  };
+      week?: string;
+      provider?: string;
+      model?: string;
+      generationContext?: string;
+      strategyGoal?: string;
+    };
   if (!week) {
     return NextResponse.json({ error: 'week is required' }, { status: 400 });
   }
@@ -123,6 +124,7 @@ export async function POST(req: Request) {
         strategyChat: insight.strategy_chat ?? [],
         generationContext,
         provider,
+        model,
       });
 
       await saveStrategy(week, result);

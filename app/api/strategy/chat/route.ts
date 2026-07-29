@@ -80,9 +80,9 @@ function formatRevisionReply(text: string, revision: StrategyRevision | null): s
   const r = revision.recommendation;
   const lines = [
     text ||
-      (revision.replaces_id
-        ? "I've drafted a revised recommendation. Review it below, then apply it if it's right."
-        : "I've drafted a new recommendation. Review it below, then add it to the strategy if it's right."),
+    (revision.replaces_id
+      ? "I've drafted a revised recommendation. Review it below, then apply it if it's right."
+      : "I've drafted a new recommendation. Review it below, then add it to the strategy if it's right."),
     `### ${r.title}`,
     `**Area:** ${r.area}${r.target_repo !== 'none' ? ` · **Repo:** ${r.target_repo}` : ''}`,
     r.recommendation,
@@ -116,8 +116,8 @@ function systemPrompt(
 ) {
   const focusedRecommendation = focusedRecommendationId
     ? insight.strategy?.recommendations.find(
-        (recommendation) => recommendation.id === focusedRecommendationId,
-      )
+      (recommendation) => recommendation.id === focusedRecommendationId,
+    )
     : null;
 
   return `You are LLMnesia's acting Head of Product & Growth, in conversation with the solo founder about THIS week's strategy. Be concise, plain, and operator-minded. The saved CURRENT STRATEGY GOAL is founder-owned and takes priority. Revenue matters long-term, but the current stage may require growth, activation, retention, or learning before monetization.
@@ -125,13 +125,13 @@ function systemPrompt(
 When the founder asks for a concrete change to a recommendation (cheaper price, different gating, a new/updated coding-agent prompt, a brand-new idea), call revise_strategy with the FULL revised recommendation so they can apply it. Otherwise just answer. If they ask for a handoff prompt, write it self-contained and repo-targeted (name the repo, goal, change, acceptance criteria) so it pastes straight into Claude Code / Codex.
 
 ${focusedRecommendation
-  ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
+      ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
 The founder is discussing recommendation id "${focusedRecommendation.id}" titled "${focusedRecommendation.title}".
 Keep the discussion focused on this recommendation. If asked to regenerate, revise, replace, simplify, expand, or create a new handoff for "this recommendation", you MUST call revise_strategy with replaces_id exactly "${focusedRecommendation.id}". Do not add a separate recommendation unless the founder explicitly asks for an additional item.
 
 FOCUSED RECOMMENDATION:
 ${JSON.stringify(focusedRecommendation)}`
-  : 'This is a strategy-wide discussion. Ask which recommendation the founder means if a requested change is ambiguous.'}
+      : 'This is a strategy-wide discussion. Ask which recommendation the founder means if a requested change is ambiguous.'}
 
 PROJECT BRIEF:
 ${brief}
@@ -149,10 +149,10 @@ ${JSON.stringify(insight.strategy_decisions ?? [])}
 
 THIS WEEK'S ANALYSIS (for grounding):
 ${JSON.stringify({
-  headline: insight.headline,
-  summary: insight.summary,
-  findings: insight.findings,
-})}`;
+        headline: insight.headline,
+        summary: insight.summary,
+        findings: insight.findings,
+      })}`;
 }
 
 export async function POST(req: Request) {
@@ -160,10 +160,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, messages, provider, recommendationId } = (await req.json().catch(() => ({}))) as {
+  const { week, messages, provider, model, recommendationId } = (await req.json().catch(() => ({}))) as {
     week?: string;
     messages?: ChatMessage[];
     provider?: string;
+    model?: string;
     recommendationId?: string;
   };
   if (!week || !Array.isArray(messages) || messages.length === 0) {
@@ -188,6 +189,7 @@ export async function POST(req: Request) {
     ]);
     const response = await callLlm({
       provider: resolveProvider(provider ?? process.env.STRATEGY_PROVIDER ?? 'openai'),
+      model,
       maxTokens: 8000,
       tools: [REVISE_TOOL],
       toolChoice: 'auto',

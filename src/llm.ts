@@ -15,12 +15,18 @@ import type { ChatMessage } from './types.js';
  * with `cache: true` and only the Claude path acts on it.
  */
 
-export type LlmProvider = 'claude' | 'deepseek' | 'openai';
+export type LlmProvider = 'claude' | 'deepseek' | 'openai' | 'qwen';
 
+// ─── Claude (Anthropic) ──────────────────────────────────────────────
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
-// Anthropic requires an explicit max_tokens; use the model's ceiling when the
-// caller doesn't cap it. Claude only bills tokens actually produced.
 const CLAUDE_MAX_TOKENS = 64000;
+
+// ─── Qwen (Alibaba Cloud DashScope, OpenAI-compatible) ──────────────
+const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen-plus';
+
+/** Anthropic requires an explicit max_tokens; use the model's ceiling when the
+ * caller doesn't cap it. Claude only bills tokens actually produced. */
 
 // Config for the OpenAI-SDK-based providers. Omitting max-tokens makes these
 // default to a *small* cap that truncates a reasoning model mid-JSON, so when
@@ -30,7 +36,7 @@ const CLAUDE_MAX_TOKENS = 64000;
 type ReasoningEffort = 'low' | 'medium' | 'high';
 
 interface OpenAICompatConfig {
-  label: 'deepseek' | 'openai';
+  label: 'deepseek' | 'openai' | 'qwen';
   apiKeyEnv: string;
   baseURL?: string;
   model: string;
@@ -69,10 +75,32 @@ const OPENAI_COMPAT: Record<'deepseek' | 'openai', OpenAICompatConfig> = {
   },
 };
 
+// Qwen models use DashScope's OpenAI-compatible endpoint.
+// Model list: https://help.aliyun.com/zh/dashscope/developer-reference/api-details
+// Common text models suitable for our use case:
+//   qwen-turbo  — fast & cheapest
+//   qwen-plus   — balanced (default)
+//   qwen-max    — highest quality
+//   qwq-plus    — reasoning-focused
+//   qwen-coder-plus — code-specialized
+//   qwen-long   — 1M-token context window
+//   qwen-plus-latest / qwen-max-latest — latest checkpoint variants
+const QWEN_COMPAT: OpenAICompatConfig = {
+  label: 'qwen',
+  apiKeyEnv: 'DASHSCOPE_API_KEY',
+  baseURL: QWEN_BASE_URL,
+  model: QWEN_MODEL,
+  maxTokensDefault: 32768,
+  tokenParam: 'max_completion_tokens',
+};
+
 /** Coerce a user/env value into a valid provider, defaulting to Claude. */
 export function resolveProvider(p?: string | null): LlmProvider {
   const v = (p ?? process.env.LLM_PROVIDER ?? 'claude').toLowerCase();
-  return v === 'deepseek' ? 'deepseek' : v === 'openai' ? 'openai' : 'claude';
+  if (v === 'deepseek') return 'deepseek';
+  if (v === 'openai') return 'openai';
+  if (v === 'qwen') return 'qwen';
+  return 'claude';
 }
 
 /**
@@ -113,6 +141,13 @@ export interface LlmMessage {
 
 export interface LlmRequest {
   provider: LlmProvider;
+  /**
+   * Override the default model for this request. Each provider has a default
+   * (from env or compiled-in). Pass a non-empty string here to use a different
+   * model for this single call. Only respected by OpenAI-compatible paths
+   * (deepseek / openai / qwen); Claude ignores it.
+   */
+  model?: string;
   /**
    * Cap on the model's completion. Omit to let each provider run to its model
    * maximum — use that for batch jobs (the weekly analysis) where a truncated
@@ -155,7 +190,16 @@ export function chatToLlmMessages(messages: ChatMessage[]): LlmMessage[] {
 
 export async function callLlm(req: LlmRequest): Promise<LlmResponse> {
   if (req.provider === 'claude') return callClaude(req);
+  if (req.provider === 'qwen') return callOpenAICompatible(req, QWEN_COMPAT);
   return callOpenAICompatible(req, OPENAI_COMPAT[req.provider]);
+}
+
+/**
+ * Resolve which model name to actually send — use the caller-provided override
+ * when present, otherwise fall back to the provider's config default.
+ */
+function resolveModelForConfig(cfg: OpenAICompatConfig, reqModel?: string): string {
+  return reqModel?.trim() ? reqModel : cfg.model;
 }
 
 async function callClaude(req: LlmRequest): Promise<LlmResponse> {
@@ -170,8 +214,10 @@ async function callClaude(req: LlmRequest): Promise<LlmResponse> {
       ...(b.cache ? { cache_control: { type: 'ephemeral' as const } } : {}),
     }));
 
+  const actualModel = req.model?.trim() || CLAUDE_MODEL;
+
   const response = await client.messages.create({
-    model: CLAUDE_MODEL,
+    model: actualModel,
     max_tokens: req.maxTokens ?? CLAUDE_MAX_TOKENS,
     tools: req.tools.map((t) => ({
       name: t.name,
@@ -196,7 +242,7 @@ async function callClaude(req: LlmRequest): Promise<LlmResponse> {
   };
   console.log(
     `[llm:claude] ${usage.input_tokens} in / ${usage.output_tokens} out` +
-      (usage.cache_read_input_tokens ? ` / ${usage.cache_read_input_tokens} cache-read` : ''),
+    (usage.cache_read_input_tokens ? ` / ${usage.cache_read_input_tokens} cache-read` : ''),
   );
 
   return {
@@ -252,19 +298,19 @@ async function callOpenAICompatible(
   const includeReasoningEffort = cfg.reasoningEffort && forcedTool;
 
   const response = await client.chat.completions.create({
-    model: cfg.model,
+    model: resolveModelForConfig(cfg, req.model),
     [cfg.tokenParam]: req.maxTokens ?? cfg.maxTokensDefault,
     ...(includeReasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
     messages,
     ...(forcedTool
       ? { response_format: { type: 'json_object' as const } }
       : {
-          tools: req.tools.map((t) => ({
-            type: 'function' as const,
-            function: { name: t.name, description: t.description, parameters: t.input_schema },
-          })),
-          tool_choice: 'auto' as const,
-        }),
+        tools: req.tools.map((t) => ({
+          type: 'function' as const,
+          function: { name: t.name, description: t.description, parameters: t.input_schema },
+        })),
+        tool_choice: 'auto' as const,
+      }),
   });
 
   const choice = response.choices[0]?.message;
@@ -297,9 +343,9 @@ async function callOpenAICompatible(
   const usage = response.usage;
   console.log(
     `[llm:${cfg.label}] ${usage?.prompt_tokens ?? '?'} in / ${usage?.completion_tokens ?? '?'} out` +
-      (usage?.prompt_tokens_details?.cached_tokens
-        ? ` / ${usage.prompt_tokens_details.cached_tokens} cache-hit`
-        : ''),
+    (usage?.prompt_tokens_details?.cached_tokens
+      ? ` / ${usage.prompt_tokens_details.cached_tokens} cache-hit`
+      : ''),
   );
 
   return {

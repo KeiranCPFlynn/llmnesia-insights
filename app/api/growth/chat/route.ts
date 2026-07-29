@@ -147,13 +147,13 @@ When the founder asks for a concrete change to an existing recommendation, call 
 DATA YOU HAVE ACCESS TO — this is the same evidence the plan below was generated from: Google Search Console opportunities (below), Bing Webmaster data (when synced), GA4 traffic (for the primary product), and site-scale numbers. When the founder asks what data a recommendation is based on, point to the specific numbers in DETECTED OPPORTUNITIES / GA4 TRAFFIC DIGEST / BING WEBMASTER DATA / SITE SCALE below rather than saying you don't have access — you do. The one thing genuinely out of scope here is PostHog in-product usage data (search behavior inside the extension, feature engagement, etc.) — that lives on the Insights/Strategy tabs, not Growth. If asked about that, say so plainly instead of implying none of your data is real.
 
 ${focusedRecommendation
-  ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
+      ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
 The founder is discussing recommendation id "${focusedRecommendation.id}" titled "${focusedRecommendation.title}".
 Keep the discussion focused on this recommendation. If asked to regenerate, revise, replace, simplify, expand, or create a new handoff for "this recommendation", you MUST call revise_growth_recommendation with replaces_id exactly "${focusedRecommendation.id}". Do not add a separate recommendation unless the founder explicitly asks for an additional item.
 
 FOCUSED RECOMMENDATION:
 ${JSON.stringify(focusedRecommendation)}`
-  : 'This is a plan-wide discussion. Ask which recommendation the founder means if a requested change is ambiguous.'}
+      : 'This is a plan-wide discussion. Ask which recommendation the founder means if a requested change is ambiguous.'}
 
 PROJECT BRIEF:
 ${brief}
@@ -166,11 +166,11 @@ ${growthGoal?.trim() || '(none set)'}
 
 CURRENT PLAN:
 ${JSON.stringify({
-  thesis: plan.thesis,
-  recommendations: plan.recommendations,
-  risks: plan.risks,
-  experiments: plan.experiments,
-})}
+        thesis: plan.thesis,
+        recommendations: plan.recommendations,
+        risks: plan.risks,
+        experiments: plan.experiments,
+      })}
 
 DETECTED OPPORTUNITIES (Google Search Console, deterministic detectors):
 ${JSON.stringify(opportunities)}
@@ -193,11 +193,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { siteId, weekStart, messages, provider, recommendationId } = (await req.json().catch(() => ({}))) as {
+  const { siteId, weekStart, messages, provider, model, recommendationId } = (await req.json().catch(() => ({}))) as {
     siteId?: string;
     weekStart?: string;
     messages?: ChatMessage[];
     provider?: string;
+    model?: string;
     recommendationId?: string;
   };
   if (!siteId || !weekStart || !Array.isArray(messages) || messages.length === 0) {
@@ -248,6 +249,7 @@ export async function POST(req: Request) {
       provider: resolveProvider(
         provider ?? process.env.GROWTH_PROVIDER ?? process.env.LLM_PROVIDER ?? 'claude',
       ),
+      model,
       maxTokens: 8000,
       tools: [REVISE_TOOL],
       toolChoice: 'auto',

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ChatMessage, StrategyRecommendation } from '../src/types.js';
-import { useProvider, type Provider } from './ProviderSelect';
+import { useProvider, useModel, type Provider } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { ChatCore } from './ChatCore';
 
@@ -71,9 +71,8 @@ function RevisionCard({
           >
             {copied
               ? '✓ Copied — paste into Claude Code / Codex'
-              : `Copy coding-agent prompt${
-                  r.target_repo !== 'none' ? ` · ${r.target_repo}` : ''
-                }`}
+              : `Copy coding-agent prompt${r.target_repo !== 'none' ? ` · ${r.target_repo}` : ''
+              }`}
           </button>
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-violet-300/80 hover:text-violet-200">
@@ -129,6 +128,7 @@ export function StrategyChat({
     storageKey: 'llm-provider-strategy',
     fallback: 'openai',
   });
+  const [model, setModel] = useModel(provider);
   const [regenStarted, setRegenStarted] = useState(false);
 
   const label = (p: Provider) =>
@@ -162,42 +162,44 @@ export function StrategyChat({
       defaultOpen={focused || hasStrategy}
       provider={provider}
       setProvider={setProvider}
+      model={model}
+      setModel={setModel}
       providerOptions={['openai', 'claude', 'deepseek']}
       providerTitle="Which model acts as PM"
       busyLabel={(p) => `${label(p)} is thinking`}
       suggestedPrompts={
         focused
           ? [
-              {
-                label: 'Regenerate',
-                prompt:
-                  'Regenerate this recommendation from scratch using the same evidence and strategy goal. Return a complete replacement for my review.',
-              },
-              {
-                label: 'Make smaller',
-                prompt:
-                  'Revise this into the smallest useful version that can be completed quickly this week.',
-              },
-              {
-                label: 'New handoff prompt',
-                prompt:
-                  'Keep the recommendation, but regenerate a stronger, self-contained coding-agent handoff prompt.',
-              },
-            ]
+            {
+              label: 'Regenerate',
+              prompt:
+                'Regenerate this recommendation from scratch using the same evidence and strategy goal. Return a complete replacement for my review.',
+            },
+            {
+              label: 'Make smaller',
+              prompt:
+                'Revise this into the smallest useful version that can be completed quickly this week.',
+            },
+            {
+              label: 'New handoff prompt',
+              prompt:
+                'Keep the recommendation, but regenerate a stronger, self-contained coding-agent handoff prompt.',
+            },
+          ]
           : [
-              {
-                label: 'Challenge priorities',
-                prompt:
-                  'Challenge the ranking of this strategy. Which recommendation should actually be first, and why?',
-              },
-              {
-                label: 'Add recommendation',
-                prompt:
-                  'Propose one additional recommendation that fills the biggest gap in the strategy.',
-              },
-            ]
+            {
+              label: 'Challenge priorities',
+              prompt:
+                'Challenge the ranking of this strategy. Which recommendation should actually be first, and why?',
+            },
+            {
+              label: 'Add recommendation',
+              prompt:
+                'Propose one additional recommendation that fills the biggest gap in the strategy.',
+            },
+          ]
       }
-      onSend={async (messages, p) => {
+      onSend={async (messages, p, m) => {
         const res = await fetch('/api/strategy/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -205,6 +207,7 @@ export function StrategyChat({
             week,
             messages,
             provider: p,
+            model: m,
             recommendationId: recommendation?.id,
           }),
         });

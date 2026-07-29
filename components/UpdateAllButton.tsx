@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProviderSelect, useProvider } from './ProviderSelect';
+import { ProviderSelect, ModelSelect, useProvider, useModel } from './ProviderSelect';
 
 /** ISO Monday of the current calendar week, in UTC — matches src getCurrentWeek(). */
 function currentMonday(): string {
@@ -37,10 +37,12 @@ export function UpdateAllButton() {
   const router = useRouter();
   // Shared with the Insights Toolbar — drives the insights + growth-plan calls.
   const [provider, setProvider] = useProvider();
+  const [insightModel, setInsightModel] = useModel(provider);
   // Strategy remembers its own preference separately (StrategyPanel defaults it
   // to GPT-5.5) — mirror that here so "Update all" matches what the Strategy
   // tab would actually generate on its own.
-  const [strategyProvider] = useProvider({ storageKey: 'llm-provider-strategy', fallback: 'openai' });
+  const [strategyProvider, setStrategyProvider] = useProvider({ storageKey: 'llm-provider-strategy', fallback: 'openai' });
+  const [strategyModel, setStrategyModel] = useModel(strategyProvider);
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [states, setStates] = useState<Record<Phase, PhaseState>>({
@@ -130,13 +132,13 @@ export function UpdateAllButton() {
           fetch('/api/growth/plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ siteId: s.id, weekStart: week, provider }),
+            body: JSON.stringify({ siteId: s.id, weekStart: week, provider, model: insightModel }),
           }),
         ),
         fetch('/api/strategy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ week, provider: strategyProvider }),
+          body: JSON.stringify({ week, provider: strategyProvider, model: strategyModel }),
         }),
       ]);
       set('downstream', 'done');
@@ -163,12 +165,38 @@ export function UpdateAllButton() {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <ProviderSelect
-        provider={provider}
-        onChange={setProvider}
-        disabled={running}
-        title="Model for insights + growth plan (Strategy uses its own saved choice)"
-      />
+      <div className="flex items-center gap-2">
+        <ProviderSelect
+          provider={provider}
+          onChange={setProvider}
+          disabled={running}
+          title="Model for insights + growth plan (Strategy uses its own saved choice)"
+        />
+        <ModelSelect
+          provider={provider}
+          model={insightModel}
+          onChange={setInsightModel}
+          disabled={running}
+          title={`Model variant for ${provider === 'deepseek' ? 'DeepSeek' : provider === 'openai' ? 'GPT-5.5' : 'Claude'}`}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-neutral-500 shrink-0">Strategy:</span>
+        <ProviderSelect
+          provider={strategyProvider}
+          onChange={setStrategyProvider}
+          disabled={running}
+          options={['openai', 'claude', 'deepseek']}
+          title="Which PM acts as strategist"
+        />
+        <ModelSelect
+          provider={strategyProvider}
+          model={strategyModel}
+          onChange={setStrategyModel}
+          disabled={running}
+          title={`Model variant for ${strategyProvider === 'openai' ? 'GPT-5.5' : strategyProvider === 'deepseek' ? 'DeepSeek' : 'Claude'}`}
+        />
+      </div>
       {!confirming ? (
         <button
           onClick={() => (running ? undefined : setConfirming(true))}

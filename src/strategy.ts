@@ -139,6 +139,7 @@ export interface StrategyInputs {
   /** One-off founder context typed beside the Generate/Regenerate button. */
   generationContext?: string | null;
   provider?: LlmProvider | string | null;
+  model?: string;
 }
 
 export async function generateStrategy(
@@ -176,6 +177,7 @@ export async function generateStrategy(
 
   const { text, toolCall, modelUsed } = await callLlm({
     provider: resolved,
+    model: inputs.model,
     // Reasoning model; let it run to the model max (truncation > token cost).
     tools: [STRATEGY_TOOL],
     toolChoice: { type: 'tool', name: 'submit_strategy' },

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { formatWeek } from '../lib/format';
-import { ProviderSelect, useProvider } from './ProviderSelect';
+import { ProviderSelect, ModelSelect, useProvider, useModel } from './ProviderSelect';
 import { WeekSelect } from './WeekSelect';
 import { GenerationContextBox } from './GenerationContextBox';
 
@@ -34,6 +34,7 @@ export function Toolbar({
   const [generationContext, setGenerationContext] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const [provider, setProvider] = useProvider();
+  const [model, setModel] = useModel(provider);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -59,7 +60,7 @@ export function Toolbar({
     return () => clearTimeout(t);
   }, [confirming]);
 
-  // DeepSeek is a reasoning model and much slower than Claude.
+  // DeepSeek is a reasoning model and much slower than Claude; Qwen varies by model.
   const estimate = provider === 'deepseek' ? '~3–4 min' : '~1 min';
   const latestRunExists = weeks.includes(latestRunWeekStart);
   const selectedIsLatestRun = selected === latestRunWeekStart;
@@ -77,6 +78,7 @@ export function Toolbar({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider,
+          model,
           weekStart: intent.weekStart,
           generationContext: generationContext.trim() || undefined,
         }),
@@ -137,6 +139,13 @@ export function Toolbar({
         <WeekSelect weeks={allWeeks ?? weeks} selected={selected} basePath="/" disabled={running} />
 
         <ProviderSelect provider={provider} onChange={setProvider} disabled={running} />
+        <ModelSelect
+          provider={provider}
+          model={model}
+          onChange={setModel}
+          disabled={running}
+          title={`Model variant for ${provider === 'deepseek' ? 'DeepSeek' : provider === 'openai' ? 'GPT-5.5' : 'Claude'}`}
+        />
 
         {running ? (
           <>

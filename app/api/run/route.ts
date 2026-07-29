@@ -14,6 +14,7 @@ async function run(req: Request) {
     // The "Run analysis now" button POSTs a provider; the Vercel Cron GET has
     // no body and falls back to the LLM_PROVIDER env default.
     let provider: string | undefined;
+    let model: string | undefined;
     let weekStart: string | undefined;
     let generationContext: string | undefined;
     // 'current' = mid-week week-to-date refresh ("Update all"); default
@@ -22,11 +23,13 @@ async function run(req: Request) {
     if (req.method === 'POST') {
       const body = (await req.json().catch(() => ({}))) as {
         provider?: string;
+        model?: string;
         weekStart?: string;
         generationContext?: string;
         mode?: 'complete' | 'current';
       };
       provider = body.provider;
+      model = body.model;
       weekStart = body.weekStart;
       generationContext = body.generationContext;
       mode = body.mode;
@@ -34,6 +37,7 @@ async function run(req: Request) {
     const result = await runPipeline({
       log: (m) => console.log(`[run] ${m}`),
       provider,
+      model,
       weekStart,
       generationContext,
       mode,

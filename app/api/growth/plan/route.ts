@@ -42,10 +42,11 @@ export async function POST(req: Request) {
   if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { siteId, weekStart, provider, generationContext } = (await req.json().catch(() => ({}))) as {
+  const { siteId, weekStart, provider, model, generationContext } = (await req.json().catch(() => ({}))) as {
     siteId?: string;
     weekStart?: string;
     provider?: string;
+    model?: string;
     generationContext?: string;
   };
   if (!siteId || !weekStart) {
@@ -94,6 +95,7 @@ export async function POST(req: Request) {
         priorActions,
         generationContext,
         provider,
+        model,
       });
 
       await saveGrowthPlan(siteId, weekStart, plan);

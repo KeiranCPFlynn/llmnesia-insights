@@ -116,6 +116,7 @@ export async function runPipeline(opts: {
   dryRun?: boolean;
   log?: (msg: string) => void;
   provider?: LlmProvider | string | null;
+  model?: string;
   generationContext?: string | null;
 }): Promise<PipelineResult> {
   const log = opts.log ?? ((m: string) => console.log(m));
@@ -170,13 +171,13 @@ export async function runPipeline(opts: {
   const trimmedContext = opts.generationContext?.trim();
   const generationCorrection: Correction | null = trimmedContext
     ? {
-        id: randomUUID(),
-        created_at: new Date().toISOString(),
-        kind: 'context',
-        affected_metric: 'Generation context',
-        note: trimmedContext,
-        source_excerpt: trimmedContext.slice(0, 280),
-      }
+      id: randomUUID(),
+      created_at: new Date().toISOString(),
+      kind: 'context',
+      affected_metric: 'Generation context',
+      note: trimmedContext,
+      source_excerpt: trimmedContext.slice(0, 280),
+    }
     : null;
   // Per-week corrections are the only ones persisted onto this row. Standing
   // caveats are cross-week and live in their own table, so they're merged into
@@ -193,6 +194,7 @@ export async function runPipeline(opts: {
     history,
     analysisCorrections,
     opts.provider,
+    opts.model,
     partial,
   );
 
@@ -228,6 +230,7 @@ export async function runPipeline(opts: {
 export async function reanalyseWeek(
   weekStart: string,
   provider?: LlmProvider | string | null,
+  model?: string,
 ): Promise<AnalysisResult> {
   const row = await getInsightByWeek(weekStart);
   if (!row) throw new Error(`No insight for week ${weekStart}`);
@@ -241,6 +244,7 @@ export async function reanalyseWeek(
     history,
     [...standingCaveatsAsCorrections(standingCaveats), ...(row.corrections ?? [])],
     provider,
+    model,
   );
 
   await updateAnalysis(weekStart, result, modelUsed);
