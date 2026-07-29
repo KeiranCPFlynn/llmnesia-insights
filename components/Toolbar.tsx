@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { formatWeek } from '../lib/format';
-import { ProviderSelect, ModelSelect, useProvider, useModel, PROVIDER_LABEL } from './ProviderSelect';
+import { ModelPicker, useProvider, useModel, PROVIDER_LABEL } from './ProviderSelect';
 import { WeekSelect } from './WeekSelect';
 import { GenerationContextBox } from './GenerationContextBox';
 
@@ -138,13 +138,13 @@ export function Toolbar({
       <div className="flex flex-wrap items-center gap-3">
         <WeekSelect weeks={allWeeks ?? weeks} selected={selected} basePath="/" disabled={running} />
 
-        <ProviderSelect provider={provider} onChange={setProvider} disabled={running} />
-        <ModelSelect
+        <ModelPicker
           provider={provider}
           model={model}
-          onChange={setModel}
+          onProviderChange={setProvider}
+          onModelChange={setModel}
           disabled={running}
-          title={`Model variant for ${PROVIDER_LABEL[provider]}`}
+          title="Model for analysis"
         />
 
         {running ? (

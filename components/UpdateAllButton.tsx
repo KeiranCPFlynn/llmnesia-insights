@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProviderSelect, ModelSelect, useProvider, useModel, PROVIDER_LABEL } from './ProviderSelect';
+import { ModelPicker, useProvider, useModel, PROVIDER_LABEL } from './ProviderSelect';
 
 /** ISO Monday of the current calendar week, in UTC — matches src getCurrentWeek(). */
 function currentMonday(): string {
@@ -165,36 +165,24 @@ export function UpdateAllButton() {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
-        <ProviderSelect
-          provider={provider}
-          onChange={setProvider}
-          disabled={running}
-          title="Model for insights + growth plan (Strategy uses its own saved choice)"
-        />
-        <ModelSelect
-          provider={provider}
-          model={insightModel}
-          onChange={setInsightModel}
-          disabled={running}
-          title={`Model variant for ${PROVIDER_LABEL[provider]}`}
-        />
-      </div>
+      <ModelPicker
+        provider={provider}
+        model={insightModel}
+        onProviderChange={setProvider}
+        onModelChange={setInsightModel}
+        disabled={running}
+        title="Model for insights + growth plan"
+      />
       <div className="flex items-center gap-2">
         <span className="text-[11px] text-neutral-500 shrink-0">Strategy:</span>
-        <ProviderSelect
-          provider={strategyProvider}
-          onChange={setStrategyProvider}
-          disabled={running}
-          options={['openai', 'claude', 'deepseek', 'qwen']}
-          title="Which PM acts as strategist"
-        />
-        <ModelSelect
+        <ModelPicker
           provider={strategyProvider}
           model={strategyModel}
-          onChange={setStrategyModel}
+          onProviderChange={setStrategyProvider}
+          onModelChange={setStrategyModel}
+          options={['openai', 'claude', 'deepseek', 'qwen']}
           disabled={running}
-          title={`Model variant for ${PROVIDER_LABEL[strategyProvider]}`}
+          title="Model for strategy"
         />
       </div>
       {!confirming ? (

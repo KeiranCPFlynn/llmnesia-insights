@@ -11,7 +11,7 @@ import type {
   GrowthRecommendation,
 } from '../src/types.js';
 import { formatDateTime } from '../lib/format';
-import { ProviderSelect, useProvider, type Provider, PROVIDER_LABEL } from './ProviderSelect';
+import { ModelPicker, useProvider, useModel, type Provider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
 import { GrowthPlanChat } from './GrowthPlanChat';
@@ -99,6 +99,7 @@ export function WeeklyPlan({
     storageKey: 'llm-provider-growth',
     fallback: 'claude',
   });
+  const [model, setModel] = useModel(provider);
   const [busy, setBusy] = useState(false);
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,6 +204,7 @@ export function WeeklyPlan({
           siteId,
           weekStart,
           provider,
+          model,
           generationContext: generationContext.trim() || undefined,
         }),
       });
@@ -246,9 +248,11 @@ export function WeeklyPlan({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <ProviderSelect
+          <ModelPicker
             provider={provider}
-            onChange={setProvider}
+            model={model}
+            onProviderChange={setProvider}
+            onModelChange={setModel}
             options={['claude', 'openai', 'deepseek', 'qwen']}
             title="Which model composes the plan"
             disabled={working}

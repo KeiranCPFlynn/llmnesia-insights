@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatAttachment, ChatMessage } from '../src/types.js';
-import { ProviderSelect, type Provider, ModelSelect, PROVIDER_LABEL } from './ProviderSelect';
+import { ModelPicker, type Provider, PROVIDER_LABEL, fullModelLabel } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 
 /** GA4 exports are tiny; this is a generous guard against pasting a huge file. */
@@ -163,21 +163,28 @@ export function ChatCore<E>({
       <div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-950/45 px-4 py-3">
         <h2 className="text-sm font-semibold text-neutral-100">{title}</h2>
         <div className="flex items-center gap-2">
-          <ProviderSelect
-            provider={provider}
-            onChange={setProvider}
-            options={providerOptions}
-            title={providerTitle}
-            disabled={busy}
-          />
-          {setModel && (
-            <ModelSelect
+          {setModel ? (
+            <ModelPicker
               provider={provider}
               model={model || ''}
-              onChange={setModel}
+              onProviderChange={setProvider}
+              onModelChange={setModel}
+              options={providerOptions}
               disabled={busy}
-              title={`Model variant for ${PROVIDER_LABEL[provider]}`}
+              title={providerTitle}
             />
+          ) : (
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as Provider)}
+              disabled={busy}
+              title={providerTitle}
+              className="rounded-md border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-200 outline-none hover:border-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 disabled:opacity-50 max-w-[16rem]"
+            >
+              {providerOptions.map((p) => (
+                <option key={p} value={p}>{PROVIDER_LABEL[p]}</option>
+              ))}
+            </select>
           )}
           <button
             onClick={() => setOpen(false)}

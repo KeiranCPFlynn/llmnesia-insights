@@ -9,7 +9,7 @@ import type {
   StrategyResult,
 } from '../src/types.js';
 import { formatDateTime } from '../lib/format';
-import { ProviderSelect, useProvider, type Provider, PROVIDER_LABEL } from './ProviderSelect';
+import { ModelPicker, useProvider, useModel, type Provider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
 import { StrategyChat } from './StrategyChat';
@@ -244,6 +244,7 @@ export function StrategyPanel({
     storageKey: 'llm-provider-strategy',
     fallback: 'openai',
   });
+  const [model, setModel] = useModel(provider);
   const [busy, setBusy] = useState(false);
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -356,6 +357,7 @@ export function StrategyPanel({
         body: JSON.stringify({
           week,
           provider,
+          model,
           generationContext: (contextOverride ?? generationContext).trim() || undefined,
           strategyGoal: strategyGoal.trim() || undefined,
         }),
@@ -383,7 +385,7 @@ export function StrategyPanel({
     window.addEventListener('llmnesia:strategy-regenerate', handler);
     return () => window.removeEventListener('llmnesia:strategy-regenerate', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [week, busy, polling, provider, generationContext, strategyGoal]);
+  }, [week, busy, polling, provider, model, generationContext, strategyGoal]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -420,9 +422,11 @@ export function StrategyPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <ProviderSelect
+          <ModelPicker
             provider={provider}
-            onChange={setProvider}
+            model={model}
+            onProviderChange={setProvider}
+            onModelChange={setModel}
             options={['openai', 'claude', 'deepseek', 'qwen']}
             title="Which model acts as PM"
             disabled={working}

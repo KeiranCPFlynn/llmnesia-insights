@@ -8,12 +8,12 @@ export const PROVIDER_LABEL: Record<Provider, string> = {
   claude: 'Claude',
   deepseek: 'DeepSeek',
   openai: 'GPT-5.5',
-  qwen: 'Qwen',
+  qwen: 'Qwen Token Plan',
 };
 
 const ALL: Provider[] = ['claude', 'deepseek', 'openai', 'qwen'];
 
-/** Fired on every `set()` so same-tab instances sharing a key stay in sync ('storage' only fires cross-tab). */
+/** Fired on every `set()` so same-tab instances sharing a key stay in sync. */
 const PROVIDER_CHANGE_EVENT = 'llm-provider-change';
 
 // ─── Model definitions per provider ──────────────────────────────────
@@ -47,25 +47,24 @@ const PROVIDER_MODELS: Record<Provider, ModelDef[]> = {
     { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus' },
     { id: 'qwen3.7-max', label: 'Qwen3.7 Max' },
     { id: 'qwen3.6-flash', label: 'Qwen3.6 Flash' },
-    { id: 'qwen3-235b-a22b', label: 'Qwen3 (235B MoE)' },
+    { id: 'qwen3-235b-a22b', label: 'Qwen3 235B' },
     { id: 'qwen3-max', label: 'Qwen3 Max' },
     { id: 'qwen3-plus', label: 'Qwen3 Plus' },
     { id: 'qwen3-turbo', label: 'Qwen3 Turbo' },
     { id: 'qwen-plus', label: 'Qwen Plus' },
     { id: 'qwen-turbo', label: 'Qwen Turbo' },
     { id: 'qwen-max', label: 'Qwen Max' },
-    { id: 'qwq-plus', label: 'QwQ Plus (reasoning)' },
-    { id: 'qwq-32b', label: 'QwQ 32B (reasoning)' },
+    { id: 'qwq-plus', label: 'QwQ Plus' },
+    { id: 'qwq-32b', label: 'QwQ 32B' },
     { id: 'qwen-coder-plus', label: 'Qwen Coder Plus' },
     { id: 'qwen-coder-plus-latest', label: 'Qwen Coder Latest' },
-    { id: 'qwen-long', label: 'Qwen Long (1M ctx)' },
+    { id: 'qwen-long', label: 'Qwen Long' },
     { id: 'qwen-plus-latest', label: 'Qwen Plus Latest' },
     { id: 'qwen-max-latest', label: 'Qwen Max Latest' },
     { id: 'glm-5.2', label: 'GLM 5.2' },
   ],
 };
 
-// Default model for each provider (matches env defaults in src/llm.ts)
 const DEFAULT_MODEL: Record<Provider, string> = {
   claude: 'claude-sonnet-5',
   deepseek: 'deepseek-v4-pro',
@@ -73,7 +72,6 @@ const DEFAULT_MODEL: Record<Provider, string> = {
   qwen: 'qwen-plus',
 };
 
-/** Storage key suffixes — one localStorage key per provider. */
 const MODEL_STORAGE_KEY_SUFFIX: Record<Provider, string> = {
   claude: 'model-claude',
   deepseek: 'model-deepseek',
@@ -81,13 +79,8 @@ const MODEL_STORAGE_KEY_SUFFIX: Record<Provider, string> = {
   qwen: 'model-qwen',
 };
 
-// ─── Provider selection ──────────────────────────────────────────────
+// ─── Hooks ───────────────────────────────────────────────────────────
 
-/**
- * Remembers the chosen provider in localStorage so selectors stay in sync and the
- * choice survives reloads. Multiple instances on the same page with the same key
- * stay in sync via a same-tab custom event.
- */
 export function useProvider(opts?: {
   storageKey?: string;
   fallback?: Provider;
@@ -117,42 +110,6 @@ export function useProvider(opts?: {
   return [provider, set];
 }
 
-export function ProviderSelect({
-  provider,
-  onChange,
-  disabled,
-  options = ['claude', 'deepseek', 'openai', 'qwen'],
-  title = 'Which model to use',
-}: {
-  provider: Provider;
-  onChange: (p: Provider) => void;
-  disabled?: boolean;
-  options?: Provider[];
-  title?: string;
-}) {
-  return (
-    <select
-      value={provider}
-      onChange={(e) => onChange(e.target.value as Provider)}
-      disabled={disabled}
-      title={title}
-      className="rounded-md border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-200 outline-none hover:border-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 disabled:opacity-50"
-    >
-      {options.map((p) => (
-        <option key={p} value={p}>
-          {PROVIDER_LABEL[p]}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-// ─── Model selection ─────────────────────────────────────────────────
-
-/**
- * Returns the current model for *any* provider (the model for the given provider),
- * plus a setter. Each provider has its own localStorage slot.
- */
 export function useModel(provider: Provider): [string, (m: string) => void] {
   const storageKey = MODEL_STORAGE_KEY_SUFFIX[provider];
   const fallback = DEFAULT_MODEL[provider];
@@ -171,15 +128,124 @@ export function useModel(provider: Provider): [string, (m: string) => void] {
   return [model, set];
 }
 
-/**
- * Returns the effective model ID: if the stored model is in this provider's list
- * use it; otherwise fall back to the provider default.
- */
-export function resolveModelForProvider(provider: Provider, rawStored: string): string {
-  const allowed = PROVIDER_MODELS[provider].map((m) => m.id);
-  return allowed.includes(rawStored) ? rawStored : DEFAULT_MODEL[provider];
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+/** Look up the display label for a model ID within a provider. */
+export function modelLabel(provider: Provider, modelId: string): string {
+  const found = PROVIDER_MODELS[provider].find((m) => m.id === modelId);
+  return found?.label ?? modelId;
 }
 
+/** The full "Provider · Model" display string. */
+export function fullModelLabel(provider: Provider, modelId: string): string {
+  return `${PROVIDER_LABEL[provider]} · ${modelLabel(provider, modelId)}`;
+}
+
+// ─── Unified ModelPicker ─────────────────────────────────────────────
+
+const SELECT_CLASS =
+  'rounded-md border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-200 ' +
+  'outline-none hover:border-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 ' +
+  'disabled:opacity-50 max-w-[16rem]';
+
+/**
+ * Single dropdown that shows every model grouped by provider.
+ * Replaces the old ProviderSelect + ModelSelect pair.
+ *
+ * The value encodes both provider and model: "qwen:qwen-plus".
+ * When the user picks a different provider group, the model automatically
+ * switches to that provider's default (or the last-used model for it).
+ */
+export function ModelPicker({
+  provider,
+  model,
+  onProviderChange,
+  onModelChange,
+  options = ALL,
+  disabled,
+  title,
+}: {
+  provider: Provider;
+  model: string;
+  onProviderChange: (p: Provider) => void;
+  onModelChange: (m: string) => void;
+  options?: Provider[];
+  disabled?: boolean;
+  title?: string;
+}) {
+  function handleChange(value: string) {
+    const [p, ...rest] = value.split(':');
+    const m = rest.join(':');
+    const newProvider = p as Provider;
+    if (newProvider !== provider) {
+      onProviderChange(newProvider);
+      // When switching providers, use the stored model for that provider
+      // (useModel will pick it up from localStorage on next render).
+      const stored = window.localStorage.getItem(MODEL_STORAGE_KEY_SUFFIX[newProvider]);
+      const allowed = PROVIDER_MODELS[newProvider].map((x) => x.id);
+      onModelChange(stored && allowed.includes(stored) ? stored : DEFAULT_MODEL[newProvider]);
+    } else {
+      onModelChange(m);
+    }
+  }
+
+  const currentValue = `${provider}:${model}`;
+
+  return (
+    <select
+      value={currentValue}
+      onChange={(e) => handleChange(e.target.value)}
+      disabled={disabled}
+      title={title}
+      className={SELECT_CLASS}
+    >
+      {options.map((p) => (
+        <optgroup key={p} label={PROVIDER_LABEL[p]}>
+          {PROVIDER_MODELS[p].map((m) => (
+            <option key={`${p}:${m.id}`} value={`${p}:${m.id}`}>
+              {m.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+// ─── Legacy exports (kept for backwards compat during migration) ─────
+
+/** @deprecated Use ModelPicker instead. */
+export function ProviderSelect({
+  provider,
+  onChange,
+  disabled,
+  options = ALL,
+  title = 'Which model to use',
+}: {
+  provider: Provider;
+  onChange: (p: Provider) => void;
+  disabled?: boolean;
+  options?: Provider[];
+  title?: string;
+}) {
+  return (
+    <select
+      value={provider}
+      onChange={(e) => onChange(e.target.value as Provider)}
+      disabled={disabled}
+      title={title}
+      className={SELECT_CLASS}
+    >
+      {options.map((p) => (
+        <option key={p} value={p}>
+          {PROVIDER_LABEL[p]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** @deprecated Use ModelPicker instead. */
 export function ModelSelect({
   provider,
   model,
@@ -202,7 +268,7 @@ export function ModelSelect({
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
       title={title}
-      className="rounded-md border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-200 outline-none hover:border-neutral-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 disabled:opacity-50"
+      className={SELECT_CLASS}
     >
       {models.map((m) => (
         <option key={m.id} value={m.id}>

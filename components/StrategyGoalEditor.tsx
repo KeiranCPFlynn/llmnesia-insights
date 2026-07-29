@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ProviderSelect, useProvider } from './ProviderSelect';
+import { ModelPicker, useProvider, useModel } from './ProviderSelect';
 
 export function StrategyGoalEditor({
   week,
@@ -28,6 +28,7 @@ export function StrategyGoalEditor({
     storageKey: 'llm-provider-strategy',
     fallback: 'openai',
   });
+  const [model, setModel] = useModel(provider);
   // Compare against this week's OWN saved goal, so an inherited/default value
   // shows as saveable — one click pins it to this week.
   const changed = goal.trim() !== (savedGoal ?? '').trim();
@@ -74,7 +75,7 @@ export function StrategyGoalEditor({
       const res = await fetch('/api/strategy/goal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week, strategyGoal: goal, action: 'suggest', provider }),
+        body: JSON.stringify({ week, strategyGoal: goal, action: 'suggest', provider, model }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Failed (${res.status})`);
@@ -107,9 +108,11 @@ export function StrategyGoalEditor({
           )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <ProviderSelect
+          <ModelPicker
             provider={provider}
-            onChange={setProvider}
+            model={model}
+            onProviderChange={setProvider}
+            onModelChange={setModel}
             options={['openai', 'claude', 'deepseek', 'qwen']}
             title="Which model suggests the goal"
             disabled={busy}
