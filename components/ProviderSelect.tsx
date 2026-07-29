@@ -44,24 +44,11 @@ const PROVIDER_MODELS: Record<Provider, ModelDef[]> = {
   ],
   qwen: [
     { id: 'qwen3.8-max-preview', label: 'Qwen3.8 Max Preview' },
-    { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus' },
     { id: 'qwen3.7-max', label: 'Qwen3.7 Max' },
+    { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus' },
     { id: 'qwen3.6-flash', label: 'Qwen3.6 Flash' },
-    { id: 'qwen3-235b-a22b', label: 'Qwen3 235B' },
-    { id: 'qwen3-max', label: 'Qwen3 Max' },
-    { id: 'qwen3-plus', label: 'Qwen3 Plus' },
-    { id: 'qwen3-turbo', label: 'Qwen3 Turbo' },
-    { id: 'qwen-plus', label: 'Qwen Plus' },
-    { id: 'qwen-turbo', label: 'Qwen Turbo' },
-    { id: 'qwen-max', label: 'Qwen Max' },
-    { id: 'qwq-plus', label: 'QwQ Plus' },
-    { id: 'qwq-32b', label: 'QwQ 32B' },
-    { id: 'qwen-coder-plus', label: 'Qwen Coder Plus' },
-    { id: 'qwen-coder-plus-latest', label: 'Qwen Coder Latest' },
-    { id: 'qwen-long', label: 'Qwen Long' },
-    { id: 'qwen-plus-latest', label: 'Qwen Plus Latest' },
-    { id: 'qwen-max-latest', label: 'Qwen Max Latest' },
     { id: 'glm-5.2', label: 'GLM 5.2' },
+    { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
   ],
 };
 
@@ -69,7 +56,7 @@ const DEFAULT_MODEL: Record<Provider, string> = {
   claude: 'claude-sonnet-5',
   deepseek: 'deepseek-v4-pro',
   openai: 'gpt-5.5',
-  qwen: 'qwen-plus',
+  qwen: 'qwen3.7-plus',
 };
 
 const MODEL_STORAGE_KEY_SUFFIX: Record<Provider, string> = {

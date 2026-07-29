@@ -72,7 +72,7 @@ const OPENAI_COMPAT: Record<'deepseek' | 'openai', OpenAICompatConfig> = {
 };
 
 const QWEN_BASE_URL = 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1';
-const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen-plus';
+const QWEN_MODEL = process.env.QWEN_MODEL ?? 'qwen3.7-plus';
 const QWEN_COMPAT: OpenAICompatConfig = {
   label: 'qwen',
   apiKeyEnv: 'QWEN_API_KEY',
