@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { Correction } from '../src/types.js';
 import { formatWeek } from '../lib/format';
-import { useProvider } from './ProviderSelect';
+import { useProvider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 
 /**
@@ -84,7 +84,7 @@ export function WeekCaveats({
     await mutate('delete', () =>
       fetch(
         `/api/corrections/${c.id}?week=${encodeURIComponent(week)}` +
-          (applyNow ? `&applyWeek=${encodeURIComponent(week)}&provider=${provider}` : ''),
+        (applyNow ? `&applyWeek=${encodeURIComponent(week)}&provider=${provider}` : ''),
         { method: 'DELETE' },
       ),
     );
@@ -104,9 +104,8 @@ export function WeekCaveats({
     items.length === 0 ? null : (
       <div>
         <h3
-          className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
-            tone === 'amber' ? 'text-amber-400' : 'text-sky-400'
-          }`}
+          className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${tone === 'amber' ? 'text-amber-400' : 'text-sky-400'
+            }`}
         >
           {title}
         </h3>
@@ -114,11 +113,10 @@ export function WeekCaveats({
           {items.map((c) => (
             <li
               key={c.id}
-              className={`rounded-lg border p-3 text-sm ${
-                tone === 'amber'
-                  ? 'border-amber-500/25 bg-amber-500/10 text-amber-100'
-                  : 'border-sky-500/25 bg-sky-500/10 text-sky-100'
-              }`}
+              className={`rounded-lg border p-3 text-sm ${tone === 'amber'
+                ? 'border-amber-500/25 bg-amber-500/10 text-amber-100'
+                : 'border-sky-500/25 bg-sky-500/10 text-sky-100'
+                }`}
             >
               {editing === c.id ? (
                 <div className="space-y-2">
@@ -218,9 +216,8 @@ export function WeekCaveats({
           {rerunning && (
             <ProgressBar
               seconds={elapsed}
-              label={`Re-running this week on ${
-                provider === 'deepseek' ? 'DeepSeek (~3–4 min)' : 'Claude (~1 min)'
-              }`}
+              label={`Re-running this week on ${`${PROVIDER_LABEL[provider]}${provider === 'deepseek' ? ' (~3–4 min)' : ' (~1 min)'}`
+                }`}
             />
           )}
           {error && <div className="text-sm text-rose-400">{error}</div>}

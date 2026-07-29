@@ -121,7 +121,7 @@ export function ProviderSelect({
   provider,
   onChange,
   disabled,
-  options = ['claude', 'deepseek'],
+  options = ['claude', 'deepseek', 'openai', 'qwen'],
   title = 'Which model to use',
 }: {
   provider: Provider;

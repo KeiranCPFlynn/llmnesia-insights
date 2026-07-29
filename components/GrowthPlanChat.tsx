@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { ChatMessage, GrowthRecommendation } from '../src/types.js';
 import { ChatCore } from './ChatCore';
 import { ProgressBar, useElapsed } from './ProgressBar';
-import { useProvider, useModel, type Provider } from './ProviderSelect';
+import { useProvider, useModel, type Provider, PROVIDER_LABEL } from './ProviderSelect';
 
 type GrowthRevision = {
   replaces_id?: string;
@@ -145,8 +145,6 @@ export function GrowthPlanChat({
   });
   const [model, setModel] = useModel(provider);
 
-  const label = (p: Provider) =>
-    p === 'openai' ? 'GPT-5.5' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
   const focused = recommendation != null;
   const recommendationLabel = rank ? `Recommendation #${rank}` : 'Recommendation';
 
@@ -178,9 +176,9 @@ export function GrowthPlanChat({
       setProvider={setProvider}
       model={model}
       setModel={setModel}
-      providerOptions={['claude', 'openai', 'deepseek']}
+      providerOptions={['claude', 'openai', 'deepseek', 'qwen']}
       providerTitle="Which model discusses the growth plan"
-      busyLabel={(p) => `${label(p)} is reviewing the plan`}
+      busyLabel={(p) => `${PROVIDER_LABEL[p]} is reviewing the plan`}
       suggestedPrompts={
         focused
           ? [

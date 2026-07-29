@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ChatMessage, StrategyRecommendation } from '../src/types.js';
-import { useProvider, useModel, type Provider } from './ProviderSelect';
+import { useProvider, useModel, type Provider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { ChatCore } from './ChatCore';
 
@@ -131,8 +131,6 @@ export function StrategyChat({
   const [model, setModel] = useModel(provider);
   const [regenStarted, setRegenStarted] = useState(false);
 
-  const label = (p: Provider) =>
-    p === 'openai' ? 'GPT-5.5' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
   const focused = recommendation != null;
   const recommendationLabel = rank ? `Recommendation #${rank}` : 'Recommendation';
 
@@ -164,9 +162,9 @@ export function StrategyChat({
       setProvider={setProvider}
       model={model}
       setModel={setModel}
-      providerOptions={['openai', 'claude', 'deepseek']}
+      providerOptions={['openai', 'claude', 'deepseek', 'qwen']}
       providerTitle="Which model acts as PM"
-      busyLabel={(p) => `${label(p)} is thinking`}
+      busyLabel={(p) => `${PROVIDER_LABEL[p]} is thinking`}
       suggestedPrompts={
         focused
           ? [

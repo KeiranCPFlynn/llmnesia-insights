@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { StandingCaveat } from '../src/types.js';
-import { useProvider } from './ProviderSelect';
+import { useProvider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 
 /**
@@ -160,167 +160,165 @@ export function KnownFacts({
 
       {expanded && (
         <>
-      <p className="mb-4 max-w-3xl text-sm leading-relaxed text-neutral-500">
-        Facts that hold every week — a confirmed non-issue or real-world context the analysis
-        keeps re-discovering. These are injected into every report as authoritative, so the AI
-        stops re-flagging them. (Per-week one-offs still go through the chat.)
-      </p>
+          <p className="mb-4 max-w-3xl text-sm leading-relaxed text-neutral-500">
+            Facts that hold every week — a confirmed non-issue or real-world context the analysis
+            keeps re-discovering. These are injected into every report as authoritative, so the AI
+            stops re-flagging them. (Per-week one-offs still go through the chat.)
+          </p>
 
-      {initial.length === 0 ? (
-        <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/60 px-4 py-3 text-sm text-neutral-500">
-          No standing facts yet. Add one below — e.g. “PostHog and GA4 install counts differ by
-          design; this is expected, not a bug.”
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {[
-            { title: 'Data caveats', items: caveats, tone: 'amber' as const },
-            { title: 'Context notes', items: contexts, tone: 'sky' as const },
-          ]
-            .filter((g) => g.items.length > 0)
-            .map((g) => (
-              <div key={g.title}>
-                <h3
-                  className={`mb-2 text-xs font-semibold uppercase tracking-wide ${
-                    g.tone === 'amber' ? 'text-amber-400' : 'text-sky-400'
-                  }`}
-                >
-                  {g.title}
-                </h3>
-                <ul className="space-y-2">
-                  {g.items.map((c) => (
-                    <li
-                      key={c.id}
-                      className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${
-                        c.active
-                          ? g.tone === 'amber'
-                            ? 'border-amber-500/25 bg-amber-500/10 text-amber-100'
-                            : 'border-sky-500/25 bg-sky-500/10 text-sky-100'
-                          : 'border-neutral-800 bg-neutral-900/50 text-neutral-500'
-                      }`}
+          {initial.length === 0 ? (
+            <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/60 px-4 py-3 text-sm text-neutral-500">
+              No standing facts yet. Add one below — e.g. “PostHog and GA4 install counts differ by
+              design; this is expected, not a bug.”
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {[
+                { title: 'Data caveats', items: caveats, tone: 'amber' as const },
+                { title: 'Context notes', items: contexts, tone: 'sky' as const },
+              ]
+                .filter((g) => g.items.length > 0)
+                .map((g) => (
+                  <div key={g.title}>
+                    <h3
+                      className={`mb-2 text-xs font-semibold uppercase tracking-wide ${g.tone === 'amber' ? 'text-amber-400' : 'text-sky-400'
+                        }`}
                     >
-                      {open && editingId === c.id ? (
-                        <div className="flex-1 space-y-2">
-                          <input
-                            value={editMetric}
-                            onChange={(e) => setEditMetric(e.target.value)}
-                            placeholder="Short label"
-                            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
-                          />
-                          <textarea
-                            value={editNote}
-                            onChange={(e) => setEditNote(e.target.value)}
-                            rows={3}
-                            className="w-full resize-y rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
-                          />
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => setEditingId(null)}
-                              disabled={!!busy}
-                              className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => saveEdit(c)}
-                              disabled={!!busy}
-                              className="rounded bg-emerald-600 px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-                            >
-                              {busy === `edit-${c.id}` ? 'Saving…' : 'Save'}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex-1">
-                            <span className="font-medium">{c.affected_metric}:</span> {c.note}
-                            {!c.active && (
-                              <span className="ml-2 text-[11px] uppercase">retired</span>
-                            )}
-                          </div>
-                          {open && (
-                            <div className="flex shrink-0 gap-2">
-                              <button
-                                onClick={() => startEdit(c)}
-                                disabled={!!busy}
-                                className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => toggle(c)}
-                                disabled={!!busy}
-                                className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
-                              >
-                                {c.active ? 'Retire' : 'Reactivate'}
-                              </button>
-                              <button
-                                onClick={() => remove(c)}
-                                disabled={!!busy}
-                                className="rounded border border-rose-500/30 px-2 py-0.5 text-[11px] text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
+                      {g.title}
+                    </h3>
+                    <ul className="space-y-2">
+                      {g.items.map((c) => (
+                        <li
+                          key={c.id}
+                          className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${c.active
+                            ? g.tone === 'amber'
+                              ? 'border-amber-500/25 bg-amber-500/10 text-amber-100'
+                              : 'border-sky-500/25 bg-sky-500/10 text-sky-100'
+                            : 'border-neutral-800 bg-neutral-900/50 text-neutral-500'
+                            }`}
+                        >
+                          {open && editingId === c.id ? (
+                            <div className="flex-1 space-y-2">
+                              <input
+                                value={editMetric}
+                                onChange={(e) => setEditMetric(e.target.value)}
+                                placeholder="Short label"
+                                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
+                              />
+                              <textarea
+                                value={editNote}
+                                onChange={(e) => setEditNote(e.target.value)}
+                                rows={3}
+                                className="w-full resize-y rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
+                              />
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => setEditingId(null)}
+                                  disabled={!!busy}
+                                  className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => saveEdit(c)}
+                                  disabled={!!busy}
+                                  className="rounded bg-emerald-600 px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                                >
+                                  {busy === `edit-${c.id}` ? 'Saving…' : 'Save'}
+                                </button>
+                              </div>
                             </div>
+                          ) : (
+                            <>
+                              <div className="flex-1">
+                                <span className="font-medium">{c.affected_metric}:</span> {c.note}
+                                {!c.active && (
+                                  <span className="ml-2 text-[11px] uppercase">retired</span>
+                                )}
+                              </div>
+                              {open && (
+                                <div className="flex shrink-0 gap-2">
+                                  <button
+                                    onClick={() => startEdit(c)}
+                                    disabled={!!busy}
+                                    className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => toggle(c)}
+                                    disabled={!!busy}
+                                    className="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                                  >
+                                    {c.active ? 'Retire' : 'Reactivate'}
+                                  </button>
+                                  <button
+                                    onClick={() => remove(c)}
+                                    disabled={!!busy}
+                                    className="rounded border border-rose-500/30 px-2 py-0.5 text-[11px] text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </>
                           )}
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-        </div>
-      )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </div>
+          )}
 
-      {open && (
-        <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/70 p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-              Add a fact
-            </span>
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as 'caveat' | 'context')}
-              className="rounded-md border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-200"
-            >
-              <option value="caveat">Data caveat (a number is misleading)</option>
-              <option value="context">Context note (real-world fact)</option>
-            </select>
-          </div>
-          <input
-            value={metric}
-            onChange={(e) => setMetric(e.target.value)}
-            placeholder="Short label (e.g. Installs — PostHog vs GA4)"
-            className="mb-2 w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
-          />
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            placeholder="The fact, stated plainly. e.g. “PostHog and GA4 count installs differently by design — a gap between them is expected and not a bug. Don’t flag it.”"
-            className="w-full resize-y rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
-          />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2 text-xs text-neutral-400">
+          {open && (
+            <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/70 p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                  Add a fact
+                </span>
+                <select
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value as 'caveat' | 'context')}
+                  className="rounded-md border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-200"
+                >
+                  <option value="caveat">Data caveat (a number is misleading)</option>
+                  <option value="context">Context note (real-world fact)</option>
+                </select>
+              </div>
               <input
-                type="checkbox"
-                checked={applyNow}
-                onChange={(e) => setApplyNow(e.target.checked)}
-                className="h-3.5 w-3.5"
+                value={metric}
+                onChange={(e) => setMetric(e.target.value)}
+                placeholder="Short label (e.g. Installs — PostHog vs GA4)"
+                className="mb-2 w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
               />
-              Re-run this week now so the report reflects it
-            </label>
-            <button
-              onClick={add}
-              disabled={!!busy}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {busy === 'add' ? 'Saving…' : 'Add fact'}
-            </button>
-          </div>
-        </div>
-      )}
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={3}
+                placeholder="The fact, stated plainly. e.g. “PostHog and GA4 count installs differently by design — a gap between them is expected and not a bug. Don’t flag it.”"
+                className="w-full resize-y rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-xs text-neutral-400">
+                  <input
+                    type="checkbox"
+                    checked={applyNow}
+                    onChange={(e) => setApplyNow(e.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  Re-run this week now so the report reflects it
+                </label>
+                <button
+                  onClick={add}
+                  disabled={!!busy}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {busy === 'add' ? 'Saving…' : 'Add fact'}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -328,9 +326,8 @@ export function KnownFacts({
         <div className="mt-3">
           <ProgressBar
             seconds={elapsed}
-            label={`Re-running this week on ${
-              provider === 'deepseek' ? 'DeepSeek (~3–4 min)' : 'Claude (~1 min)'
-            }`}
+            label={`Re-running this week on ${`${PROVIDER_LABEL[provider]}${provider === 'deepseek' ? ' (~3–4 min)' : ' (~1 min)'}`
+              }`}
           />
         </div>
       )}

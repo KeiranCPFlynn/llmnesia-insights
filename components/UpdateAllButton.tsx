@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProviderSelect, ModelSelect, useProvider, useModel } from './ProviderSelect';
+import { ProviderSelect, ModelSelect, useProvider, useModel, PROVIDER_LABEL } from './ProviderSelect';
 
 /** ISO Monday of the current calendar week, in UTC — matches src getCurrentWeek(). */
 function currentMonday(): string {
@@ -177,7 +177,7 @@ export function UpdateAllButton() {
           model={insightModel}
           onChange={setInsightModel}
           disabled={running}
-          title={`Model variant for ${provider === 'deepseek' ? 'DeepSeek' : provider === 'openai' ? 'GPT-5.5' : 'Claude'}`}
+          title={`Model variant for ${PROVIDER_LABEL[provider]}`}
         />
       </div>
       <div className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export function UpdateAllButton() {
           provider={strategyProvider}
           onChange={setStrategyProvider}
           disabled={running}
-          options={['openai', 'claude', 'deepseek']}
+          options={['openai', 'claude', 'deepseek', 'qwen']}
           title="Which PM acts as strategist"
         />
         <ModelSelect
@@ -194,7 +194,7 @@ export function UpdateAllButton() {
           model={strategyModel}
           onChange={setStrategyModel}
           disabled={running}
-          title={`Model variant for ${strategyProvider === 'openai' ? 'GPT-5.5' : strategyProvider === 'deepseek' ? 'DeepSeek' : 'Claude'}`}
+          title={`Model variant for ${PROVIDER_LABEL[strategyProvider]}`}
         />
       </div>
       {!confirming ? (

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ChatMessage } from '../src/types.js';
-import { useProvider, useModel, type Provider } from './ProviderSelect';
+import { useProvider, useModel, type Provider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { ChatCore } from './ChatCore';
 
@@ -83,8 +83,7 @@ function CorrectionCard({
         <div className="mt-3">
           <ProgressBar
             seconds={elapsed}
-            label={`Regenerating the report on ${provider === 'deepseek' ? 'DeepSeek (~3–4 min)' : 'Claude (~1 min)'
-              }`}
+            label={`Regenerating the report on ${PROVIDER_LABEL[provider]}${provider === 'deepseek' ? ' (~3–4 min)' : ' (~1 min)'}`}
           />
         </div>
       )}
@@ -114,9 +113,9 @@ export function ChatPanel({
       setProvider={setProvider}
       model={model}
       setModel={setModel}
-      providerOptions={['claude', 'deepseek']}
+      providerOptions={['claude', 'deepseek', 'openai', 'qwen']}
       providerTitle="Which model answers / regenerates the analysis"
-      busyLabel={(p) => `${p === 'deepseek' ? 'DeepSeek' : 'Claude'} is thinking`}
+      busyLabel={(p) => `${PROVIDER_LABEL[p]} is thinking`}
       onSend={async (messages, p, m) => {
         const res = await fetch('/api/chat', {
           method: 'POST',

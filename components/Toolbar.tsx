@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { formatWeek } from '../lib/format';
-import { ProviderSelect, ModelSelect, useProvider, useModel } from './ProviderSelect';
+import { ProviderSelect, ModelSelect, useProvider, useModel, PROVIDER_LABEL } from './ProviderSelect';
 import { WeekSelect } from './WeekSelect';
 import { GenerationContextBox } from './GenerationContextBox';
 
@@ -61,7 +61,7 @@ export function Toolbar({
   }, [confirming]);
 
   // DeepSeek is a reasoning model and much slower than Claude; Qwen varies by model.
-  const estimate = provider === 'deepseek' ? '~3–4 min' : '~1 min';
+  const estimate = provider === 'deepseek' ? '~3–4 min' : provider === 'qwen' ? '~2 min' : '~1 min';
   const latestRunExists = weeks.includes(latestRunWeekStart);
   const selectedIsLatestRun = selected === latestRunWeekStart;
 
@@ -144,7 +144,7 @@ export function Toolbar({
           model={model}
           onChange={setModel}
           disabled={running}
-          title={`Model variant for ${provider === 'deepseek' ? 'DeepSeek' : provider === 'openai' ? 'GPT-5.5' : 'Claude'}`}
+          title={`Model variant for ${PROVIDER_LABEL[provider]}`}
         />
 
         {running ? (
@@ -211,7 +211,7 @@ export function Toolbar({
             <div className="h-full w-1/3 animate-[loader_1.4s_ease-in-out_infinite] rounded-full bg-emerald-500" />
           </div>
           <p className="mt-1 text-right text-xs text-neutral-500">
-            Analysing on {provider === 'deepseek' ? 'DeepSeek' : 'Claude'} ({estimate})… {mm}:{ss}{' '}
+            Analysing on {PROVIDER_LABEL[provider]} ({estimate})… {mm}:{ss}{' '}
             elapsed — keep this tab open.
           </p>
         </div>

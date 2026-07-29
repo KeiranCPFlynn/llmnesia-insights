@@ -9,7 +9,7 @@ import type {
   StrategyResult,
 } from '../src/types.js';
 import { formatDateTime } from '../lib/format';
-import { ProviderSelect, useProvider, type Provider } from './ProviderSelect';
+import { ProviderSelect, useProvider, type Provider, PROVIDER_LABEL } from './ProviderSelect';
 import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
 import { StrategyChat } from './StrategyChat';
@@ -39,9 +39,8 @@ const pendingKey = (week: string) => `llmnesia:strat-pending:${week}`;
 function Chip({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <span
-      className={`rounded-full border px-2.5 py-0.5 text-xs capitalize ${
-        className ?? 'border-neutral-600 bg-neutral-800 text-neutral-300'
-      }`}
+      className={`rounded-full border px-2.5 py-0.5 text-xs capitalize ${className ?? 'border-neutral-600 bg-neutral-800 text-neutral-300'
+        }`}
     >
       {children}
     </span>
@@ -106,17 +105,15 @@ function RecommendationCard({
 
   return (
     <li
-      className={`rounded-lg border p-5 shadow-[0_12px_34px_rgba(0,0,0,0.16)] ${
-        top
-          ? 'border-emerald-500/35 bg-emerald-500/10'
-          : 'border-neutral-800/80 bg-neutral-900/70'
-      }`}
+      className={`rounded-lg border p-5 shadow-[0_12px_34px_rgba(0,0,0,0.16)] ${top
+        ? 'border-emerald-500/35 bg-emerald-500/10'
+        : 'border-neutral-800/80 bg-neutral-900/70'
+        }`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span
-          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-            top ? 'bg-emerald-600 text-white' : 'bg-neutral-800 text-neutral-400'
-          }`}
+          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${top ? 'bg-emerald-600 text-white' : 'bg-neutral-800 text-neutral-400'
+            }`}
         >
           {rank}
         </span>
@@ -255,9 +252,6 @@ export function StrategyPanel({
   const baseOffset = useRef(0);
   const tick = useElapsed(busy || polling);
   const shown = baseOffset.current + tick;
-
-  const label = (p: Provider) =>
-    p === 'openai' ? 'GPT-5.5' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
 
   const pollStop = useRef(true);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -420,7 +414,7 @@ export function StrategyPanel({
           <h2 className="text-lg font-bold text-neutral-100">Revenue & growth strategy</h2>
           {strategy && (
             <p className="text-sm text-neutral-500">
-              {label(provider)} · generated {formatDateTime(strategy.generated_at)} · model{' '}
+              {PROVIDER_LABEL[provider]} · generated {formatDateTime(strategy.generated_at)} · model{' '}
               {strategy.model_used}
             </p>
           )}
@@ -429,7 +423,7 @@ export function StrategyPanel({
           <ProviderSelect
             provider={provider}
             onChange={setProvider}
-            options={['openai', 'claude', 'deepseek']}
+            options={['openai', 'claude', 'deepseek', 'qwen']}
             title="Which model acts as PM"
             disabled={working}
           />
@@ -455,9 +449,8 @@ export function StrategyPanel({
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
           <ProgressBar
             seconds={shown}
-            label={`${label(provider)} is thinking through the strategy (reasoning model — a few minutes)${
-              polling ? ' · running in the background, safe to navigate away' : ''
-            }`}
+            label={`${PROVIDER_LABEL[provider]} is thinking through the strategy (reasoning model — a few minutes)${polling ? ' · running in the background, safe to navigate away' : ''
+              }`}
           />
           <p className="mt-2 text-sm text-neutral-500">
             This keeps running even if you leave this tab — come back and it’ll be here.

@@ -110,7 +110,7 @@ export function StrategyGoalEditor({
           <ProviderSelect
             provider={provider}
             onChange={setProvider}
-            options={['openai', 'claude', 'deepseek']}
+            options={['openai', 'claude', 'deepseek', 'qwen']}
             title="Which model suggests the goal"
             disabled={busy}
           />
