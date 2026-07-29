@@ -38,8 +38,6 @@ export function Toolbar({
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Tick a visible elapsed-seconds counter while the (long, blocking) run is
-  // in flight — DeepSeek can take 3–4 min, so silence looks like a hang.
   useEffect(() => {
     if (running) {
       setElapsed(0);
@@ -53,14 +51,12 @@ export function Toolbar({
     };
   }, [running]);
 
-  // Auto-disarm the confirm so it can't sit primed and get clicked later.
   useEffect(() => {
     if (!confirming) return;
     const t = setTimeout(() => setConfirming(null), 10000);
     return () => clearTimeout(t);
   }, [confirming]);
 
-  // DeepSeek is a reasoning model and much slower than Claude; Qwen varies by model.
   const estimate = provider === 'deepseek' ? '~3–4 min' : provider === 'qwen' ? '~2 min' : '~1 min';
   const latestRunExists = weeks.includes(latestRunWeekStart);
   const selectedIsLatestRun = selected === latestRunWeekStart;
@@ -125,19 +121,14 @@ export function Toolbar({
   }
 
   const confirmVerb = confirming?.exists ? 'replace' : 'create';
-  const confirmLabel =
-    confirming?.kind === 'latest'
-      ? `${confirming.exists ? 'Refresh' : 'Create'} latest week`
-      : 'Update selected week';
-
   const mm = String(Math.floor(elapsed / 60)).padStart(1, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
 
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col gap-3">
+      {/* Controls row */}
+      <div className="flex flex-wrap items-center gap-2">
         <WeekSelect weeks={allWeeks ?? weeks} selected={selected} basePath="/" disabled={running} />
-
         <ModelPicker
           provider={provider}
           model={model}
@@ -148,81 +139,80 @@ export function Toolbar({
         />
 
         {running ? (
-          <>
-            <span className="rounded-md border border-neutral-700 bg-neutral-900/80 px-4 py-2 text-sm font-medium text-neutral-300">
-              Running… {mm}:{ss}
+          <div className="flex items-center gap-2">
+            <span className="rounded-md border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm font-medium text-neutral-300">
+              {mm}:{ss}
             </span>
             <button
               onClick={cancel}
-              className="rounded-md border border-rose-500/40 px-3 py-2 text-sm font-medium text-rose-200 hover:bg-rose-500/10"
+              className="rounded-md border border-rose-500/40 px-3 py-1.5 text-sm font-medium text-rose-200 hover:bg-rose-500/10"
             >
               Cancel
             </button>
-          </>
+          </div>
         ) : confirming ? (
-          <>
+          <div className="flex items-center gap-2">
             <button
               onClick={() => runNow(confirming)}
-              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(225,29,72,0.22)] hover:bg-rose-500"
+              className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-500"
             >
-              Confirm — {confirmVerb} {formatWeek(confirming.weekStart)} ({estimate})
+              Confirm {confirmVerb} ({estimate})
             </button>
             <button
               onClick={() => setConfirming(null)}
-              className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/80"
+              className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800/80"
             >
               Back
             </button>
-          </>
+          </div>
         ) : (
-          <>
+          <div className="flex items-center gap-2">
             <button
               onClick={confirmLatest}
-              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
+              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
             >
-              {latestRunExists ? 'Refresh latest week' : 'Create latest week'}
+              {latestRunExists ? 'Refresh latest' : 'Create latest'}
             </button>
             {!selectedIsLatestRun && (
               <button
                 onClick={confirmSelected}
-                className="rounded-md border border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-800/80"
+                className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-300 hover:bg-neutral-800/80"
               >
-                Update selected week
+                Update selected
               </button>
             )}
-          </>
+          </div>
         )}
 
         {!running && msg && <span className="text-sm text-neutral-400">{msg}</span>}
       </div>
 
-      <div className="w-full min-w-[18rem] max-w-xl">
-        <GenerationContextBox
-          value={generationContext}
-          onChange={setGenerationContext}
-          disabled={running}
-          placeholder="Optional: e.g. waiting for a release to be pushed, founder test traffic inflated installs, campaign went live mid-week…"
-        />
-      </div>
+      {/* Context box — always visible, compact */}
+      <GenerationContextBox
+        value={generationContext}
+        onChange={setGenerationContext}
+        disabled={running}
+        placeholder="Optional context for the analysis…"
+      />
 
+      {/* Progress bar when running */}
       {running && (
-        <div className="w-full min-w-[16rem] sm:w-80">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+        <div className="flex items-center gap-3">
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-neutral-800">
             <div className="h-full w-1/3 animate-[loader_1.4s_ease-in-out_infinite] rounded-full bg-emerald-500" />
           </div>
-          <p className="mt-1 text-right text-xs text-neutral-500">
-            Analysing on {PROVIDER_LABEL[provider]} ({estimate})… {mm}:{ss}{' '}
-            elapsed — keep this tab open.
-          </p>
+          <span className="shrink-0 text-xs text-neutral-500">
+            {PROVIDER_LABEL[provider]} · {mm}:{ss}
+          </span>
         </div>
       )}
+
+      {/* Confirmation details */}
       {confirming && !running && (
-        <p className="max-w-xl text-right text-xs leading-relaxed text-neutral-500">
-          {confirmLabel} will fetch fresh PostHog and GA4 data for week of{' '}
-          {formatWeek(confirming.weekStart)}
-          {confirming.weekEnd ? ` → ${formatWeek(confirming.weekEnd)}` : ''}. It will{' '}
-          {confirming.exists ? 'replace the stored report for that week' : 'create a new stored report'}.
-          {generationContext.trim() ? ' The context above will be saved and applied.' : ''}
+        <p className="text-xs leading-relaxed text-neutral-500">
+          {confirming.exists ? 'Replace' : 'Create'} the report for {formatWeek(confirming.weekStart)}
+          {confirming.weekEnd ? ` → ${formatWeek(confirming.weekEnd)}` : ''}.
+          {generationContext.trim() ? ' Context above will be applied.' : ''}
         </p>
       )}
     </div>
