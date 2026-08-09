@@ -29,7 +29,7 @@ const CLAUDE_MAX_TOKENS = 64000;
 // the caller doesn't cap it we send a high explicit ceiling — the APIs only
 // bill tokens produced and don't reject large values. OpenAI's reasoning
 // models reject `max_tokens` and require `max_completion_tokens`.
-type ReasoningEffort = 'low' | 'medium' | 'high';
+type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 interface OpenAICompatConfig {
   label: 'deepseek' | 'openai' | 'qwen';
@@ -47,6 +47,8 @@ function envReasoningEffort(): ReasoningEffort {
   // 'minimal' is accepted as an alias for the cheapest supported tier.
   if (v === 'minimal' || v === 'low') return 'low';
   if (v === 'high') return 'high';
+  if (v === 'xhigh') return 'xhigh';
+  if (v === 'max') return 'max';
   return 'medium';
 }
 
@@ -63,10 +65,10 @@ const OPENAI_COMPAT: Record<'deepseek' | 'openai', OpenAICompatConfig> = {
     label: 'openai',
     apiKeyEnv: 'OPENAI_API_KEY',
     // Default OpenAI base URL (SDK default when baseURL is undefined).
-    model: process.env.STRATEGY_MODEL || 'gpt-5.5',
+    model: process.env.STRATEGY_MODEL || 'gpt-5.6-terra',
     maxTokensDefault: 65536,
     tokenParam: 'max_completion_tokens',
-    // gpt-5.5 is a reasoning model — this bounds the priciest token bucket.
+    // GPT-5.6 is a reasoning model — this bounds the priciest token bucket.
     reasoningEffort: envReasoningEffort(),
   },
 };
@@ -156,6 +158,60 @@ export interface LlmResponse {
   modelUsed: string;
 }
 
+/** An error safe to show in the dashboard when a selected model cannot run. */
+export class LlmProviderError extends Error {
+  constructor(
+    message: string,
+    readonly provider: LlmProvider,
+    readonly kind: 'configuration' | 'authentication' | 'credits' | 'rate_limit' | 'model' | 'network' | 'request',
+  ) {
+    super(message);
+    this.name = 'LlmProviderError';
+  }
+}
+
+function providerLabel(provider: LlmProvider): string {
+  return provider === 'claude' ? 'Claude' : provider === 'openai' ? 'OpenAI' : provider === 'deepseek' ? 'DeepSeek' : 'Qwen';
+}
+
+/**
+ * Provider SDK errors vary wildly. Convert the common account and capacity
+ * failures into a concise, actionable message instead of leaking a generic
+ * 500 or silently swallowing a background failure.
+ */
+export function toLlmProviderError(error: unknown, provider: LlmProvider): LlmProviderError {
+  if (error instanceof LlmProviderError) return error;
+  const label = providerLabel(provider);
+  const record = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+  const status = typeof record.status === 'number' ? record.status : undefined;
+  const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
+  const raw = error instanceof Error ? error.message : String(error || 'Unknown provider error');
+  const text = `${code} ${raw}`.toLowerCase();
+
+  if (/api_key.*required|required.*api_key|missing.*api.?key/.test(text)) {
+    return new LlmProviderError(`${label} is not configured on this deployment. Choose another model or add its API key.`, provider, 'configuration');
+  }
+  if (status === 401 || status === 403 || /invalid.*api.?key|authentication|unauthori[sz]ed|permission/.test(text)) {
+    return new LlmProviderError(`${label} rejected the API key. Check the key and its project permissions, then try again.`, provider, 'authentication');
+  }
+  if (status === 429 && /rate.?limit|too many/.test(text)) {
+    return new LlmProviderError(`${label} is rate-limiting requests. Wait a moment or choose a different model.`, provider, 'rate_limit');
+  }
+  if (/insufficient.?quota|insufficient.?credit|insufficient.?balance|billing|no.?credits|credit.?balance|quota.*exceed|usage.?limit/.test(text)) {
+    return new LlmProviderError(`${label} has no available credits or quota for this request. Choose a funded model or add credits, then try again.`, provider, 'credits');
+  }
+  if (status === 429) {
+    return new LlmProviderError(`${label} cannot accept this request right now (quota or rate limit). Check credits, wait briefly, or choose another model.`, provider, 'rate_limit');
+  }
+  if (status === 404 || /model.*not found|model.*does not exist|unsupported model/.test(text)) {
+    return new LlmProviderError(`${label} cannot use the selected model. Choose another model or update the configured model name.`, provider, 'model');
+  }
+  if (/network|fetch failed|econn|enotfound|timeout|timed out/.test(text)) {
+    return new LlmProviderError(`Could not reach ${label}. Check the connection and try again.`, provider, 'network');
+  }
+  return new LlmProviderError(`${label} could not complete this request: ${raw.slice(0, 300)}`, provider, 'request');
+}
+
 /**
  * Convert a persisted chat transcript into provider-agnostic LlmMessages.
  * Each user attachment becomes its own labelled, fenced text block — the Claude
@@ -177,9 +233,13 @@ export function chatToLlmMessages(messages: ChatMessage[]): LlmMessage[] {
 }
 
 export async function callLlm(req: LlmRequest): Promise<LlmResponse> {
-  if (req.provider === 'claude') return callClaude(req);
-  if (req.provider === 'qwen') return callOpenAICompatible(req, QWEN_COMPAT);
-  return callOpenAICompatible(req, OPENAI_COMPAT[req.provider]);
+  try {
+    if (req.provider === 'claude') return await callClaude(req);
+    if (req.provider === 'qwen') return await callOpenAICompatible(req, QWEN_COMPAT);
+    return await callOpenAICompatible(req, OPENAI_COMPAT[req.provider]);
+  } catch (error) {
+    throw toLlmProviderError(error, req.provider);
+  }
 }
 
 /**
@@ -280,7 +340,7 @@ async function callOpenAICompatible(
     ...req.messages.map((m) => ({ role: m.role, content: join(m.blocks) })),
   ];
 
-  // gpt-5.5 rejects `reasoning_effort` + function tools on /v1/chat/completions
+  // GPT-5.6 rejects `reasoning_effort` + function tools on /v1/chat/completions
   // (it requires /v1/responses for that combo). The forced-tool path uses JSON
   // mode — no function tools — so reasoning_effort is safe there.
   const includeReasoningEffort = cfg.reasoningEffort && forcedTool;
@@ -288,7 +348,9 @@ async function callOpenAICompatible(
   const response = await client.chat.completions.create({
     model: resolveModelForConfig(cfg, req.model),
     [cfg.tokenParam]: req.maxTokens ?? cfg.maxTokensDefault,
-    ...(includeReasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+    // The installed SDK predates GPT-5.6's `xhigh` / `max` levels, but the
+    // Chat Completions API accepts them. Keep the runtime value intact.
+    ...(includeReasoningEffort ? { reasoning_effort: cfg.reasoningEffort as 'low' | 'medium' | 'high' } : {}),
     messages,
     ...(forcedTool
       ? { response_format: { type: 'json_object' as const } }

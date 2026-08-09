@@ -6,28 +6,16 @@ import { calendarWeekStart } from '../lib/week';
 
 const NAV_ITEMS = [
   {
-    key: 'insights',
-    label: 'Insights',
-    description: 'Read the weekly signal',
+    key: 'strategy',
+    label: 'Strategy',
+    description: 'Ledger, evidence, and decisions',
     path: '/',
   },
   {
-    key: 'strategy',
-    label: 'Strategy',
-    description: 'Decide what to do next',
-    path: '/strategy',
-  },
-  {
-    key: 'growth',
-    label: 'Growth',
-    description: 'Plan organic acquisition',
-    path: '/growth',
-  },
-  {
-    key: 'data',
-    label: 'Data',
-    description: 'Explore the raw numbers',
-    path: '/data',
+    key: 'workspace',
+    label: 'Workspace',
+    description: 'Growth planning and raw data',
+    path: '/workspace',
   },
 ] as const;
 
@@ -40,13 +28,9 @@ export function PageNav({
   variant?: 'tabs' | 'rail';
 }) {
   const path = usePathname() ?? '/';
-  const activeKey = path.startsWith('/strategy')
-    ? 'strategy'
-    : path.startsWith('/growth')
-      ? 'growth'
-      : path.startsWith('/data')
-        ? 'data'
-        : 'insights';
+  const activeKey = path.startsWith('/workspace') || path.startsWith('/growth') || path.startsWith('/data')
+    ? 'workspace'
+    : 'strategy';
 
   // All workspaces share this canonical Monday. Each route resolves it to its
   // own stored record, whose exact week_start may differ.
@@ -55,7 +39,7 @@ export function PageNav({
   return (
     <nav
       aria-label="Primary"
-      className={variant === 'rail' ? 'space-y-1' : 'grid grid-cols-4 gap-1 rounded-lg bg-white/[0.035] p-1'}
+      className={variant === 'rail' ? 'space-y-1' : 'grid grid-cols-2 gap-1 rounded-lg bg-white/[0.035] p-1'}
     >
       {NAV_ITEMS.map((item) => {
         const active = activeKey === item.key;

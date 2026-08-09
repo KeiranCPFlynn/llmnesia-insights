@@ -31,6 +31,7 @@ export function Toolbar({
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState<RunIntent | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [runFailed, setRunFailed] = useState(false);
   const [generationContext, setGenerationContext] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const [provider, setProvider] = useProvider();
@@ -66,6 +67,7 @@ export function Toolbar({
     setConfirming(null);
     setRunning(true);
     setMsg(null);
+    setRunFailed(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
@@ -75,14 +77,21 @@ export function Toolbar({
         body: JSON.stringify({
           provider,
           model,
-          weekStart: intent.weekStart,
+          // The normal action always refreshes Monday → today. A selected
+          // historical report keeps its fixed Mon–Sun range.
+          ...(intent.kind === 'latest' ? { mode: 'current' } : { weekStart: intent.weekStart }),
           generationContext: generationContext.trim() || undefined,
         }),
         signal: ctrl.signal,
       });
-      const body = await res.json().catch(() => ({}));
+      const body = await res.json().catch(() => ({})) as { error?: string; week?: string; ledgerWarning?: string };
       if (!res.ok) throw new Error(body.error || `Failed (${res.status})`);
-      setMsg('Done — refreshing.');
+      if (body.ledgerWarning) {
+        setMsg(`Evidence updated, but the Strategy Ledger did not: ${body.ledgerWarning}`);
+        setRunFailed(true);
+      } else {
+        setMsg('Done — refreshing.');
+      }
       if (body.week) router.push(`/?week=${body.week}`);
       router.refresh();
     } catch (e) {
@@ -90,6 +99,7 @@ export function Toolbar({
         setMsg('Stopped waiting. A run already in progress may still finish and save.');
       } else {
         setMsg(e instanceof Error ? e.message : 'Run failed.');
+        setRunFailed(true);
       }
     } finally {
       abortRef.current = null;
@@ -126,18 +136,19 @@ export function Toolbar({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Controls row */}
+      {/* The normal action is deliberately the only prominent control. */}
       <div className="flex flex-wrap items-center gap-2">
-        <WeekSelect weeks={allWeeks ?? weeks} selected={selected} basePath="/" disabled={running} />
-        <ModelPicker
-          provider={provider}
-          model={model}
-          onProviderChange={setProvider}
-          onModelChange={setModel}
-          disabled={running}
-          title="Model for analysis"
-        />
-
+        <div className="flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-950/60 px-2 py-1.5">
+          <span className="text-xs font-medium text-neutral-400">Run with</span>
+          <ModelPicker
+            provider={provider}
+            model={model}
+            onProviderChange={setProvider}
+            onModelChange={setModel}
+            disabled={running}
+            title="Model for this weekly review"
+          />
+        </div>
         {running ? (
           <div className="flex items-center gap-2">
             <span className="rounded-md border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm font-medium text-neutral-300">
@@ -171,29 +182,36 @@ export function Toolbar({
               onClick={confirmLatest}
               className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
             >
-              {latestRunExists ? 'Refresh latest' : 'Create latest'}
+              {latestRunExists ? 'Refresh today’s data' : 'Create today’s report'}
             </button>
             {!selectedIsLatestRun && (
               <button
                 onClick={confirmSelected}
                 className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-300 hover:bg-neutral-800/80"
               >
-                Update selected
+                Refresh this report
               </button>
             )}
           </div>
         )}
 
-        {!running && msg && <span className="text-sm text-neutral-400">{msg}</span>}
+        {!running && msg && <span className={`text-sm ${runFailed ? 'font-medium text-rose-300' : 'text-neutral-400'}`}>{msg}</span>}
       </div>
 
-      {/* Context box — always visible, compact */}
-      <GenerationContextBox
-        value={generationContext}
-        onChange={setGenerationContext}
-        disabled={running}
-        placeholder="Optional context for the analysis…"
-      />
+      <details className="text-xs text-neutral-500">
+        <summary className="cursor-pointer hover:text-neutral-300">More options: view a past report or add context</summary>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <WeekSelect weeks={allWeeks ?? weeks} selected={selected} basePath="/" disabled={running} />
+        </div>
+        <div className="mt-3">
+          <GenerationContextBox
+            value={generationContext}
+            onChange={setGenerationContext}
+            disabled={running}
+            placeholder="Optional context for the analysis…"
+          />
+        </div>
+      </details>
 
       {/* Progress bar when running */}
       {running && (
@@ -210,7 +228,7 @@ export function Toolbar({
       {/* Confirmation details */}
       {confirming && !running && (
         <p className="text-xs leading-relaxed text-neutral-500">
-          {confirming.exists ? 'Replace' : 'Create'} the report for {formatWeek(confirming.weekStart)}
+          {confirming.exists ? 'Refresh' : 'Create'} the review for {formatWeek(confirming.weekStart)}
           {confirming.weekEnd ? ` → ${formatWeek(confirming.weekEnd)}` : ''}.
           {generationContext.trim() ? ' Context above will be applied.' : ''}
         </p>

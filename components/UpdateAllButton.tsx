@@ -20,15 +20,13 @@ type PhaseState = 'idle' | 'active' | 'done' | 'warn' | 'error';
 const PHASES: { key: Phase; label: string }[] = [
   { key: 'sync', label: 'Search' },
   { key: 'insights', label: 'Insights' },
-  { key: 'downstream', label: 'Growth+Strategy' },
+  { key: 'downstream', label: 'Growth' },
 ];
 
 export function UpdateAllButton() {
   const router = useRouter();
   const [provider, setProvider] = useProvider();
   const [insightModel, setInsightModel] = useModel(provider);
-  const [strategyProvider, setStrategyProvider] = useProvider({ storageKey: 'llm-provider-strategy', fallback: 'openai' });
-  const [strategyModel, setStrategyModel] = useModel(strategyProvider);
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [states, setStates] = useState<Record<Phase, PhaseState>>({
@@ -37,6 +35,7 @@ export function UpdateAllButton() {
     downstream: 'idle',
   });
   const [msg, setMsg] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -67,8 +66,10 @@ export function UpdateAllButton() {
     setConfirming(false);
     setRunning(true);
     setMsg(null);
+    setFailed(false);
     setStates({ sync: 'idle', insights: 'idle', downstream: 'idle' });
     const week = currentMonday();
+    let ledgerWarning = false;
 
     set('sync', 'active');
     try {
@@ -90,12 +91,18 @@ export function UpdateAllButton() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'current', provider, model: insightModel }),
       });
-      const body = await res.json().catch(() => ({}));
+      const body = await res.json().catch(() => ({})) as { error?: string; ledgerWarning?: string };
       if (!res.ok) throw new Error(body.error || `Insights failed (${res.status})`);
       set('insights', 'done');
+      if (body.ledgerWarning) {
+        ledgerWarning = true;
+        setMsg(`Evidence updated, but the Strategy Ledger did not: ${body.ledgerWarning}`);
+        setFailed(true);
+      }
     } catch (e) {
       set('insights', 'error');
       setMsg(e instanceof Error ? e.message : 'Insights run failed.');
+      setFailed(true);
       setRunning(false);
       return;
     }
@@ -114,17 +121,12 @@ export function UpdateAllButton() {
             body: JSON.stringify({ siteId: s.id, weekStart: week, provider, model: insightModel }),
           }),
         ),
-        fetch('/api/strategy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ week, provider: strategyProvider, model: strategyModel }),
-        }),
       ]);
       set('downstream', 'done');
-      setMsg('All updated.');
+      if (!ledgerWarning) setMsg('Strategy Ledger and Growth updated.');
     } catch {
       set('downstream', 'warn');
-      setMsg('Insights done. Growth/strategy finishing.');
+      setMsg('Strategy Ledger updated. Growth is still finishing.');
     }
 
     setRunning(false);
@@ -144,10 +146,10 @@ export function UpdateAllButton() {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Model picker for insights + growth */}
+      {/* The Ledger Editor uses this same model/provider. */}
       <div className="space-y-1">
         <label className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-          Analysis
+          Evidence & strategy
         </label>
         <ModelPicker
           provider={provider}
@@ -155,23 +157,7 @@ export function UpdateAllButton() {
           onProviderChange={setProvider}
           onModelChange={setInsightModel}
           disabled={running}
-          title="Model for insights + growth"
-        />
-      </div>
-
-      {/* Strategy model */}
-      <div className="space-y-1">
-        <label className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-          Strategy
-        </label>
-        <ModelPicker
-          provider={strategyProvider}
-          model={strategyModel}
-          onProviderChange={setStrategyProvider}
-          onModelChange={setStrategyModel}
-          options={['openai', 'claude', 'deepseek', 'qwen']}
-          disabled={running}
-          title="Model for strategy"
+          title="Model for evidence and strategy"
         />
       </div>
 
@@ -183,7 +169,7 @@ export function UpdateAllButton() {
           className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-400/15 disabled:opacity-60"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${running ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-          {running ? `Updating ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : 'Update all'}
+          {running ? `Checking ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : 'Run mid-week check'}
         </button>
       ) : (
         <div className="flex items-center gap-2">
@@ -213,7 +199,7 @@ export function UpdateAllButton() {
           ))}
         </div>
       )}
-      {msg && <div className="text-[10px] text-neutral-400">{msg}</div>}
+      {msg && <div className={`text-xs leading-relaxed ${failed ? 'font-medium text-rose-300' : 'text-neutral-400'}`}>{msg}</div>}
     </div>
   );
 }

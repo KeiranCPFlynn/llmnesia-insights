@@ -67,7 +67,66 @@ create index on public.weekly_insights (week_start desc);
 > alter table public.standing_caveats enable row level security;  -- service key bypasses RLS; no policies = anon locked out (safe)
 > ```
 
-### 1b. Traffic Growth Planner schema (`/growth`)
+### 1b. Stateful Strategy Ledger schema
+
+Run this once to enable the persistent ledger, evidence history, and audit
+trail. The existing weekly report table remains unchanged and is still written
+for backwards compatibility.
+
+```sql
+create table if not exists public.strategy_ledger (
+  id integer primary key default 1 check (id = 1),
+  state jsonb not null,
+  version integer not null default 1,
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
+
+create table if not exists public.evidence_deltas (
+  id uuid primary key default gen_random_uuid(),
+  week_start date not null unique,
+  week_end date not null,
+  delta jsonb not null,
+  raw_snapshot jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists evidence_deltas_week_start on public.evidence_deltas (week_start desc);
+
+create table if not exists public.ledger_entries (
+  id uuid primary key default gen_random_uuid(),
+  week_start date not null,
+  entry_type text not null,
+  target text,
+  operation text not null,
+  patch jsonb,
+  evidence text,
+  confidence text,
+  model_used text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists ledger_entries_week_start on public.ledger_entries (week_start desc);
+create index if not exists ledger_entries_entry_type on public.ledger_entries (entry_type);
+
+create table if not exists public.context_sources (
+  id uuid primary key default gen_random_uuid(),
+  week_start date not null,
+  source_type text not null,
+  repo text,
+  digest jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists context_sources_week_start on public.context_sources (week_start desc);
+
+alter table public.strategy_ledger enable row level security;
+alter table public.evidence_deltas enable row level security;
+alter table public.ledger_entries enable row level security;
+alter table public.context_sources enable row level security;
+```
+
+Then run `npm run seed-ledger` once. It uses the newest legacy strategy and
+metrics snapshot as a starting point, and leaves an existing ledger untouched.
+
+### 1c. Traffic Growth Planner schema (`/growth`)
 
 The Growth Planner (Google Search Console + opportunity detection + weekly
 action plan) lives in its own tables, **NOT** as more jsonb on
@@ -235,14 +294,14 @@ Copy `.env.example` to `.env` and fill in:
 | `SUPABASE_URL` | Supabase → Project settings → API → Project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase → Project settings → API → service_role key |
 | `ANTHROPIC_API_KEY` | console.anthropic.com (required for the Claude provider) |
-| `ANTHROPIC_MODEL` | Optional — override the Claude model (default `claude-sonnet-4-6`) |
+| `ANTHROPIC_MODEL` | Optional — override the Claude model (default `claude-sonnet-5`) |
 | `DEEPSEEK_API_KEY` | platform.deepseek.com — required only when DeepSeek is selected |
 | `DEEPSEEK_MODEL` | Optional — override the DeepSeek model (default `deepseek-v4-pro`) |
-| `LLM_PROVIDER` | Optional — default provider when none is chosen in the UI: `claude` (default), `deepseek` or `openai`. The Vercel Cron run uses this. |
+| `LLM_PROVIDER` | Optional — default provider when none is chosen in the UI: `claude` (default), `deepseek`, `openai`, or `qwen`. The Vercel Cron run uses this. |
 | `OPENAI_API_KEY` | platform.openai.com — required for the PM strategist (and if `openai` is selected anywhere) |
-| `STRATEGY_MODEL` | Optional — override the strategist model (default `gpt-5.5`) |
-| `STRATEGY_PROVIDER` | Optional — default provider for the `/strategy` PM: `openai` (default), `claude` or `deepseek` |
-| `STRATEGY_REASONING_EFFORT` | Optional — GPT-5.x reasoning spend / cost lever: `minimal`, `low`, `medium` (default), `high` |
+| `STRATEGY_MODEL` | Optional — override the strategist model (default `gpt-5.6-terra`) |
+| `STRATEGY_PROVIDER` | Optional — default provider for the Strategy Ledger: `openai` (default), `claude`, `deepseek`, or `qwen` |
+| `STRATEGY_REASONING_EFFORT` | Optional — GPT-5.6 reasoning spend / cost lever: `minimal`, `low`, `medium` (default), `high`, `xhigh`, or `max` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | **Local only** — absolute path to the GA4 service-account JSON, **outside this repo**. Website property only. |
 | `GOOGLE_CREDENTIALS_JSON` | **Vercel** — the entire contents of that key JSON (Vercel has no file path). Takes precedence over the path above. |
 | `GA4_PROPERTY_ID_WEBSITE` | Numeric GA4 property ID for llmnesia.com (read via the service account) |
@@ -251,6 +310,8 @@ Copy `.env.example` to `.env` and fill in:
 | `GSC_OAUTH_CLIENT_ID` / `GSC_OAUTH_CLIENT_SECRET` / `GSC_OAUTH_REFRESH_TOKEN` | Google Search Console for the Traffic Growth Planner — see §2c. Leave blank to disable `/growth`. |
 | `BING_WEBMASTER_API_KEY` | Optional — Bing Webmaster Tools API key for Bing search data in `/growth`. Get it from Bing WMT → Settings → API Access. Leave blank to skip. |
 | `GROWTH_PROVIDER` | Optional — default provider for the `/growth` plan + briefs: `claude` (default), `openai` or `deepseek`. Falls back to `LLM_PROVIDER`. |
+| `GIT_REPOS` | Optional, local-only comma-separated absolute paths. Recent commits are included as ledger evidence. Example: `/path/to/LLMnesia,/path/to/llmnesia-site`. |
+| `MCP_CONTEXT_URL` | Optional, local-only HTTP adapter for LLMnesia MCP conversation search. It receives `{ since, keywords }` and returns a digest with `conversations`, `decisions`, `constraints`, and `ideas`. `MCP_SERVER_URL` is accepted as a legacy alias. |
 | `DASHBOARD_PASSWORD` | Password to view the dashboard once deployed. **Leave blank to disable the gate locally.** |
 | `RUN_SECRET` | Shared secret the weekly cron uses to authorise `/api/run` |
 
@@ -406,7 +467,7 @@ npm run pipeline -- --provider=deepseek   # use DeepSeek instead of Claude (defa
 1. Import the repo into Vercel.
 2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` is a local file path and won't resolve on Vercel** (no `/Users` — the error is `ENOENT … lstat '/Users'`). Instead set **`GOOGLE_CREDENTIALS_JSON`** to the entire contents of the key file; `src/ga4.ts` parses it and uses it inline (it takes precedence over the path). The *extension* property is unaffected — it's OAuth/token-based (`GA4_OAUTH_*`) and works on Vercel as-is. (`.env` override is a no-op there — there's no `.env` file, so the platform env vars stand.)
 3. Set `DASHBOARD_PASSWORD` and `RUN_SECRET` (and optionally Vercel's built-in `CRON_SECRET`).
-4. Deploy. [vercel.json](vercel.json) registers a weekly cron (`Mon 07:00 UTC → /api/run`) and sets the function `maxDuration` to 300s.
+4. Deploy. [vercel.json](vercel.json) registers a daily cron (`07:00 UTC → /api/run`) so the main workspace refreshes the current week through that day, and sets the function `maxDuration` to 300s.
 
 > **Timeout note:** the pipeline takes ~30–90s. `maxDuration: 300` requires a Vercel plan that allows it (Pro). On Hobby the limit is lower (~60s) — usually still enough, but tight. If runs time out, trigger via the CLI instead.
 

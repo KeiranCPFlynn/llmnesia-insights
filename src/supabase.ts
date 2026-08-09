@@ -3,11 +3,17 @@ import { createClient } from '@supabase/supabase-js';
 import type {
   AnalysisResult,
   ChatMessage,
+  ContextSource,
   Correction,
+  EvidenceDelta,
+  EvidenceDeltaRecord,
   HistoricalInsight,
+  LedgerEntry,
+  MetricsSnapshot,
   Revision,
   StandingCaveat,
   StrategyDecision,
+  StrategyLedgerState,
   StrategyRecommendation,
   StrategyResult,
   WeeklyInsight,
@@ -55,6 +61,19 @@ export async function getInsightByWeek(weekStart: string): Promise<WeeklyInsight
     .eq('week_start', weekStart)
     .maybeSingle();
 
+  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  return (data as WeeklyInsight) ?? null;
+}
+
+/** Latest complete report, used to seed the ledger from the existing history. */
+export async function getLatestInsight(): Promise<WeeklyInsight | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('weekly_insights')
+    .select('*')
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
   return (data as WeeklyInsight) ?? null;
 }
@@ -395,4 +414,207 @@ export async function saveStrategyChat(
     .eq('week_start', weekStart);
 
   if (error) throw new Error(`Supabase update failed: ${error.message}`);
+}
+
+// --- Strategy Ledger (singleton living strategy document) ---
+
+/**
+ * Read the single strategy_ledger row (id=1). Returns null when the table
+ * doesn't exist yet (pre-DDL) or the ledger hasn't been seeded.
+ */
+export async function getStrategyLedger(): Promise<StrategyLedgerState | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('strategy_ledger')
+    .select('state, version, updated_at, updated_by')
+    .eq('id', 1)
+    .maybeSingle();
+
+  if (error) {
+    // Table may not exist yet — fail-soft so the pipeline doesn't break.
+    if (error.code === '42P01' || error.message.includes('does not exist')) {
+      return null;
+    }
+    throw new Error(`strategy_ledger fetch failed: ${error.message}`);
+  }
+  if (!data) return null;
+  const state = data.state as StrategyLedgerState;
+  state.version = data.version as number;
+  return state;
+}
+
+/**
+ * Upsert the strategy_ledger singleton. The `state` is the full current
+ * document after patches have been applied. `updatedBy` records which model
+ * produced this version.
+ */
+export async function upsertStrategyLedger(
+  state: StrategyLedgerState,
+  updatedBy: string,
+): Promise<void> {
+  const supabase = getClient();
+  const { error } = await supabase.from('strategy_ledger').upsert(
+    {
+      id: 1,
+      state,
+      version: state.version,
+      updated_at: new Date().toISOString(),
+      updated_by: updatedBy,
+    },
+    { onConflict: 'id' },
+  );
+  if (error) throw new Error(`strategy_ledger upsert failed: ${error.message}`);
+}
+
+// --- Evidence Deltas ---
+
+/** Get the most recent evidence delta (for computing the next delta's "prior"). */
+export async function getLatestEvidenceDelta(): Promise<EvidenceDelta | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('evidence_deltas')
+    .select('delta')
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '42P01' || error.message.includes('does not exist')) return null;
+    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
+  }
+  return (data?.delta as EvidenceDelta) ?? null;
+}
+
+/** Read the evidence delta belonging to one reporting week. */
+export async function getEvidenceDeltaByWeek(weekStart: string): Promise<EvidenceDelta | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('evidence_deltas')
+    .select('delta')
+    .eq('week_start', weekStart)
+    .maybeSingle();
+  if (error) {
+    if (error.code === '42P01' || error.message.includes('does not exist')) return null;
+    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
+  }
+  return (data?.delta as EvidenceDelta) ?? null;
+}
+
+/** Read the latest source snapshot saved with an evidence delta. */
+export async function getLatestEvidenceSnapshotBefore(
+  weekStart: string,
+): Promise<MetricsSnapshot | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('evidence_deltas')
+    .select('raw_snapshot')
+    .lt('week_start', weekStart)
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error && error.code !== '42P01' && !error.message.includes('does not exist')) {
+    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
+  }
+  if (data?.raw_snapshot) return data.raw_snapshot as MetricsSnapshot;
+
+  // During migration the delta table is empty even though legacy weekly
+  // snapshots already exist. Reuse the latest one so the very first ledger
+  // update has a meaningful comparison instead of treating every value as new.
+  const { data: insight, error: insightError } = await supabase
+    .from('weekly_insights')
+    .select('metrics_snapshot')
+    .lt('week_start', weekStart)
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (insightError) throw new Error(`weekly_insights fetch failed: ${insightError.message}`);
+  return (insight?.metrics_snapshot as MetricsSnapshot) ?? null;
+}
+
+/** Save (upsert on week_start) an evidence delta for a completed pipeline run. */
+export async function saveEvidenceDelta(
+  delta: EvidenceDelta,
+  rawSnapshot: MetricsSnapshot,
+): Promise<void> {
+  const supabase = getClient();
+  const { error } = await supabase.from('evidence_deltas').upsert(
+    {
+      week_start: delta.week_start,
+      week_end: delta.week_end,
+      delta,
+      raw_snapshot: rawSnapshot,
+    },
+    { onConflict: 'week_start' },
+  );
+  if (error) throw new Error(`evidence_deltas upsert failed: ${error.message}`);
+}
+
+// --- Ledger Entries (append-only audit trail) ---
+
+/** Append one or more entries to the ledger_entries table. */
+export async function appendLedgerEntries(entries: LedgerEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const supabase = getClient();
+  const rows = entries.map((e) => ({
+    id: e.id ?? randomUUID(),
+    week_start: e.week_start,
+    entry_type: e.entry_type,
+    target: e.target,
+    operation: e.operation,
+    patch: e.patch,
+    evidence: e.evidence,
+    confidence: e.confidence,
+    model_used: e.model_used,
+  }));
+  const { error } = await supabase.from('ledger_entries').insert(rows);
+  if (error) throw new Error(`ledger_entries insert failed: ${error.message}`);
+}
+
+/** Read recent ledger entries, newest first. */
+export async function getRecentLedgerEntries(limit = 50): Promise<LedgerEntry[]> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('ledger_entries')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    if (error.code === '42P01' || error.message.includes('does not exist')) return [];
+    throw new Error(`ledger_entries fetch failed: ${error.message}`);
+  }
+  return (data as LedgerEntry[]) ?? [];
+}
+
+// --- Context Sources (git / MCP digests) ---
+
+/** Save context sources for a pipeline run. */
+export async function saveContextSources(sources: ContextSource[]): Promise<void> {
+  if (!sources.length) return;
+  const supabase = getClient();
+  const rows = sources.map((s) => ({
+    id: s.id ?? randomUUID(),
+    week_start: s.week_start,
+    source_type: s.source_type,
+    repo: s.repo,
+    digest: s.digest,
+  }));
+  const { error } = await supabase.from('context_sources').insert(rows);
+  if (error) throw new Error(`context_sources insert failed: ${error.message}`);
+}
+
+/** Read the context artifacts that informed recent ledger updates. */
+export async function getRecentContextSources(limit = 20): Promise<ContextSource[]> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('context_sources')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) {
+    if (error.code === '42P01' || error.message.includes('does not exist')) return [];
+    throw new Error(`context_sources fetch failed: ${error.message}`);
+  }
+  return (data as ContextSource[]) ?? [];
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runPipeline } from '../../../src/pipeline.js';
+import { LlmProviderError } from '../../../src/llm.js';
 import { isAuthorized } from '../../../lib/session';
 
 export const runtime = 'nodejs';
@@ -17,8 +18,8 @@ async function run(req: Request) {
     let model: string | undefined;
     let weekStart: string | undefined;
     let generationContext: string | undefined;
-    // 'current' = mid-week week-to-date refresh ("Update all"); default
-    // 'complete' = the finished week (cron + normal "Run analysis now").
+    // 'current' = week-to-date refresh (the default); 'complete' = an
+    // intentionally finished Mon–Sun report.
     let mode: 'complete' | 'current' | undefined;
     if (req.method === 'POST') {
       const body = (await req.json().catch(() => ({}))) as {
@@ -47,9 +48,16 @@ async function run(req: Request) {
       week: result.weekStart,
       saved: result.saved,
       summary: result.analysis.summary,
+      ledgerWarning: result.ledgerWarning,
     });
   } catch (e) {
     console.error('[run] failed:', e);
+    if (e instanceof LlmProviderError) {
+      return NextResponse.json(
+        { error: e.message, errorType: e.kind, provider: e.provider },
+        { status: 422 },
+      );
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Pipeline failed' },
       { status: 500 },

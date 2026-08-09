@@ -9,8 +9,13 @@ import { SourceBadge } from '../components/SourceBadge';
 import { ChatPanel } from '../components/ChatPanel';
 import { KnownFacts } from '../components/KnownFacts';
 import { WeekCaveats } from '../components/WeekCaveats';
+import { LedgerOverview } from '../components/LedgerOverview';
+import { OperatingLoop } from '../components/OperatingLoop';
+import { StrategyPanel } from '../components/StrategyPanel';
+import { StrategyGoalEditor } from '../components/StrategyGoalEditor';
 import { getDefaultWeek } from '../src/pipeline.js';
-import { getStandingCaveats } from '../src/supabase.js';
+import { getEvidenceDeltaByWeek, getRecentLedgerEntries, getStandingCaveats, getStrategyLedger } from '../src/supabase.js';
+import { resolveStrategyGoal } from '../src/strategy-goal.js';
 import type { DataSource } from '../src/types.js';
 
 export const dynamic = 'force-dynamic';
@@ -91,11 +96,20 @@ export default async function Page({
 
   // Persistent "known facts" — fail-soft so a pre-DDL / missing table never
   // takes down the whole dashboard.
-  const standingCaveats = await getStandingCaveats(false).catch(() => []);
+  const [standingCaveats, ledger, ledgerEntries] = await Promise.all([
+    getStandingCaveats(false).catch(() => []),
+    getStrategyLedger().catch(() => null),
+    getRecentLedgerEntries(12).catch(() => []),
+  ]);
 
   const { week, period } = await searchParams;
   const { weeks, current, prev } = selectWeek(insights, week, period);
+  const evidenceDelta = await getEvidenceDeltaByWeek(current.week_start).catch(() => null);
   const latestRunWeek = getDefaultWeek();
+  const { goal: effectiveStrategyGoal, source: strategyGoalSource } = resolveStrategyGoal(
+    insights,
+    current.week_start,
+  );
 
   // Insights dropdown shows only weeks that have a published report — every
   // option here loads. (Growth has more recent weeks because growth data runs
@@ -107,6 +121,7 @@ export default async function Page({
         (r) => !(current.strategy_decisions ?? []).some((d) => d.recommendation_id === r.id),
       ).length
     : 0;
+  const recommendationCount = current.strategy?.recommendations.length ?? 0;
 
   const m = current.metrics_snapshot;
   const pm = prev?.metrics_snapshot;
@@ -115,6 +130,7 @@ export default async function Page({
 
   const headline = current.headline ?? current.summary;
   const showSummary = current.headline ? current.summary : null;
+  const dataAsOf = m.partial?.as_of ?? current.week_end;
 
   // Surface only the signal: things actually worth acting on this week.
   const attentionFindings = current.findings
@@ -131,29 +147,64 @@ export default async function Page({
   return (
     <AppShell
       week={current.week_start}
-      eyebrow="Product health"
-      title="Weekly insights"
-      description="Understand what changed, what needs attention, and which signals are strong enough to act on."
-      context={`Week of ${formatWeek(calendarWeekStart(current.week_start))} · source window ${formatWeek(current.week_start)} → ${formatWeek(current.week_end)} · ${insights.length} weeks tracked${openRecs > 0 ? ` · ${openRecs} strategy decisions open` : ''}`}
-      controls={
-        <Toolbar
-          weeks={[...weeks].reverse()}
-          allWeeks={allWeeks}
-          selected={current.week_start}
-          latestRunWeekStart={latestRunWeek.weekStart}
-          latestRunWeekEnd={latestRunWeek.weekEnd}
-        />
-      }
+      eyebrow="Operating strategy"
+      title="Strategy ledger"
+      description="A living strategy grounded in this week’s product evidence, decisions, and the work already underway."
+      context={`Viewing ${formatWeek(current.week_start)} → ${formatWeek(current.week_end)} · data through ${formatWeek(dataAsOf)}${m.partial ? ' (live week-to-date)' : ' (completed report)'}${openRecs > 0 ? ` · ${openRecs} strategy decisions open` : ''}`}
       sections={[
-        { href: '#overview', label: 'Overview' },
-        { href: '#discuss', label: 'Discuss' },
-        { href: '#known-facts', label: 'Known facts' },
-        { href: '#attention', label: 'Needs attention' },
-        { href: '#metrics', label: 'Metrics & trends' },
-        ...(m.search_performance ? [{ href: '#search', label: 'Search visibility' }] : []),
-        { href: '#full-analysis', label: 'Full analysis' },
+        { href: '#start-here', label: 'Start here' },
+        { href: '#strategy-ledger', label: 'Current direction' },
+        { href: '#recommendations', label: 'This week’s plan' },
+        { href: '#overview', label: 'Evidence' },
       ]}
     >
+
+      <OperatingLoop
+        hasEvidence={!!evidenceDelta}
+        recommendationCount={recommendationCount}
+        openRecommendationCount={openRecs}
+        workspaceHref={`/workspace?period=${calendarWeekStart(current.week_start)}`}
+        periodStart={current.week_start}
+        periodEnd={current.week_end}
+        dataAsOf={dataAsOf}
+        daysElapsed={m.partial?.days_elapsed}
+        refreshControls={
+          <Toolbar
+            weeks={[...weeks].reverse()}
+            allWeeks={allWeeks}
+            selected={current.week_start}
+            latestRunWeekStart={latestRunWeek.weekStart}
+            latestRunWeekEnd={latestRunWeek.weekEnd}
+          />
+        }
+      />
+
+      <LedgerOverview ledger={ledger} evidence={evidenceDelta} entries={ledgerEntries} />
+
+      <details id="goal" className="scroll-mt-36 mb-6 rounded-lg border border-neutral-800/80 bg-neutral-900/60 p-4">
+        <summary className="cursor-pointer text-sm font-medium text-neutral-300">Optional: set or change this week’s focus</summary>
+        <div className="mt-4">
+          <StrategyGoalEditor
+            key={current.week_start}
+            week={current.week_start}
+            initialGoal={effectiveStrategyGoal}
+            savedGoal={current.strategy_goal}
+            goalSource={strategyGoalSource}
+          />
+        </div>
+      </details>
+
+      <section id="recommendations" className="scroll-mt-36 mb-10">
+        <StrategyPanel
+          key={current.week_start}
+          week={current.week_start}
+          strategy={current.strategy ?? null}
+          strategyGoal={effectiveStrategyGoal}
+          decisions={current.strategy_decisions ?? []}
+          recommendationChats={current.strategy_recommendation_chats ?? {}}
+          ledgerManaged
+        />
+      </section>
 
       {/* Hero — the one thing to take away */}
       <section id="overview" className="scroll-mt-36 mb-8 rounded-xl border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(23,23,23,0.92),rgba(6,78,59,0.18))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">

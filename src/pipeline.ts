@@ -3,20 +3,33 @@ import { collectGA4Metrics } from './ga4.js';
 import { getCombinedSearchDigest, syncSearchForInsights } from './search-digest.js';
 import { randomUUID } from 'node:crypto';
 import {
+  appendLedgerEntries,
+  getLatestEvidenceSnapshotBefore,
   getHistoryBefore,
   getInsightByWeek,
   getRecentInsights,
+  getStrategyLedger,
   getStandingCaveats,
   insertInsight,
+  saveContextSources,
+  saveEvidenceDelta,
+  upsertStrategyLedger,
   updateAnalysis,
 } from './supabase.js';
 import { analyseMetrics } from './analyse.js';
+import { computeEvidenceDelta } from './evidence-delta.js';
+import { collectGitContext } from './git-context.js';
+import { createInitialLedgerState, updateLedger } from './ledger.js';
+import { collectMcpContext } from './mcp-context.js';
+import { readBrief } from './brief.js';
 import type { LlmProvider } from './llm.js';
+import { LlmProviderError } from './llm.js';
 import type {
   AnalysisResult,
   Correction,
   MetricsSnapshot,
   StandingCaveat,
+  StrategyResult,
   WeeklyInsight,
 } from './types.js';
 
@@ -40,19 +53,13 @@ function standingCaveatsAsCorrections(caveats: StandingCaveat[]): Correction[] {
 }
 
 /**
- * The most recently completed Monday–Sunday week, regardless of which day the
- * pipeline is run. This prevents ad-hoc weekday runs from creating rolling
- * Thu–Wed (etc.) records that cannot line up with the Growth workspace.
+ * The current Monday–today reporting window. This is the dashboard default:
+ * founders should see the freshest available data rather than last week's
+ * completed report. The snapshot is explicitly marked partial until Sunday.
  */
 export function getDefaultWeek(): { weekStart: string; weekEnd: string } {
-  const today = new Date();
-  const daysSinceSunday = today.getUTCDay() === 0 ? 7 : today.getUTCDay();
-  const weekEndDate = new Date(today);
-  weekEndDate.setUTCDate(today.getUTCDate() - daysSinceSunday);
-  const weekStartDate = new Date(weekEndDate);
-  weekStartDate.setUTCDate(weekEndDate.getUTCDate() - 6);
-
-  return { weekStart: formatDate(weekStartDate), weekEnd: formatDate(weekEndDate) };
+  const current = getCurrentWeek();
+  return { weekStart: current.weekStart, weekEnd: current.weekEnd };
 }
 
 export function getWeekFromArg(weekStartArg: string): { weekStart: string; weekEnd: string } {
@@ -93,7 +100,49 @@ export interface PipelineResult {
   metrics: MetricsSnapshot & { ga4: unknown };
   analysis: AnalysisResult;
   modelUsed: string;
+  /** Present when the ledger editor completed; weekly_insights.strategy is dual-written for compatibility. */
+  ledgerUpdated?: boolean;
+  /** A provider/capacity failure after analysis; the evidence was still saved. */
+  ledgerWarning?: string;
   saved: boolean;
+}
+
+function strategyFromLedger(
+  editor: Awaited<ReturnType<typeof updateLedger>>['editor'],
+  state: Awaited<ReturnType<typeof updateLedger>>['state'],
+  modelUsed: string,
+): StrategyResult {
+  return {
+    thesis: editor.narrative,
+    monetization: {
+      model: state.monetization_design.model,
+      what_to_gate: state.monetization_design.what_to_gate,
+      pricing_hypothesis: state.monetization_design.pricing_hypothesis,
+    },
+    recommendations: editor.weekly_recommendations.map((recommendation) => {
+      const rawHandoff = recommendation.handoff;
+      const handoff = rawHandoff && typeof rawHandoff === 'object' ? rawHandoff : {};
+      return {
+        ...recommendation,
+        id: randomUUID(),
+        handoff: {
+          ...(typeof handoff.coding_agent_prompt === 'string'
+            ? { coding_agent_prompt: handoff.coding_agent_prompt }
+            : {}),
+          ...(Array.isArray(handoff.founder_steps)
+            ? { founder_steps: handoff.founder_steps.filter((step): step is string => typeof step === 'string') }
+            : {}),
+        },
+        metrics_to_watch: Array.isArray(recommendation.metrics_to_watch)
+          ? recommendation.metrics_to_watch.filter((metric): metric is string => typeof metric === 'string')
+          : [],
+      };
+    }),
+    risks: editor.risks,
+    experiments: editor.experiments,
+    model_used: modelUsed,
+    generated_at: new Date().toISOString(),
+  };
 }
 
 /**
@@ -107,10 +156,9 @@ export interface PipelineResult {
 export async function runPipeline(opts: {
   weekStart?: string | null;
   /**
-   * 'complete' (default) analyses the most recently finished Mon–Sun week —
-   * the weekly cron and normal "Run analysis now". 'current' analyses the
-   * in-progress week to date, for mid-week "Update all" refreshes. An explicit
-   * `weekStart` always wins and is treated as a completed week.
+   * 'current' (default) analyses the in-progress calendar week through today.
+   * 'complete' is reserved for intentionally refreshing a finished Mon–Sun
+   * report. An explicit `weekStart` always wins and is treated as completed.
    */
   mode?: 'complete' | 'current';
   dryRun?: boolean;
@@ -120,7 +168,7 @@ export async function runPipeline(opts: {
   generationContext?: string | null;
 }): Promise<PipelineResult> {
   const log = opts.log ?? ((m: string) => console.log(m));
-  const current = !opts.weekStart && opts.mode === 'current' ? getCurrentWeek() : null;
+  const current = !opts.weekStart && opts.mode !== 'complete' ? getCurrentWeek() : null;
   const { weekStart, weekEnd } = opts.weekStart
     ? getWeekFromArg(opts.weekStart)
     : current ?? getDefaultWeek();
@@ -138,7 +186,7 @@ export async function runPipeline(opts: {
   // digest reads the rows. Fully fail-soft inside syncSearchForInsights.
   const searchSync = syncSearchForInsights(log);
 
-  const [posthogMetrics, ga4, history, existingRow, standingCaveats] = await Promise.all([
+  const [posthogMetrics, ga4, history, existingRow, standingCaveats, priorSnapshot, persistedLedger] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
     getRecentInsights(6),
@@ -149,6 +197,14 @@ export async function runPipeline(opts: {
     getStandingCaveats().catch((e) => {
       log(`Standing caveats skipped: ${e instanceof Error ? e.message : String(e)}`);
       return [];
+    }),
+    getLatestEvidenceSnapshotBefore(weekStart).catch((e) => {
+      log(`Evidence history skipped: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }),
+    getStrategyLedger().catch((e) => {
+      log(`Strategy ledger read skipped: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
     }),
   ]);
 
@@ -168,6 +224,7 @@ export async function runPipeline(opts: {
     ...(searchPerformance ? { search_performance: searchPerformance } : {}),
     ...(partial ? { partial } : {}),
   };
+  const evidenceDelta = computeEvidenceDelta(metrics, priorSnapshot);
   const trimmedContext = opts.generationContext?.trim();
   const generationCorrection: Correction | null = trimmedContext
     ? {
@@ -198,9 +255,45 @@ export async function runPipeline(opts: {
     partial,
   );
 
+  // Ledger editing deliberately runs after analysis: it gets the structured
+  // metric delta plus the analyst's qualitative interpretation. A ledger
+  // outage must not discard the weekly insight, so this is fail-soft.
+  let ledgerUpdate: Awaited<ReturnType<typeof updateLedger>> | null = null;
+  let ledgerModelUsed: string | null = null;
+  let ledgerWarning: string | undefined;
+  let gitDigests: ReturnType<typeof collectGitContext> = [];
+  let mcpDigest: Awaited<ReturnType<typeof collectMcpContext>> = null;
+  try {
+    const ledgerState = persistedLedger ?? createInitialLedgerState();
+    const since = priorSnapshot?.week_end ?? weekStart;
+    [gitDigests, mcpDigest] = await Promise.all([
+      Promise.resolve(collectGitContext(since)),
+      collectMcpContext(since),
+    ]);
+    const brief = await readBrief();
+    ledgerUpdate = await updateLedger({
+      weekStart,
+      weekEnd,
+      state: ledgerState,
+      evidence: evidenceDelta,
+      analysis,
+      brief,
+      gitContext: gitDigests,
+      mcpContext: mcpDigest,
+      founderContext: trimmedContext,
+      provider: opts.provider,
+      model: opts.model,
+    });
+    ledgerModelUsed = ledgerUpdate.modelUsed;
+    log(`Strategy ledger prepared (${ledgerUpdate.editor.patches.length} patch${ledgerUpdate.editor.patches.length === 1 ? '' : 'es'}).`);
+  } catch (e) {
+    if (e instanceof LlmProviderError) ledgerWarning = e.message;
+    log(`Strategy ledger skipped: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   if (opts.dryRun) {
     log('Dry run complete. No writes.');
-    return { weekStart, weekEnd, metrics, analysis, modelUsed, saved: false };
+    return { weekStart, weekEnd, metrics, analysis, modelUsed, ledgerUpdated: !!ledgerUpdate, ledgerWarning, saved: false };
   }
 
   const insight: Omit<WeeklyInsight, 'id' | 'created_at'> = {
@@ -214,12 +307,32 @@ export async function runPipeline(opts: {
     open_threads: analysis.open_threads,
     resolved_threads: analysis.resolved_threads,
     model_used: modelUsed,
+    ...(ledgerUpdate ? { strategy: strategyFromLedger(ledgerUpdate.editor, ledgerUpdate.state, ledgerModelUsed ?? modelUsed) } : {}),
     ...(corrections.length ? { corrections } : {}),
   };
   await insertInsight(insight);
   log('Saved to Supabase.');
 
-  return { weekStart, weekEnd, metrics, analysis, modelUsed, saved: true };
+  // The historical insight is the required write. New ledger tables may not
+  // have been migrated yet, so retain the old pipeline's availability while
+  // making every successful ledger update durable.
+  await saveEvidenceDelta(evidenceDelta, metrics).catch((e) => {
+    log(`Evidence delta save skipped: ${e instanceof Error ? e.message : String(e)}`);
+  });
+  if (ledgerUpdate) {
+    await Promise.all([
+      upsertStrategyLedger(ledgerUpdate.state, ledgerModelUsed ?? modelUsed),
+      appendLedgerEntries(ledgerUpdate.entries),
+      saveContextSources([
+        ...gitDigests.map((digest) => ({ week_start: weekStart, source_type: 'git' as const, repo: digest.repo, digest })),
+        ...(mcpDigest ? [{ week_start: weekStart, source_type: 'mcp' as const, repo: null, digest: mcpDigest }] : []),
+      ]),
+    ]).catch((e) => {
+      log(`Strategy ledger save skipped: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  }
+
+  return { weekStart, weekEnd, metrics, analysis, modelUsed, ledgerUpdated: !!ledgerUpdate, ledgerWarning, saved: true };
 }
 
 /**

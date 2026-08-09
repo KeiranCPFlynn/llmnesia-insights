@@ -68,6 +68,17 @@ function RecommendationCard({
   const [error, setError] = useState<string | null>(null);
   const [discussing, setDiscussing] = useState(initialChat.length > 0);
   const top = rank === 1;
+  // Historical AI output is untrusted at runtime: earlier reports may contain
+  // a single string here even though the current schema requires an array.
+  const codingAgentPrompt =
+    typeof rec.handoff?.coding_agent_prompt === 'string'
+      ? rec.handoff.coding_agent_prompt
+      : undefined;
+  const founderSteps = Array.isArray(rec.handoff?.founder_steps)
+    ? rec.handoff.founder_steps.filter(
+        (step): step is string => typeof step === 'string' && step.trim().length > 0,
+      )
+    : [];
 
   async function decide(status: StrategyDecision['status']) {
     if (busy) return;
@@ -97,8 +108,8 @@ function RecommendationCard({
   }
 
   async function copyPrompt() {
-    if (!rec.handoff.coding_agent_prompt) return;
-    await navigator.clipboard.writeText(rec.handoff.coding_agent_prompt);
+    if (!codingAgentPrompt) return;
+    await navigator.clipboard.writeText(codingAgentPrompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -145,7 +156,7 @@ function RecommendationCard({
         </p>
       )}
 
-      {rec.handoff.coding_agent_prompt && (
+      {codingAgentPrompt && (
         <div className="mt-4">
           <button
             onClick={copyPrompt}
@@ -160,16 +171,16 @@ function RecommendationCard({
               Preview prompt
             </summary>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-neutral-950 p-4 text-sm leading-relaxed text-neutral-300">
-              {rec.handoff.coding_agent_prompt}
+              {codingAgentPrompt}
             </pre>
           </details>
         </div>
       )}
-      {rec.handoff.founder_steps && rec.handoff.founder_steps.length > 0 && (
+      {founderSteps.length > 0 && (
         <div className="mt-4 rounded-lg border border-neutral-800/80 bg-neutral-950/45 p-4">
           <div className="text-sm font-semibold text-neutral-300">Your steps</div>
           <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[15px] leading-relaxed text-neutral-300">
-            {rec.handoff.founder_steps.map((s, i) => (
+            {founderSteps.map((s, i) => (
               <li key={i}>{s}</li>
             ))}
           </ol>
@@ -230,12 +241,15 @@ export function StrategyPanel({
   strategyGoal: initialStrategyGoal,
   decisions: initialDecisions,
   recommendationChats,
+  ledgerManaged = false,
 }: {
   week: string;
   strategy: StrategyResult | null;
   strategyGoal?: string | null;
   decisions: StrategyDecision[];
   recommendationChats: Record<string, ChatMessage[]>;
+  /** Recommendations created by the pipeline's Ledger Editor, not this legacy on-demand generator. */
+  ledgerManaged?: boolean;
 }) {
   const router = useRouter();
   const [strategy, setStrategy] = useState<StrategyResult | null>(initialStrategy);
@@ -413,15 +427,18 @@ export function StrategyPanel({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-neutral-100">Revenue & growth strategy</h2>
+          <h2 className="text-lg font-bold text-neutral-100">
+            {ledgerManaged ? 'This week’s recommendations' : 'Revenue & growth strategy'}
+          </h2>
           {strategy && (
             <p className="text-sm text-neutral-500">
-              {PROVIDER_LABEL[provider]} · generated {formatDateTime(strategy.generated_at)} · model{' '}
-              {strategy.model_used}
+              {ledgerManaged
+                ? `Generated from this week’s evidence · ${formatDateTime(strategy.generated_at)}`
+                : `${PROVIDER_LABEL[provider]} · generated ${formatDateTime(strategy.generated_at)} · model ${strategy.model_used}`}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        {!ledgerManaged && <div className="flex items-center gap-2">
           <ModelPicker
             provider={provider}
             model={model}
@@ -438,16 +455,18 @@ export function StrategyPanel({
           >
             {working ? 'Working…' : strategy ? 'Regenerate' : 'Generate PM strategy'}
           </button>
-        </div>
+        </div>}
       </div>
 
-      <GenerationContextBox
-        value={generationContext}
-        onChange={setGenerationContext}
-        disabled={working}
-        placeholder="Optional: e.g. wait for the release to be pushed before recommending follow-up, prioritize store listing work, avoid pricing changes this week…"
-        label="Context for next strategy generation"
-      />
+      {!ledgerManaged && (
+        <GenerationContextBox
+          value={generationContext}
+          onChange={setGenerationContext}
+          disabled={working}
+          placeholder="Optional: e.g. wait for the release to be pushed before recommending follow-up, prioritize store listing work, avoid pricing changes this week…"
+          label="Context for next strategy generation"
+        />
+      )}
 
       {working && (
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 p-4 shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
@@ -465,10 +484,11 @@ export function StrategyPanel({
 
       {!strategy && !working && (
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-5 py-8 text-center shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
-          <p className="text-base text-neutral-300">No strategy yet for this week.</p>
+          <p className="text-base text-neutral-300">No recommendations yet for this week.</p>
           <p className="mx-auto mt-2 max-w-xl text-[15px] leading-relaxed text-neutral-500">
-            Generate one — the PM reads the project brief, this week’s analysis, prior theses
-            and your past decisions, then proposes how to grow now and make money later.
+            {ledgerManaged
+              ? 'Refresh the weekly analysis to have the Ledger Editor assess new evidence and propose a focused plan.'
+              : 'Generate one — the PM reads the project brief, this week’s analysis, prior theses and your past decisions, then proposes how to grow now and make money later.'}
           </p>
         </div>
       )}

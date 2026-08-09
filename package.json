@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "pipeline": "tsx src/index.ts",
-    "check-schema": "tsx scripts/check-schema.ts"
+    "check-schema": "tsx scripts/check-schema.ts",
+    "seed-ledger": "tsx scripts/seed-ledger.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",

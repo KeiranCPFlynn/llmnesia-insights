@@ -7,7 +7,7 @@ export type Provider = 'claude' | 'deepseek' | 'openai' | 'qwen';
 export const PROVIDER_LABEL: Record<Provider, string> = {
   claude: 'Claude',
   deepseek: 'DeepSeek',
-  openai: 'GPT-5.5',
+  openai: 'OpenAI',
   qwen: 'Qwen Token Plan',
 };
 
@@ -25,37 +25,32 @@ interface ModelDef {
 
 const PROVIDER_MODELS: Record<Provider, ModelDef[]> = {
   claude: [
-    { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-    { id: 'claude-opus-4', label: 'Opus 4' },
-    { id: 'claude-haiku-4', label: 'Haiku 4' },
+    { id: 'claude-fable-5', label: 'Fable 5 — highest capability' },
+    { id: 'claude-opus-5', label: 'Opus 5 — complex work' },
+    { id: 'claude-sonnet-5', label: 'Sonnet 5 — recommended' },
+    { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fastest' },
   ],
   deepseek: [
-    { id: 'deepseek-v4-pro', label: 'V4 Pro' },
-    { id: 'deepseek-chat', label: 'Chat (R1)' },
-    { id: 'deepseek-reasoner', label: 'Reasoner' },
+    { id: 'deepseek-v4-pro', label: 'V4 Pro — recommended' },
+    { id: 'deepseek-v4-flash', label: 'V4 Flash — lower cost' },
   ],
   openai: [
-    { id: 'gpt-5.5', label: 'GPT-5.5' },
-    { id: 'o3', label: 'o3' },
-    { id: 'o4-mini', label: 'o4-mini' },
-    { id: 'gpt-4.1', label: 'GPT-4.1' },
-    { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-    { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+    { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol — highest capability' },
+    { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra — recommended' },
+    { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna — lowest cost' },
   ],
   qwen: [
-    { id: 'qwen3.8-max-preview', label: 'Qwen3.8 Max Preview' },
-    { id: 'qwen3.7-max', label: 'Qwen3.7 Max' },
-    { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus' },
-    { id: 'qwen3.6-flash', label: 'Qwen3.6 Flash' },
+    { id: 'qwen3.8-max', label: 'Qwen3.8 Max — highest capability' },
+    { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus — recommended' },
+    { id: 'qwen3.7-flash', label: 'Qwen3.7 Flash — fastest' },
     { id: 'glm-5.2', label: 'GLM 5.2' },
-    { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
   ],
 };
 
 const DEFAULT_MODEL: Record<Provider, string> = {
   claude: 'claude-sonnet-5',
   deepseek: 'deepseek-v4-pro',
-  openai: 'gpt-5.5',
+  openai: 'gpt-5.6-terra',
   qwen: 'qwen3.7-plus',
 };
 
@@ -104,7 +99,8 @@ export function useModel(provider: Provider): [string, (m: string) => void] {
 
   useEffect(() => {
     const saved = window.localStorage.getItem(storageKey);
-    if (saved) setModel(saved);
+    const supported = PROVIDER_MODELS[provider].some((candidate) => candidate.id === saved);
+    setModel(supported ? saved! : fallback);
   }, [storageKey]);
 
   const set = (m: string) => {
@@ -139,7 +135,7 @@ const SELECT_CLASS =
  * Single dropdown that shows every model grouped by provider.
  * Replaces the old ProviderSelect + ModelSelect pair.
  *
- * The value encodes both provider and model: "qwen:qwen-plus".
+ * The value encodes both provider and model: "qwen:qwen3.7-plus".
  * When the user picks a different provider group, the model automatically
  * switches to that provider's default (or the last-used model for it).
  */
