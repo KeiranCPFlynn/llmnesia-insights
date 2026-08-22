@@ -23,7 +23,7 @@ export function computeEvidenceDelta(
     label: string,
     currentVal: number,
     priorVal: number,
-    opts?: { threshold?: number; isRate?: boolean },
+    opts?: { threshold?: number; isRate?: boolean; includeInNotable?: boolean },
   ): MetricDelta {
     const change = currentVal - priorVal;
     const threshold = opts?.threshold ?? (opts?.isRate ? 0.02 : 1);
@@ -33,7 +33,7 @@ export function computeEvidenceDelta(
       priorVal !== 0 ? Math.round((change / Math.abs(priorVal)) * 1000) / 1000 : null;
 
     // Flag notable changes: non-flat + meaningful magnitude.
-    if (direction !== 'flat') {
+    if (direction !== 'flat' && opts?.includeInNotable !== false) {
       const pctStr =
         pct_change !== null
           ? ` (${pct_change > 0 ? '+' : ''}${Math.round(pct_change * 100)}%)`
@@ -59,10 +59,15 @@ export function computeEvidenceDelta(
 
   // --- Core product metrics ---
   const p = prior;
+  // A Monday-to-today count compared with a completed seven-day total is not
+  // a trend. Keep the structured values available to the Ledger Editor, but
+  // do not promote those count deltas into the human-facing "notable" list.
+  const includeCountChanges = !current.partial;
   const installs = delta(
     'Installs',
     current.installs?.total ?? 0,
     p?.installs?.total ?? 0,
+    { includeInNotable: includeCountChanges },
   );
   const activation_rate = delta(
     'Activation rate',
@@ -86,6 +91,7 @@ export function computeEvidenceDelta(
     'WAU',
     current.engagement?.wau ?? 0,
     p?.engagement?.wau ?? 0,
+    { includeInNotable: includeCountChanges },
   );
   const searches_per_wau = delta(
     'Searches per WAU',
@@ -119,6 +125,7 @@ export function computeEvidenceDelta(
     'Website sessions',
     curWeb?.sessions ?? 0,
     priorWeb?.sessions ?? 0,
+    { includeInNotable: includeCountChanges },
   );
   const curExt = current.ga4?.extension;
   const priorExt = p?.ga4?.extension;
@@ -126,6 +133,7 @@ export function computeEvidenceDelta(
     'Store installs (GA4)',
     curExt?.store_installs?.events ?? 0,
     priorExt?.store_installs?.events ?? 0,
+    { includeInNotable: includeCountChanges },
   );
 
   // --- Search performance (optional, may be absent) ---
@@ -139,11 +147,13 @@ export function computeEvidenceDelta(
               'Google impressions',
               curSearch.google.impressions,
               priorSearch?.google?.impressions ?? 0,
+              { includeInNotable: includeCountChanges },
             ),
             clicks: delta(
               'Google clicks',
               curSearch.google.clicks,
               priorSearch?.google?.clicks ?? 0,
+              { includeInNotable: includeCountChanges },
             ),
           }
         : null,
@@ -154,11 +164,13 @@ export function computeEvidenceDelta(
               'Bing impressions',
               curSearch.bing.impressions,
               priorSearch?.bing?.impressions ?? 0,
+              { includeInNotable: includeCountChanges },
             ),
             clicks: delta(
               'Bing clicks',
               curSearch.bing.clicks,
               priorSearch?.bing?.clicks ?? 0,
+              { includeInNotable: includeCountChanges },
             ),
           }
         : null,

@@ -1,4 +1,11 @@
-import type { EvidenceDelta, LedgerEntry, StrategyLedgerState } from '../src/types.js';
+import type {
+  ContextSource,
+  EvidenceDelta,
+  GitDigest,
+  LedgerEntry,
+  McpDigest,
+  StrategyLedgerState,
+} from '../src/types.js';
 
 const CONFIDENCE: Record<string, string> = {
   high: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200',
@@ -15,21 +22,40 @@ export function LedgerOverview({
   ledger,
   evidence,
   entries,
+  contextSources,
 }: {
   ledger: StrategyLedgerState | null;
   evidence: EvidenceDelta | null;
   entries: LedgerEntry[];
+  contextSources: ContextSource[];
 }) {
   if (!ledger) {
     return (
       <section id="strategy-ledger" className="scroll-mt-36 mb-8 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/50 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">Current direction</h2>
         <p className="mt-2 text-sm leading-relaxed text-neutral-400">
-          Not seeded yet. Run the Strategy Ledger migration, then <code className="rounded bg-neutral-800 px-1">npm run seed-ledger</code> to turn the weekly reports into a living strategy.
+          No published agent strategy yet. Open this repository in Codex or Claude Code and say <strong>Run the Insights review.</strong>
         </p>
       </section>
     );
   }
+
+  const gitSources = contextSources.filter((source) => source.source_type === 'git');
+  const mcpSources = contextSources.filter((source) => source.source_type === 'mcp');
+  const gitCommits = gitSources.reduce((total, source) => {
+    const digest = source.digest as Partial<GitDigest>;
+    return total + (typeof digest.commits === 'number' ? digest.commits : 0);
+  }, 0);
+  const conversationCount = mcpSources.reduce((total, source) => {
+    const digest = source.digest as Partial<McpDigest>;
+    return total + (typeof digest.conversations === 'number' ? digest.conversations : 0);
+  }, 0);
+  const gitStatus = gitSources.length
+    ? `${gitSources.length} repo${gitSources.length === 1 ? '' : 's'}${gitCommits ? ` · ${gitCommits} commit${gitCommits === 1 ? '' : 's'}` : ''}`
+    : 'No Git provenance was saved for this review';
+  const mcpStatus = mcpSources.length
+    ? `${conversationCount} relevant conversation${conversationCount === 1 ? '' : 's'}`
+    : 'No LLMnesia conversation provenance was saved for this review';
 
   return (
     <section id="strategy-ledger" className="scroll-mt-36 mb-8 rounded-xl border border-violet-400/20 bg-[linear-gradient(135deg,rgba(23,23,23,0.92),rgba(76,29,149,0.13))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:p-6">
@@ -53,8 +79,22 @@ export function LedgerOverview({
               <li key={change.metric}><span className="font-medium text-neutral-100">{change.metric}:</span> {change.what_changed} <span className="text-neutral-500">({change.magnitude})</span></li>
             ))}
           </ul>
+          {evidence.partial && (
+            <p className="mt-3 text-xs leading-relaxed text-neutral-500">
+              This is week-to-date. Incomplete totals are not ranked against a completed seven-day week.
+            </p>
+          )}
         </div>
       ) : null}
+
+      <details className="mt-5 border-t border-white/[0.07] pt-4">
+        <summary className="cursor-pointer text-sm font-medium text-neutral-300">What informed this review?</summary>
+        <ul className="mt-3 space-y-2 text-sm text-neutral-400">
+          <li><span className="font-medium text-neutral-200">Analytics:</span> PostHog, GA4, and available search evidence</li>
+          <li><span className="font-medium text-neutral-200">Git:</span> {gitStatus}</li>
+          <li><span className="font-medium text-neutral-200">Conversations:</span> {mcpStatus}</li>
+        </ul>
+      </details>
 
       <details className="mt-5 border-t border-white/[0.07] pt-4">
         <summary className="cursor-pointer text-sm font-medium text-neutral-300">See strategy details: hypotheses, initiatives, and questions</summary>

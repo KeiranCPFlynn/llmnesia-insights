@@ -1,8 +1,30 @@
 # LLMnesia Insights
 
-A self-hosted dashboard for LLMnesia product metrics. It pulls PostHog + GA4 data, runs it through Claude for analysis, stores the result in Supabase, and presents it as a simple weekly dashboard — summary, findings, recommended actions, and trend charts. Replaces the old weekly email entirely.
+A self-hosted evidence store, durable Strategy Ledger, and read-oriented
+dashboard for LLMnesia. PostHog, GA4, Google Search Console, and Bing evidence
+is collected without an analysis-model call. Codex or Claude Code researches
+the code and prior decisions, reasons over the prepared evidence, and publishes
+a validated review to Supabase.
 
-The pipeline runs on demand from a button in the dashboard, and automatically once a week via Vercel Cron.
+To run a review, open this repository in Codex or Claude Code and say:
+
+> **Run the Insights review.**
+
+The shared workflow is in [`INSIGHTS_AGENT.md`](INSIGHTS_AGENT.md). The two
+commands it uses are:
+
+```bash
+npm run insights:prepare
+npm run insights:publish -- .insights/review.json
+```
+
+For the founder-facing weekly loop, dashboard freshness meanings, and the
+manual fallback, see [`USING_INSIGHTS.md`](USING_INSIGHTS.md).
+
+Vercel Cron calls the evidence-only route. No dashboard control or scheduled
+job invokes an analysis or strategy model. The older `npm run pipeline` and
+LLM-backed routes remain temporarily for rollback and are not part of the
+primary workflow.
 
 ## Setup
 
@@ -121,10 +143,22 @@ alter table public.strategy_ledger enable row level security;
 alter table public.evidence_deltas enable row level security;
 alter table public.ledger_entries enable row level security;
 alter table public.context_sources enable row level security;
+
+-- These tables are server-only. Current Supabase projects may require Data API
+-- grants explicitly; keep browser roles locked out and grant only the server.
+revoke all on table public.strategy_ledger, public.evidence_deltas,
+  public.ledger_entries, public.context_sources from anon, authenticated;
+grant select, insert, update, delete on table public.strategy_ledger,
+  public.evidence_deltas, public.ledger_entries, public.context_sources
+  to service_role;
 ```
 
 Then run `npm run seed-ledger` once. It uses the newest legacy strategy and
 metrics snapshot as a starting point, and leaves an existing ledger untouched.
+
+`npm run check-schema` verifies these four tables as well as the legacy report
+schema. A permission error means the tables exist but the `service_role` Data
+API grant above is missing.
 
 ### 1c. Traffic Growth Planner schema (`/growth`)
 
@@ -297,7 +331,7 @@ Copy `.env.example` to `.env` and fill in:
 | `ANTHROPIC_MODEL` | Optional — override the Claude model (default `claude-sonnet-5`) |
 | `DEEPSEEK_API_KEY` | platform.deepseek.com — required only when DeepSeek is selected |
 | `DEEPSEEK_MODEL` | Optional — override the DeepSeek model (default `deepseek-v4-pro`) |
-| `LLM_PROVIDER` | Optional — default provider when none is chosen in the UI: `claude` (default), `deepseek`, `openai`, or `qwen`. The Vercel Cron run uses this. |
+| `LLM_PROVIDER` | Legacy/Growth only — optional default for the retained rollback pipeline and LLM-backed Growth tools. The Insights cron does not read it. |
 | `OPENAI_API_KEY` | platform.openai.com — required for the PM strategist (and if `openai` is selected anywhere) |
 | `STRATEGY_MODEL` | Optional — override the strategist model (default `gpt-5.6-terra`) |
 | `STRATEGY_PROVIDER` | Optional — default provider for the Strategy Ledger: `openai` (default), `claude`, `deepseek`, or `qwen` |
@@ -310,8 +344,8 @@ Copy `.env.example` to `.env` and fill in:
 | `GSC_OAUTH_CLIENT_ID` / `GSC_OAUTH_CLIENT_SECRET` / `GSC_OAUTH_REFRESH_TOKEN` | Google Search Console for the Traffic Growth Planner — see §2c. Leave blank to disable `/growth`. |
 | `BING_WEBMASTER_API_KEY` | Optional — Bing Webmaster Tools API key for Bing search data in `/growth`. Get it from Bing WMT → Settings → API Access. Leave blank to skip. |
 | `GROWTH_PROVIDER` | Optional — default provider for the `/growth` plan + briefs: `claude` (default), `openai` or `deepseek`. Falls back to `LLM_PROVIDER`. |
-| `GIT_REPOS` | Optional, local-only comma-separated absolute paths. Recent commits are included as ledger evidence. Example: `/path/to/LLMnesia,/path/to/llmnesia-site`. |
-| `MCP_CONTEXT_URL` | Optional, local-only HTTP adapter for LLMnesia MCP conversation search. It receives `{ since, keywords }` and returns a digest with `conversations`, `decisions`, `constraints`, and `ideas`. `MCP_SERVER_URL` is accepted as a legacy alias. |
+| `GIT_REPOS` / `MCP_CONTEXT_URL` | Legacy rollback pipeline only. Agent-driven reviews use the coding agent’s own Git and LLMnesia MCP tools. |
+| `REPORTING_TIME_ZONE` | Optional IANA timezone used to decide “today” and the current Monday-to-today window. Defaults to `Asia/Bangkok`. |
 | `DASHBOARD_PASSWORD` | Password to view the dashboard once deployed. **Leave blank to disable the gate locally.** |
 | `RUN_SECRET` | Shared secret the weekly cron uses to authorise `/api/run` |
 
@@ -394,10 +428,13 @@ With `DASHBOARD_PASSWORD` blank the dashboard is open (fine for local). Set it b
 
 ## Using the dashboard
 
-- **Main view** — the most recent week's summary, key stats (with week-over-week deltas), findings (colour-coded by severity), recommended actions (by priority), and trend charts across every tracked week.
-- **Week selector** — top right, jump to any past week.
-- **Run analysis now** — runs the full pipeline for the current week and refreshes. Takes ~1 minute (PostHog + GA4 + the selected LLM).
-- **Model selector** — next to "Run analysis now" and in the chat panel: choose **Claude** or **DeepSeek**. The choice is remembered in your browser and controls the weekly run, the chat, and report regeneration after a correction. The weekly Vercel Cron run uses the `LLM_PROVIDER` env default.
+- **Main view** — the latest published agent review, Strategy Ledger, findings,
+  recommendations, decisions, provenance, source dates, and historical trends.
+- **Evidence freshness** and **agent-review freshness** are shown separately so
+  a collected-but-not-yet-reviewed period is explicit.
+- The dashboard has no review, refresh, or model-selection control. To publish
+  the next review, open the repository in Codex or Claude Code and say
+  **Run the Insights review.**
 
 ## The Traffic Growth Planner (`/growth`)
 
@@ -441,19 +478,17 @@ Schema (`sites`, `gsc_rows`, `growth_opportunities`, `growth_plans`,
 `growth_actions`) lives in §1b above and must be applied manually before
 opening `/growth`.
 
-## The Strategy page (`/strategy`)
+## Strategy reviews
 
-A separate, week-aware page (header tab, or the "Strategy" link on the dashboard) where a PM/revenue strategist (GPT-5.5 by default) turns the week's analysis into a money-making plan. It is **on-demand** (not in the weekly cron) and never edits code itself.
+`/strategy` redirects to the unified dashboard. Reviews are produced by the
+coding agent following `INSIGHTS_AGENT.md`, never by a hosted Strategy button.
+Each published recommendation keeps its coding handoff plus **Accept / Defer /
+Reject / Mark shipped** controls, and historical decisions remain readable.
 
-- **Generate PM strategy** — reads `PROJECT_BRIEF.md` + the week's analysis/metrics + prior theses + your past decisions, and proposes a revenue thesis, a monetization model, and ranked recommendations. Reasoning model — takes a few minutes (progress bar shown).
-- **Each recommendation** carries a one-click **Copy coding-agent prompt** (paste straight into Claude Code / Codex with the named repo open) and/or a founder step checklist, plus **Accept / Defer / Reject / Mark shipped** (+ note). Decisions persist and feed the *next* strategy so it stops re-pitching rejected items and tracks what shipped.
-- **Discuss the strategy** — a chat (like the analytics one) to refine: ask for a cheaper price, different gating, a fresh handoff prompt, or a new idea; "Apply" splices a revision into the saved strategy.
-- **`PROJECT_BRIEF.md`** (repo root) is the only thing you hand-maintain — keep product/positioning/pricing current; the strategist reads it verbatim each run.
-- Requires the `strategy*` columns (see migration) and `OPENAI_API_KEY`.
+## Legacy rollback pipeline
 
-## Running the pipeline from the CLI
-
-The pipeline is still available headless (used for backfills):
+The former embedded-LLM pipeline remains temporarily for backfills and
+rollback, but is not linked from the dashboard and is not used by cron:
 
 ```bash
 npm run pipeline                          # current week
@@ -467,20 +502,22 @@ npm run pipeline -- --provider=deepseek   # use DeepSeek instead of Claude (defa
 1. Import the repo into Vercel.
 2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` is a local file path and won't resolve on Vercel** (no `/Users` — the error is `ENOENT … lstat '/Users'`). Instead set **`GOOGLE_CREDENTIALS_JSON`** to the entire contents of the key file; `src/ga4.ts` parses it and uses it inline (it takes precedence over the path). The *extension* property is unaffected — it's OAuth/token-based (`GA4_OAUTH_*`) and works on Vercel as-is. (`.env` override is a no-op there — there's no `.env` file, so the platform env vars stand.)
 3. Set `DASHBOARD_PASSWORD` and `RUN_SECRET` (and optionally Vercel's built-in `CRON_SECRET`).
-4. Deploy. [vercel.json](vercel.json) registers a daily cron (`07:00 UTC → /api/run`) so the main workspace refreshes the current week through that day, and sets the function `maxDuration` to 300s.
+4. Deploy. [vercel.json](vercel.json) registers a daily cron (`07:00 UTC → /api/run`) that refreshes evidence only, and sets the function `maxDuration` to 300s.
 
-> **Timeout note:** the pipeline takes ~30–90s. `maxDuration: 300` requires a Vercel plan that allows it (Pro). On Hobby the limit is lower (~60s) — usually still enough, but tight. If runs time out, trigger via the CLI instead.
+> **Timeout note:** source collection can take a few minutes while GSC pages
+> through its delta window. No model call occurs in the function.
 
 ## How it's wired
 
-- [src/pipeline.ts](src/pipeline.ts) — `runPipeline()`: collect → analyse → save. Shared by the CLI and the API route.
-- [app/api/run/route.ts](app/api/run/route.ts) — `POST` (button, cookie-auth) and `GET` (cron, `RUN_SECRET`/`CRON_SECRET` bearer).
+- [src/evidence.ts](src/evidence.ts) — analytics collection, delta calculation,
+  freshness, and evidence persistence; imports no LLM or strategy module.
+- [scripts/insights-prepare.ts](scripts/insights-prepare.ts) — writes the ignored
+  local evidence pack and review template.
+- [scripts/insights-publish.ts](scripts/insights-publish.ts) — validates and
+  idempotently publishes the agent review, ledger patches, and provenance.
+- [app/api/run/route.ts](app/api/run/route.ts) — evidence-only manual/cron route.
 - [app/page.tsx](app/page.tsx) — the dashboard. [lib/dashboard.ts](lib/dashboard.ts) reads Supabase once and flattens metrics for charts.
 - [middleware.ts](middleware.ts) + [app/login](app/login) — the password gate (no-op when `DASHBOARD_PASSWORD` is unset).
-
-## Iterating on the analysis prompt
-
-The system prompt lives in [src/prompts/analysis-prompt.ts](src/prompts/analysis-prompt.ts). To add output fields, update it, the `submit_analysis` tool schema in [src/analyse.ts](src/analyse.ts), `AnalysisResult` in [src/types.ts](src/types.ts), and surface the field in [app/page.tsx](app/page.tsx). Use `npm run pipeline -- --dry-run` to test without writing.
 
 ## Adding new metrics
 

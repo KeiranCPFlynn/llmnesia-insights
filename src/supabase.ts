@@ -466,6 +466,13 @@ export async function upsertStrategyLedger(
   if (error) throw new Error(`strategy_ledger upsert failed: ${error.message}`);
 }
 
+/** Used only to roll back a failed first publish after creating the singleton. */
+export async function deleteStrategyLedger(): Promise<void> {
+  const supabase = getClient();
+  const { error } = await supabase.from('strategy_ledger').delete().eq('id', 1);
+  if (error) throw new Error(`strategy_ledger rollback failed: ${error.message}`);
+}
+
 // --- Evidence Deltas ---
 
 /** Get the most recent evidence delta (for computing the next delta's "prior"). */
@@ -498,6 +505,36 @@ export async function getEvidenceDeltaByWeek(weekStart: string): Promise<Evidenc
     throw new Error(`evidence_deltas fetch failed: ${error.message}`);
   }
   return (data?.delta as EvidenceDelta) ?? null;
+}
+
+/** Read the complete persisted evidence record for validation and agent packs. */
+export async function getEvidenceRecordByWeek(
+  weekStart: string,
+): Promise<EvidenceDeltaRecord | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('evidence_deltas')
+    .select('delta, raw_snapshot, created_at')
+    .eq('week_start', weekStart)
+    .maybeSingle();
+  if (error) throw new Error(`evidence_deltas fetch failed: ${error.message}`);
+  return (data as EvidenceDeltaRecord) ?? null;
+}
+
+/** Newest evidence record, even when no agent review has been published yet. */
+export async function getLatestEvidenceRecord(): Promise<EvidenceDeltaRecord | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('evidence_deltas')
+    .select('delta, raw_snapshot, created_at')
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (error.code === '42P01' || error.message.includes('does not exist')) return null;
+    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
+  }
+  return (data as EvidenceDeltaRecord) ?? null;
 }
 
 /** Read the latest source snapshot saved with an evidence delta. */
@@ -571,6 +608,36 @@ export async function appendLedgerEntries(entries: LedgerEntry[]): Promise<void>
   if (error) throw new Error(`ledger_entries insert failed: ${error.message}`);
 }
 
+/** Idempotent audit writes for agent-published reviews (callers supply stable ids). */
+export async function upsertLedgerEntries(entries: LedgerEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const supabase = getClient();
+  const rows = entries.map((entry) => ({
+    id: entry.id ?? randomUUID(),
+    week_start: entry.week_start,
+    entry_type: entry.entry_type,
+    target: entry.target,
+    operation: entry.operation,
+    patch: entry.patch,
+    evidence: entry.evidence,
+    confidence: entry.confidence,
+    model_used: entry.model_used,
+  }));
+  const { error } = await supabase.from('ledger_entries').upsert(rows, { onConflict: 'id' });
+  if (error) throw new Error(`ledger_entries upsert failed: ${error.message}`);
+}
+
+export async function getLedgerEntryById(id: string): Promise<LedgerEntry | null> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('ledger_entries')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`ledger_entries fetch failed: ${error.message}`);
+  return (data as LedgerEntry) ?? null;
+}
+
 /** Read recent ledger entries, newest first. */
 export async function getRecentLedgerEntries(limit = 50): Promise<LedgerEntry[]> {
   const supabase = getClient();
@@ -602,6 +669,21 @@ export async function saveContextSources(sources: ContextSource[]): Promise<void
   }));
   const { error } = await supabase.from('context_sources').insert(rows);
   if (error) throw new Error(`context_sources insert failed: ${error.message}`);
+}
+
+/** Idempotent provenance writes for agent-published reviews. */
+export async function upsertContextSources(sources: ContextSource[]): Promise<void> {
+  if (!sources.length) return;
+  const supabase = getClient();
+  const rows = sources.map((source) => ({
+    id: source.id ?? randomUUID(),
+    week_start: source.week_start,
+    source_type: source.source_type,
+    repo: source.repo,
+    digest: source.digest,
+  }));
+  const { error } = await supabase.from('context_sources').upsert(rows, { onConflict: 'id' });
+  if (error) throw new Error(`context_sources upsert failed: ${error.message}`);
 }
 
 /** Read the context artifacts that informed recent ledger updates. */

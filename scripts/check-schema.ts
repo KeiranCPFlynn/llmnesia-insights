@@ -69,6 +69,41 @@ const SCHEMA: Record<string, Col[]> = {
     { name: 'note', type: 'text' },
     { name: 'active', type: 'boolean' },
   ],
+  strategy_ledger: [
+    { name: 'id', type: 'integer' },
+    { name: 'state', type: 'jsonb' },
+    { name: 'version', type: 'integer' },
+    { name: 'updated_at', type: 'timestamptz' },
+    { name: 'updated_by', type: 'text' },
+  ],
+  evidence_deltas: [
+    { name: 'id', type: 'uuid' },
+    { name: 'week_start', type: 'date' },
+    { name: 'week_end', type: 'date' },
+    { name: 'delta', type: 'jsonb' },
+    { name: 'raw_snapshot', type: 'jsonb' },
+    { name: 'created_at', type: 'timestamptz' },
+  ],
+  ledger_entries: [
+    { name: 'id', type: 'uuid' },
+    { name: 'week_start', type: 'date' },
+    { name: 'entry_type', type: 'text' },
+    { name: 'target', type: 'text' },
+    { name: 'operation', type: 'text' },
+    { name: 'patch', type: 'jsonb' },
+    { name: 'evidence', type: 'text' },
+    { name: 'confidence', type: 'text' },
+    { name: 'model_used', type: 'text' },
+    { name: 'created_at', type: 'timestamptz' },
+  ],
+  context_sources: [
+    { name: 'id', type: 'uuid' },
+    { name: 'week_start', type: 'date' },
+    { name: 'source_type', type: 'text' },
+    { name: 'repo', type: 'text' },
+    { name: 'digest', type: 'jsonb' },
+    { name: 'created_at', type: 'timestamptz' },
+  ],
 };
 
 /** True if the error is PostgREST's "column does not exist" signal. */
@@ -79,6 +114,28 @@ function isMissingColumn(error: { code?: string; message?: string }): boolean {
     /column .* does not exist/i.test(error.message ?? '') ||
     /could not find the '.*' column/i.test(error.message ?? '')
   );
+}
+
+function isMissingOrUnexposedTable(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    /relation .* does not exist/i.test(error.message ?? '') ||
+    /could not find the table/i.test(error.message ?? '')
+  );
+}
+
+async function tableIsAccessible(table: string, probeColumn: string): Promise<boolean> {
+  const { error } = await supabase.from(table).select(probeColumn).limit(1);
+  if (!error) return true;
+  if (isMissingOrUnexposedTable(error)) return false;
+  if (error.code === '42501' || /permission denied/i.test(error.message ?? '')) {
+    throw new Error(
+      `${table} exists but the configured service role cannot access it. ` +
+      `Run: grant select, insert, update, delete on table public.${table} to service_role;`,
+    );
+  }
+  throw new Error(`Probing ${table} failed: ${error.message}`);
 }
 
 async function columnExists(table: string, column: string): Promise<boolean> {
@@ -94,19 +151,30 @@ async function columnExists(table: string, column: string): Promise<boolean> {
 
 async function main() {
   const missing: { table: string; col: Col }[] = [];
+  const missingTables: string[] = [];
 
   for (const [table, cols] of Object.entries(SCHEMA)) {
+    if (!(await tableIsAccessible(table, cols[0].name))) {
+      missingTables.push(table);
+      continue;
+    }
     for (const col of cols) {
       if (!(await columnExists(table, col.name))) missing.push({ table, col });
     }
   }
 
-  if (missing.length === 0) {
-    console.log('✓ Schema OK — every expected column exists.');
+  if (missing.length === 0 && missingTables.length === 0) {
+    console.log('✓ Schema OK — every expected table and column is accessible.');
     return;
   }
 
-  console.error(`✗ ${missing.length} missing column(s):\n`);
+  if (missingTables.length) {
+    console.error(`✗ ${missingTables.length} missing or Data-API-inaccessible table(s):\n`);
+    for (const table of missingTables) console.error(`  ${table}`);
+    console.error('\n  Run the relevant schema block in README.md, including its service_role GRANT.\n');
+  }
+
+  if (missing.length) console.error(`✗ ${missing.length} missing column(s):\n`);
   for (const { table, col } of missing) {
     const constraint = col.constraint ? ` ${col.constraint}` : '';
     console.error(

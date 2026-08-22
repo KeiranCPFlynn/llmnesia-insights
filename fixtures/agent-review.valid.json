@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "agent": { "name": "Codex", "model": "fixture-model" },
+  "evidence": {
+    "week_start": "2026-08-17",
+    "week_end": "2026-08-22",
+    "data_as_of": "2026-08-22",
+    "prepared_at": "2026-08-22T10:00:00.000Z",
+    "snapshot_hash": "filled-by-fixture-validator"
+  },
+  "headline": "Activation improved while acquisition remained stable.",
+  "summary": "The fixture evidence supports keeping the current focus.",
+  "facts": ["Activation rate increased in the prepared snapshot."],
+  "inferences": ["The current onboarding work may be contributing."],
+  "findings": [
+    { "metric": "Activation", "observation": "The rate increased.", "severity": "info", "source": "PostHog" }
+  ],
+  "action_items": [],
+  "open_threads": [],
+  "resolved_threads": [],
+  "ledger_patches": [
+    {
+      "operation": "update_north_star",
+      "changes": { "north_star": "Improve activation before expanding acquisition." },
+      "rationale": "Activation is the clearest current leverage point."
+    }
+  ],
+  "strategy": {
+    "narrative": "Keep the current focus and measure the activation change.",
+    "recommendations": [],
+    "risks": [],
+    "experiments": []
+  },
+  "sources": {
+    "git": [
+      {
+        "repo": "LLMnesia",
+        "refs": ["abc1234"],
+        "files_inspected": ["src/onboarding.ts"],
+        "findings": ["Onboarding changed in the inspected revision."]
+      }
+    ],
+    "conversations": [
+      { "conversation_id": "fixture-conversation", "reason": "Recorded the activation priority decision." }
+    ],
+    "follow_up_tools": ["PostHog"]
+  }
+}

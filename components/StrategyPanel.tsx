@@ -54,6 +54,7 @@ function RecommendationCard({
   decision,
   onDecided,
   initialChat,
+  readOnlyReview,
 }: {
   week: string;
   rec: StrategyRecommendation;
@@ -61,6 +62,7 @@ function RecommendationCard({
   decision?: StrategyDecision;
   onDecided: (d: StrategyDecision[]) => void;
   initialChat: ChatMessage[];
+  readOnlyReview: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
@@ -188,14 +190,16 @@ function RecommendationCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-4">
-        <button
-          type="button"
-          onClick={() => setDiscussing((open) => !open)}
-          aria-expanded={discussing}
-          className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/15"
-        >
-          {discussing ? 'Close discussion' : 'Discuss / regenerate'}
-        </button>
+        {!readOnlyReview && (
+          <button
+            type="button"
+            onClick={() => setDiscussing((open) => !open)}
+            aria-expanded={discussing}
+            className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/15"
+          >
+            {discussing ? 'Close discussion' : 'Discuss / regenerate'}
+          </button>
+        )}
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -220,7 +224,7 @@ function RecommendationCard({
         <p className="mt-1 text-sm text-neutral-400">Outcome: {decision.outcome}</p>
       )}
       {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
-      {discussing && (
+      {!readOnlyReview && discussing && (
         <div className="mt-4 border-t border-neutral-800 pt-4">
           <StrategyChat
             week={week}
@@ -242,6 +246,7 @@ export function StrategyPanel({
   decisions: initialDecisions,
   recommendationChats,
   ledgerManaged = false,
+  readOnlyReview = false,
 }: {
   week: string;
   strategy: StrategyResult | null;
@@ -250,6 +255,8 @@ export function StrategyPanel({
   recommendationChats: Record<string, ChatMessage[]>;
   /** Recommendations created by the pipeline's Ledger Editor, not this legacy on-demand generator. */
   ledgerManaged?: boolean;
+  /** Published by an external coding agent; keep decisions but expose no embedded LLM controls. */
+  readOnlyReview?: boolean;
 }) {
   const router = useRouter();
   const [strategy, setStrategy] = useState<StrategyResult | null>(initialStrategy);
@@ -433,7 +440,7 @@ export function StrategyPanel({
           {strategy && (
             <p className="text-sm text-neutral-500">
               {ledgerManaged
-                ? `Generated from this week’s evidence · ${formatDateTime(strategy.generated_at)}`
+                ? `Published by ${strategy.model_used} · ${formatDateTime(strategy.generated_at)}`
                 : `${PROVIDER_LABEL[provider]} · generated ${formatDateTime(strategy.generated_at)} · model ${strategy.model_used}`}
             </p>
           )}
@@ -487,7 +494,7 @@ export function StrategyPanel({
           <p className="text-base text-neutral-300">No recommendations yet for this week.</p>
           <p className="mx-auto mt-2 max-w-xl text-[15px] leading-relaxed text-neutral-500">
             {ledgerManaged
-              ? 'Refresh the weekly analysis to have the Ledger Editor assess new evidence and propose a focused plan.'
+              ? 'Open this repository in Codex or Claude Code and say “Run the Insights review.”'
               : 'Generate one — the PM reads the project brief, this week’s analysis, prior theses and your past decisions, then proposes how to grow now and make money later.'}
           </p>
         </div>
@@ -555,6 +562,7 @@ export function StrategyPanel({
                     decision={byId.get(rec.id)}
                     onDecided={setDecisions}
                     initialChat={recommendationChats[rec.id] ?? []}
+                    readOnlyReview={readOnlyReview}
                   />
                 ))}
               </ul>

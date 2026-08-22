@@ -1,4 +1,10 @@
-# Strategy Ledger Refactoring Plan
+# Strategy Ledger Refactoring Plan — Superseded
+
+> **Do not implement this as the target architecture.** This plan incorrectly
+> places strategy reasoning inside Insights as direct LLM API calls. The
+> corrected V1 architecture is in `AGENT_DRIVEN_INSIGHTS_PLAN.md`: Codex or
+> Claude Code drives the review with its tools; Insights stores evidence and
+> displays the published findings.
 
 ## Context
 

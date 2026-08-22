@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'LLMnesia Insights',
-  description: 'Weekly product metrics & AI analysis for the LLMnesia extension.',
+  description: 'Evidence, durable strategy memory, and coding-agent reviews for LLMnesia.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

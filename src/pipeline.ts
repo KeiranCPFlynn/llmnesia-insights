@@ -23,7 +23,6 @@ import { createInitialLedgerState, updateLedger } from './ledger.js';
 import { collectMcpContext } from './mcp-context.js';
 import { readBrief } from './brief.js';
 import type { LlmProvider } from './llm.js';
-import { LlmProviderError } from './llm.js';
 import type {
   AnalysisResult,
   Correction,
@@ -32,10 +31,13 @@ import type {
   StrategyResult,
   WeeklyInsight,
 } from './types.js';
+import {
+  getCurrentWeek,
+  getDefaultWeek,
+  getWeekFromArg,
+} from './reporting-period.js';
 
-function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+export { getCurrentWeek, getDefaultWeek, getWeekFromArg } from './reporting-period.js';
 
 /**
  * Standing caveats share the `Correction` shape, so they slot straight into
@@ -57,19 +59,6 @@ function standingCaveatsAsCorrections(caveats: StandingCaveat[]): Correction[] {
  * founders should see the freshest available data rather than last week's
  * completed report. The snapshot is explicitly marked partial until Sunday.
  */
-export function getDefaultWeek(): { weekStart: string; weekEnd: string } {
-  const current = getCurrentWeek();
-  return { weekStart: current.weekStart, weekEnd: current.weekEnd };
-}
-
-export function getWeekFromArg(weekStartArg: string): { weekStart: string; weekEnd: string } {
-  const start = new Date(`${weekStartArg}T00:00:00Z`);
-  if (isNaN(start.getTime())) throw new Error(`Invalid week date: ${weekStartArg}`);
-  const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + 6);
-  return { weekStart: formatDate(start), weekEnd: formatDate(end) };
-}
-
 /**
  * The CURRENT, in-progress calendar week — Monday of this week through today.
  * Used by the mid-week "Update all" refresh so the founder can watch the week
@@ -78,22 +67,6 @@ export function getWeekFromArg(weekStartArg: string): { weekStart: string; weekE
  * today, giving a week-to-date data window. `daysElapsed` (1–7) drives the
  * partial-week framing in the analysis so incomplete totals aren't misread.
  */
-export function getCurrentWeek(now: Date = new Date()): {
-  weekStart: string;
-  weekEnd: string;
-  daysElapsed: number;
-} {
-  const day = now.getUTCDay(); // 0=Sun … 6=Sat
-  const daysSinceMonday = day === 0 ? 6 : day - 1;
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() - daysSinceMonday);
-  return {
-    weekStart: formatDate(monday),
-    weekEnd: formatDate(now),
-    daysElapsed: daysSinceMonday + 1,
-  };
-}
-
 export interface PipelineResult {
   weekStart: string;
   weekEnd: string;
@@ -186,6 +159,11 @@ export async function runPipeline(opts: {
   // digest reads the rows. Fully fail-soft inside syncSearchForInsights.
   const searchSync = syncSearchForInsights(log);
 
+  // `undefined` means the ledger read failed; `null` means it succeeded and no
+  // row exists. Keeping those states distinct prevents a transient read error
+  // from being mistaken for a first run and overwriting the living strategy
+  // with a fresh default document.
+  let ledgerReadFailure: string | null = null;
   const [posthogMetrics, ga4, history, existingRow, standingCaveats, priorSnapshot, persistedLedger] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
@@ -203,8 +181,9 @@ export async function runPipeline(opts: {
       return null;
     }),
     getStrategyLedger().catch((e) => {
-      log(`Strategy ledger read skipped: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
+      ledgerReadFailure = e instanceof Error ? e.message : String(e);
+      log(`Strategy ledger read failed: ${ledgerReadFailure}`);
+      return undefined;
     }),
   ]);
 
@@ -264,6 +243,11 @@ export async function runPipeline(opts: {
   let gitDigests: ReturnType<typeof collectGitContext> = [];
   let mcpDigest: Awaited<ReturnType<typeof collectMcpContext>> = null;
   try {
+    if (ledgerReadFailure || persistedLedger === undefined) {
+      throw new Error(
+        `Existing Strategy Ledger could not be read, so it was left unchanged: ${ledgerReadFailure ?? 'unknown read error'}`,
+      );
+    }
     const ledgerState = persistedLedger ?? createInitialLedgerState();
     const since = priorSnapshot?.week_end ?? weekStart;
     [gitDigests, mcpDigest] = await Promise.all([
@@ -287,8 +271,8 @@ export async function runPipeline(opts: {
     ledgerModelUsed = ledgerUpdate.modelUsed;
     log(`Strategy ledger prepared (${ledgerUpdate.editor.patches.length} patch${ledgerUpdate.editor.patches.length === 1 ? '' : 'es'}).`);
   } catch (e) {
-    if (e instanceof LlmProviderError) ledgerWarning = e.message;
-    log(`Strategy ledger skipped: ${e instanceof Error ? e.message : String(e)}`);
+    ledgerWarning = e instanceof Error ? e.message : String(e);
+    log(`Strategy ledger skipped: ${ledgerWarning}`);
   }
 
   if (opts.dryRun) {
@@ -319,20 +303,34 @@ export async function runPipeline(opts: {
   await saveEvidenceDelta(evidenceDelta, metrics).catch((e) => {
     log(`Evidence delta save skipped: ${e instanceof Error ? e.message : String(e)}`);
   });
+  let ledgerPersisted = false;
   if (ledgerUpdate) {
-    await Promise.all([
-      upsertStrategyLedger(ledgerUpdate.state, ledgerModelUsed ?? modelUsed),
-      appendLedgerEntries(ledgerUpdate.entries),
-      saveContextSources([
-        ...gitDigests.map((digest) => ({ week_start: weekStart, source_type: 'git' as const, repo: digest.repo, digest })),
-        ...(mcpDigest ? [{ week_start: weekStart, source_type: 'mcp' as const, repo: null, digest: mcpDigest }] : []),
-      ]),
-    ]).catch((e) => {
-      log(`Strategy ledger save skipped: ${e instanceof Error ? e.message : String(e)}`);
-    });
+    try {
+      // Persist the living document first. Audit/context rows must never claim
+      // a patch landed when the singleton state itself failed to save.
+      await upsertStrategyLedger(ledgerUpdate.state, ledgerModelUsed ?? modelUsed);
+      ledgerPersisted = true;
+      try {
+        await Promise.all([
+          appendLedgerEntries(ledgerUpdate.entries),
+          saveContextSources([
+            ...gitDigests.map((digest) => ({ week_start: weekStart, source_type: 'git' as const, repo: digest.repo, digest })),
+            ...(mcpDigest ? [{ week_start: weekStart, source_type: 'mcp' as const, repo: null, digest: mcpDigest }] : []),
+          ]),
+        ]);
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        ledgerWarning = `The Strategy Ledger was saved, but part of its audit/context history was not: ${detail}`;
+        log(ledgerWarning);
+      }
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      ledgerWarning = `Strategy Ledger changes were generated but could not be saved: ${detail}`;
+      log(ledgerWarning);
+    }
   }
 
-  return { weekStart, weekEnd, metrics, analysis, modelUsed, ledgerUpdated: !!ledgerUpdate, ledgerWarning, saved: true };
+  return { weekStart, weekEnd, metrics, analysis, modelUsed, ledgerUpdated: ledgerPersisted, ledgerWarning, saved: true };
 }
 
 /**

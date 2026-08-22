@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --import tsx --test src/*.test.ts",
     "start": "next start",
     "pipeline": "tsx src/index.ts",
-    "check-schema": "tsx scripts/check-schema.ts",
+    "insights:prepare": "node --import tsx scripts/insights-prepare.ts",
+    "insights:publish": "node --import tsx scripts/insights-publish.ts",
+    "insights:validate-fixture": "node --import tsx scripts/validate-review-fixture.ts",
+    "check-schema": "node --import tsx scripts/check-schema.ts",
     "seed-ledger": "tsx scripts/seed-ledger.ts"
   },
   "dependencies": {

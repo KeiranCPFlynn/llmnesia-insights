@@ -20,6 +20,9 @@ next-env.d.ts
 *.log
 npm-debug.log*
 
+# Local agent evidence and review drafts (may contain private business context)
+.insights/
+
 # OS
 .DS_Store
 

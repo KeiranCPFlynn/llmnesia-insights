@@ -2,20 +2,19 @@ import { getAllInsights, toTrend, topChannel } from '../lib/dashboard';
 import { selectWeek } from '../lib/week';
 import { calendarWeekStart } from '../lib/week';
 import { delta, formatWeek, num, pct } from '../lib/format';
-import { Toolbar } from '../components/Toolbar';
 import { AppShell } from '../components/AppShell';
 import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
-import { ChatPanel } from '../components/ChatPanel';
-import { KnownFacts } from '../components/KnownFacts';
-import { WeekCaveats } from '../components/WeekCaveats';
 import { LedgerOverview } from '../components/LedgerOverview';
 import { OperatingLoop } from '../components/OperatingLoop';
 import { StrategyPanel } from '../components/StrategyPanel';
-import { StrategyGoalEditor } from '../components/StrategyGoalEditor';
-import { getDefaultWeek } from '../src/pipeline.js';
-import { getEvidenceDeltaByWeek, getRecentLedgerEntries, getStandingCaveats, getStrategyLedger } from '../src/supabase.js';
-import { resolveStrategyGoal } from '../src/strategy-goal.js';
+import {
+  getEvidenceRecordByWeek,
+  getLatestEvidenceRecord,
+  getRecentContextSources,
+  getRecentLedgerEntries,
+  getStrategyLedger,
+} from '../src/supabase.js';
 import type { DataSource } from '../src/types.js';
 
 export const dynamic = 'force-dynamic';
@@ -73,14 +72,14 @@ function SectionTitle({ children, source }: { children: React.ReactNode; source?
   );
 }
 
-function Empty() {
+function Empty({ evidenceAsOf }: { evidenceAsOf?: string }) {
   return (
     <main className="mx-auto max-w-2xl px-6 py-24 text-center">
       <h1 className="text-xl font-semibold">No insights yet</h1>
       <p className="mt-2 text-neutral-400">
-        Run the pipeline to generate the first weekly analysis — locally with{' '}
-        <code className="rounded bg-neutral-800 px-1">npm run pipeline</code>, or hit the{' '}
-        <strong>Run analysis now</strong> button once deployed.
+        {evidenceAsOf ? `Evidence is ready through ${formatWeek(evidenceAsOf)}. ` : ''}
+        Open this repository in Codex or Claude Code and say{' '}
+        <strong>Run the Insights review.</strong> The agent will prepare the evidence and publish the first validated review.
       </p>
     </main>
   );
@@ -91,31 +90,31 @@ export default async function Page({
 }: {
   searchParams: Promise<{ week?: string; period?: string }>;
 }) {
-  const insights = await getAllInsights();
-  if (insights.length === 0) return <Empty />;
+  const [insights, latestEvidence] = await Promise.all([
+    getAllInsights(),
+    getLatestEvidenceRecord().catch(() => null),
+  ]);
+  if (insights.length === 0) {
+    const evidenceAsOf = latestEvidence?.raw_snapshot.partial?.as_of ?? latestEvidence?.delta.week_end;
+    return <Empty evidenceAsOf={evidenceAsOf} />;
+  }
 
   // Persistent "known facts" — fail-soft so a pre-DDL / missing table never
   // takes down the whole dashboard.
-  const [standingCaveats, ledger, ledgerEntries] = await Promise.all([
-    getStandingCaveats(false).catch(() => []),
+  const [ledger, ledgerEntries, contextSources] = await Promise.all([
     getStrategyLedger().catch(() => null),
     getRecentLedgerEntries(12).catch(() => []),
+    getRecentContextSources(50).catch(() => []),
   ]);
 
   const { week, period } = await searchParams;
   const { weeks, current, prev } = selectWeek(insights, week, period);
-  const evidenceDelta = await getEvidenceDeltaByWeek(current.week_start).catch(() => null);
-  const latestRunWeek = getDefaultWeek();
-  const { goal: effectiveStrategyGoal, source: strategyGoalSource } = resolveStrategyGoal(
-    insights,
-    current.week_start,
-  );
-
+  const evidenceRecord = await getEvidenceRecordByWeek(current.week_start).catch(() => null);
+  const evidenceDelta = evidenceRecord?.delta ?? null;
+  const currentContextSources = contextSources.filter((source) => source.week_start === current.week_start);
   // Insights dropdown shows only weeks that have a published report — every
   // option here loads. (Growth has more recent weeks because growth data runs
   // ahead of the weekly insights pipeline; those weeks have no report yet.)
-  const allWeeks = [...weeks].reverse();
-
   const openRecs = current.strategy
     ? current.strategy.recommendations.filter(
         (r) => !(current.strategy_decisions ?? []).some((d) => d.recommendation_id === r.id),
@@ -131,6 +130,14 @@ export default async function Page({
   const headline = current.headline ?? current.summary;
   const showSummary = current.headline ? current.summary : null;
   const dataAsOf = m.partial?.as_of ?? current.week_end;
+  const latestEvidenceAsOf = latestEvidence?.raw_snapshot.partial?.as_of ?? latestEvidence?.delta.week_end;
+  const reviewPublishedAt = current.strategy?.generated_at ?? current.created_at;
+  const reviewIsBehindEvidence = Boolean(
+    latestEvidence && (
+      latestEvidence.delta.week_start !== current.week_start ||
+      (latestEvidence.created_at && reviewPublishedAt && new Date(latestEvidence.created_at) > new Date(reviewPublishedAt))
+    ),
+  );
 
   // Surface only the signal: things actually worth acting on this week.
   const attentionFindings = current.findings
@@ -147,10 +154,10 @@ export default async function Page({
   return (
     <AppShell
       week={current.week_start}
-      eyebrow="Operating strategy"
+      eyebrow="Agent-published insights"
       title="Strategy ledger"
-      description="A living strategy grounded in this week’s product evidence, decisions, and the work already underway."
-      context={`Viewing ${formatWeek(current.week_start)} → ${formatWeek(current.week_end)} · data through ${formatWeek(dataAsOf)}${m.partial ? ' (live week-to-date)' : ' (completed report)'}${openRecs > 0 ? ` · ${openRecs} strategy decisions open` : ''}`}
+      description="A durable evidence store and strategy memory. Codex or Claude Code researches and publishes each review; this dashboard shows the result."
+      context={`Evidence through ${formatWeek(dataAsOf)} · review published ${current.strategy?.generated_at ? new Date(current.strategy.generated_at).toLocaleString('en-GB') : 'date unavailable'}${openRecs > 0 ? ` · ${openRecs} strategy decisions open` : ''}`}
       sections={[
         { href: '#start-here', label: 'Start here' },
         { href: '#strategy-ledger', label: 'Current direction' },
@@ -158,6 +165,28 @@ export default async function Page({
         { href: '#overview', label: 'Evidence' },
       ]}
     >
+
+      <section aria-label="Freshness" className="mb-6 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-sky-500/25 bg-sky-500/[0.08] p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-sky-300">Evidence freshness</div>
+          <p className="mt-1 text-sm font-medium text-neutral-100">
+            Data through {latestEvidenceAsOf ? formatWeek(latestEvidenceAsOf) : '—'}
+          </p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Collected {latestEvidence?.created_at ? new Date(latestEvidence.created_at).toLocaleString('en-GB') : 'timestamp unavailable'}
+          </p>
+        </div>
+        <div className={`rounded-lg border p-4 ${reviewIsBehindEvidence ? 'border-amber-500/30 bg-amber-500/[0.08]' : 'border-emerald-500/25 bg-emerald-500/[0.08]'}`}>
+          <div className={`text-[11px] font-semibold uppercase tracking-wide ${reviewIsBehindEvidence ? 'text-amber-300' : 'text-emerald-300'}`}>Agent-review freshness</div>
+          <p className="mt-1 text-sm font-medium text-neutral-100">
+            {reviewIsBehindEvidence ? 'Newer evidence is waiting for an agent review' : `Published by ${current.model_used}`}
+          </p>
+          <p className="mt-1 text-xs text-neutral-500">
+            {reviewPublishedAt ? new Date(reviewPublishedAt).toLocaleString('en-GB') : 'Publish timestamp unavailable'}
+            {reviewIsBehindEvidence ? ' · Open the repo and say “Run the Insights review.”' : ''}
+          </p>
+        </div>
+      </section>
 
       <OperatingLoop
         hasEvidence={!!evidenceDelta}
@@ -168,41 +197,25 @@ export default async function Page({
         periodEnd={current.week_end}
         dataAsOf={dataAsOf}
         daysElapsed={m.partial?.days_elapsed}
-        refreshControls={
-          <Toolbar
-            weeks={[...weeks].reverse()}
-            allWeeks={allWeeks}
-            selected={current.week_start}
-            latestRunWeekStart={latestRunWeek.weekStart}
-            latestRunWeekEnd={latestRunWeek.weekEnd}
-          />
-        }
       />
 
-      <LedgerOverview ledger={ledger} evidence={evidenceDelta} entries={ledgerEntries} />
-
-      <details id="goal" className="scroll-mt-36 mb-6 rounded-lg border border-neutral-800/80 bg-neutral-900/60 p-4">
-        <summary className="cursor-pointer text-sm font-medium text-neutral-300">Optional: set or change this week’s focus</summary>
-        <div className="mt-4">
-          <StrategyGoalEditor
-            key={current.week_start}
-            week={current.week_start}
-            initialGoal={effectiveStrategyGoal}
-            savedGoal={current.strategy_goal}
-            goalSource={strategyGoalSource}
-          />
-        </div>
-      </details>
+      <LedgerOverview
+        ledger={ledger}
+        evidence={evidenceDelta}
+        entries={ledgerEntries}
+        contextSources={currentContextSources}
+      />
 
       <section id="recommendations" className="scroll-mt-36 mb-10">
         <StrategyPanel
           key={current.week_start}
           week={current.week_start}
           strategy={current.strategy ?? null}
-          strategyGoal={effectiveStrategyGoal}
+          strategyGoal={current.strategy_goal}
           decisions={current.strategy_decisions ?? []}
           recommendationChats={current.strategy_recommendation_chats ?? {}}
           ledgerManaged
+          readOnlyReview
         />
       </section>
 
@@ -225,26 +238,6 @@ export default async function Page({
           </p>
         )}
       </section>
-
-      {/* Confirmed caveats & context — applied to the analysis above.
-          Collapsible + editable so long entries don't dominate the page. */}
-      <WeekCaveats week={current.week_start} initial={current.corrections ?? []} />
-
-      {/* Chat — interrogate the report, flag bad data, regenerate. Kept high
-          on the page so it's the first thing you can act on. */}
-      <section id="discuss" className="scroll-mt-36 mb-8">
-        {/* key forces a remount per week so the panel reloads that week's
-            own thread on the client — not just after a full page refresh. */}
-        <ChatPanel
-          key={current.week_start}
-          week={current.week_start}
-          initialChat={current.chat ?? []}
-        />
-      </section>
-
-      {/* Known facts — persistent caveats/context applied to every week's
-          analysis, so confirmed non-issues stop getting re-flagged. */}
-      <KnownFacts week={current.week_start} initial={standingCaveats} />
 
       {/* Needs attention — concern/critical findings + high-priority actions only */}
       <section id="attention" className="scroll-mt-36 mb-8">
@@ -701,9 +694,9 @@ export default async function Page({
       <footer className="border-t border-neutral-800 pt-4 text-xs text-neutral-600">
         <SourceBadge source="PostHog" title /> in-product events ·{' '}
         <SourceBadge source="GA4" title /> site &amp; store traffic ·{' '}
-        <SourceBadge source="Search" title /> Google + Bing · Model {current.model_used} ·
-        Generated{' '}
-        {current.created_at ? new Date(current.created_at).toLocaleString('en-GB') : '—'}
+        <SourceBadge source="Search" title /> Google + Bing · Published by {current.model_used} ·
+        Evidence collected {evidenceRecord?.created_at ? new Date(evidenceRecord.created_at).toLocaleString('en-GB') : '—'} ·
+        Review published {current.strategy?.generated_at ? new Date(current.strategy.generated_at).toLocaleString('en-GB') : '—'}
       </footer>
     </AppShell>
   );

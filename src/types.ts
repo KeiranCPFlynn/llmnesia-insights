@@ -753,6 +753,93 @@ export interface EvidenceDelta {
 export interface EvidenceDeltaRecord {
   delta: EvidenceDelta;
   raw_snapshot: MetricsSnapshot;
+  created_at?: string;
+}
+
+// --- Agent-driven review contract ---
+
+export interface EvidenceFreshness {
+  source: 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools';
+  status: 'fresh' | 'unavailable';
+  data_as_of: string;
+  detail?: string;
+}
+
+export interface AgentEvidencePack {
+  schema_version: 1;
+  generated_at: string;
+  reporting_period: {
+    week_start: string;
+    week_end: string;
+    data_as_of: string;
+    partial: boolean;
+  };
+  freshness: EvidenceFreshness[];
+  evidence: {
+    current_snapshot: MetricsSnapshot;
+    prior_snapshot: MetricsSnapshot | null;
+    computed_delta: EvidenceDelta;
+  };
+  strategy: {
+    current_ledger: StrategyLedgerState | null;
+    previous_review: WeeklyInsight | null;
+    recent_decisions: StrategyDecision[];
+    standing_caveats: StandingCaveat[];
+    goals: string[];
+    constraints: LedgerConstraint[];
+    metric_definitions: Record<string, string>;
+  };
+  research_instructions: string[];
+  output_contract: {
+    review_path: string;
+    publish_command: string;
+  };
+}
+
+export interface AgentGitSource {
+  repo: string;
+  refs: string[];
+  files_inspected: string[];
+  findings: string[];
+}
+
+export interface AgentConversationSource {
+  conversation_id: string;
+  title?: string;
+  reason: string;
+}
+
+export interface AgentReview {
+  schema_version: 1;
+  agent: { name: string; model?: string };
+  evidence: {
+    week_start: string;
+    week_end: string;
+    data_as_of: string;
+    prepared_at: string;
+    /** SHA-256 of the exact persisted snapshot and delta this review used. */
+    snapshot_hash: string;
+  };
+  headline: string;
+  summary: string;
+  facts: string[];
+  inferences: string[];
+  findings: Finding[];
+  action_items: ActionItem[];
+  open_threads: Thread[];
+  resolved_threads: ResolvedThread[];
+  ledger_patches: LedgerPatch[];
+  strategy: {
+    narrative: string;
+    recommendations: Array<Omit<StrategyRecommendation, 'id'> & { id?: string }>;
+    risks: string[];
+    experiments: StrategyExperiment[];
+  };
+  sources: {
+    git: AgentGitSource[];
+    conversations: AgentConversationSource[];
+    follow_up_tools: string[];
+  };
 }
 
 // --- Ledger Entries (audit trail) ---

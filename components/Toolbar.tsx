@@ -87,7 +87,7 @@ export function Toolbar({
       const body = await res.json().catch(() => ({})) as { error?: string; week?: string; ledgerWarning?: string };
       if (!res.ok) throw new Error(body.error || `Failed (${res.status})`);
       if (body.ledgerWarning) {
-        setMsg(`Evidence updated, but the Strategy Ledger did not: ${body.ledgerWarning}`);
+        setMsg(`Review completed with a warning: ${body.ledgerWarning}`);
         setRunFailed(true);
       } else {
         setMsg('Done — refreshing.');
@@ -146,7 +146,7 @@ export function Toolbar({
             onProviderChange={setProvider}
             onModelChange={setModel}
             disabled={running}
-            title="Model for this weekly review"
+            title="Model for this strategy review"
           />
         </div>
         {running ? (
@@ -182,7 +182,7 @@ export function Toolbar({
               onClick={confirmLatest}
               className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
             >
-              {latestRunExists ? 'Refresh today’s data' : 'Create today’s report'}
+              {latestRunExists ? 'Refresh through today' : 'Create today’s report'}
             </button>
             {!selectedIsLatestRun && (
               <button
