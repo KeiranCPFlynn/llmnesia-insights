@@ -200,10 +200,17 @@ export async function getSearchQuality(weekStart: string, weekEnd: string) {
   // (intentional searches), with zero-results counted from zero_results_submitted
   // so numerator and denominator share the same event definition. The keystroke
   // events (search_performed / zero_results_returned) are never used here.
+  // popup_recents opens have no search denominator and are split out; the old
+  // all-surface numerator/rate remain explicit for historical continuity.
   const rows = await runQuery(`
     SELECT
       countIf(event = 'search_submitted') AS searches,
-      countIf(event = 'result_opened') AS clicks,
+      countIf(
+        event = 'result_opened'
+        AND coalesce(nullIf(properties.surface, ''), 'overlay') != 'popup_recents'
+      ) AS clicks,
+      countIf(event = 'result_opened' AND properties.surface = 'popup_recents') AS popup_recent_opens,
+      countIf(event = 'result_opened') AS clicks_including_popup_recents,
       countIf(event = 'zero_results_submitted') AS zero_results
     FROM events
     WHERE toDate(timestamp) >= toDate('${weekStart}')
@@ -212,30 +219,94 @@ export async function getSearchQuality(weekStart: string, weekEnd: string) {
   `);
   const searches = Number(rows[0]?.[0] ?? 0);
   const clicks = Number(rows[0]?.[1] ?? 0);
-  const zero_results = Number(rows[0]?.[2] ?? 0);
+  const popup_recent_opens = Number(rows[0]?.[2] ?? 0);
+  const clicks_including_popup_recents = Number(rows[0]?.[3] ?? 0);
+  const zero_results = Number(rows[0]?.[4] ?? 0);
   return {
     searches,
     clicks,
+    popup_recent_opens,
+    clicks_including_popup_recents,
     zero_results,
     click_rate: searches > 0 ? round(clicks / searches) : 0,
+    click_rate_including_popup_recents:
+      searches > 0 ? round(clicks_including_popup_recents / searches) : 0,
     zero_result_rate: searches > 0 ? round(zero_results / searches) : 0,
   };
 }
 
 export async function getPlatformDistribution(weekStart: string, weekEnd: string) {
-  const PLATFORMS = ['chatgpt', 'claude', 'gemini', 'deepseek', 'perplexity', 'grok', 'mistral', 'generic'] as const;
+  // Canonical Platform union from LLMnesia's @llmnesia/shared-types package.
+  // Keep this exhaustive: search_submitted emits one numeric shown_{slug}
+  // property per platform represented in the visible result set.
+  const PLATFORMS = [
+    'chatgpt',
+    'claude',
+    'gemini',
+    'deepseek',
+    'perplexity',
+    'grok',
+    'mistral',
+    'kimi',
+    'qwen',
+    'copilot',
+    'ai_studio',
+    'anthropic_console',
+    'character_ai',
+    'zai',
+    'claude_code',
+    'codex',
+    'generic',
+  ] as const;
 
-  const [searchRows, clickRows] = await Promise.all([
+  // Frozen at the original definition. Do not expand this list: the point of
+  // the legacy series is to reproduce already-reported historical periods,
+  // not to retrofit them to today's platform contract.
+  const LEGACY_PLATFORMS = [
+    'chatgpt',
+    'claude',
+    'gemini',
+    'deepseek',
+    'perplexity',
+    'grok',
+    'mistral',
+    'generic',
+  ] as const;
+
+  const [searchRows, clickRows, popupRecentRows, legacySearchRows, legacyClickRows] = await Promise.all([
     runQuery(`
       SELECT
-        sum(JSONExtractInt(properties.results_by_platform, 'chatgpt'))    AS chatgpt,
-        sum(JSONExtractInt(properties.results_by_platform, 'claude'))     AS claude,
-        sum(JSONExtractInt(properties.results_by_platform, 'gemini'))     AS gemini,
-        sum(JSONExtractInt(properties.results_by_platform, 'deepseek'))   AS deepseek,
-        sum(JSONExtractInt(properties.results_by_platform, 'perplexity')) AS perplexity,
-        sum(JSONExtractInt(properties.results_by_platform, 'grok'))       AS grok,
-        sum(JSONExtractInt(properties.results_by_platform, 'mistral'))    AS mistral,
-        sum(JSONExtractInt(properties.results_by_platform, 'generic'))    AS generic
+        ${PLATFORMS.map((platform) => `sum(toIntOrZero(properties.shown_${platform})) AS ${platform}`).join(',\n        ')}
+      FROM events
+      WHERE event = 'search_submitted'
+        AND toDate(timestamp) >= toDate('${weekStart}')
+        AND toDate(timestamp) <= toDate('${weekEnd}')
+    `),
+    runQuery(`
+      SELECT
+        coalesce(nullIf(properties.platform_source, ''), 'unknown') AS platform,
+        count() AS cnt
+      FROM events
+      WHERE event = 'result_opened'
+        AND toDate(timestamp) >= toDate('${weekStart}')
+        AND toDate(timestamp) <= toDate('${weekEnd}')
+        AND coalesce(nullIf(properties.surface, ''), 'overlay') != 'popup_recents'
+      GROUP BY platform
+    `),
+    runQuery(`
+      SELECT
+        coalesce(nullIf(properties.platform_source, ''), 'unknown') AS platform,
+        count() AS cnt
+      FROM events
+      WHERE event = 'result_opened'
+        AND toDate(timestamp) >= toDate('${weekStart}')
+        AND toDate(timestamp) <= toDate('${weekEnd}')
+        AND properties.surface = 'popup_recents'
+      GROUP BY platform
+    `),
+    runQuery(`
+      SELECT
+        ${LEGACY_PLATFORMS.map((platform) => `sum(JSONExtractInt(properties.results_by_platform, '${platform}')) AS ${platform}`).join(',\n        ')}
       FROM events
       WHERE event = 'search_performed'
         AND toDate(timestamp) >= toDate('${weekStart}')
@@ -253,12 +324,15 @@ export async function getPlatformDistribution(weekStart: string, weekEnd: string
     `),
   ]);
 
-  function searchRowToRatios(row: unknown[]): Record<string, number> {
+  function searchRowToRatios(
+    row: unknown[],
+    platforms: readonly string[],
+  ): Record<string, number> {
     const counts: Record<string, number> = {};
     let total = 0;
-    for (let i = 0; i < PLATFORMS.length; i++) {
+    for (let i = 0; i < platforms.length; i++) {
       const cnt = Number(row[i]) || 0;
-      counts[PLATFORMS[i]] = cnt;
+      counts[platforms[i]] = cnt;
       total += cnt;
     }
     const ratios: Record<string, number> = {};
@@ -285,8 +359,13 @@ export async function getPlatformDistribution(weekStart: string, weekEnd: string
   }
 
   return {
-    searches: searchRowToRatios(searchRows[0] ?? []),
+    searches: searchRowToRatios(searchRows[0] ?? [], PLATFORMS),
     clicks: clickRowsToRatios(clickRows),
+    popup_recents: clickRowsToRatios(popupRecentRows),
+    legacy: {
+      searches: searchRowToRatios(legacySearchRows[0] ?? [], LEGACY_PLATFORMS),
+      clicks: clickRowsToRatios(legacyClickRows),
+    },
   };
 }
 

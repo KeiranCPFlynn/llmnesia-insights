@@ -111,7 +111,10 @@ export function GrowthSyncToolbar({
 
       if (j.completed) {
         const totalRows = Array.isArray(j.results)
-          ? j.results.reduce((sum: number, r: { rows?: number }) => sum + (r.rows ?? 0), 0)
+          ? j.results.reduce(
+              (sum: number, r: { gsc?: number; bing?: number }) => sum + (r.gsc ?? 0) + (r.bing ?? 0),
+              0,
+            )
           : 0;
         const ranges = Array.isArray(j.results)
           ? j.results

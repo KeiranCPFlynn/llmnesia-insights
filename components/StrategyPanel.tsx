@@ -190,16 +190,14 @@ function RecommendationCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-4">
-        {!readOnlyReview && (
-          <button
-            type="button"
-            onClick={() => setDiscussing((open) => !open)}
-            aria-expanded={discussing}
-            className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/15"
-          >
-            {discussing ? 'Close discussion' : 'Discuss / regenerate'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setDiscussing((open) => !open)}
+          aria-expanded={discussing}
+          className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/15"
+        >
+          {discussing ? 'Close discussion' : readOnlyReview ? 'Discuss / challenge' : 'Discuss / regenerate'}
+        </button>
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -224,7 +222,7 @@ function RecommendationCard({
         <p className="mt-1 text-sm text-neutral-400">Outcome: {decision.outcome}</p>
       )}
       {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
-      {!readOnlyReview && discussing && (
+      {discussing && (
         <div className="mt-4 border-t border-neutral-800 pt-4">
           <StrategyChat
             week={week}
@@ -232,6 +230,7 @@ function RecommendationCard({
             rank={rank}
             initialChat={initialChat}
             hasStrategy
+            allowRevision={!readOnlyReview}
           />
         </div>
       )}

@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server';
 import { isAuthorized } from '../../../../lib/session';
 import { readBrief } from '../../../../src/brief.js';
 import { getSiteById } from '../../../../src/gsc.js';
-import { ensureOpportunities } from '../../../../src/growth.js';
+import { getPlanningOpportunities } from '../../../../src/growth.js';
 import {
   generateGrowthPlan,
   getGrowthContextDigests,
@@ -60,13 +60,15 @@ export async function POST(req: Request) {
     try {
       const supabase = getSupabase();
 
-      // Ensure opportunities exist for the week (compute on demand if missing),
+      // Reuse the persisted weekly opportunity snapshot (compute only when a
+      // site/week has none), rather than rebuilding 180 days of raw rows on
+      // every plan regeneration.
       // pull prior plans + recent actions for continuity, and compute the
       // site-scale digest so the LLM knows whether this is an established or
       // early-stage site.
       const [opportunities, brief, priorPlans, actionsRes, { ga4Digest, bingDigest, siteScale }] =
         await Promise.all([
-          ensureOpportunities({ siteId, weekStart, force: true }),
+          getPlanningOpportunities(siteId, weekStart, 25),
           readBrief(),
           getPriorPlans(siteId, weekStart, 4),
           supabase

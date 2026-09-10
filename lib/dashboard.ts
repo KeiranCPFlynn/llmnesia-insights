@@ -16,7 +16,9 @@ export async function getAllInsights(): Promise<WeeklyInsight[]> {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('weekly_insights')
-    .select('*')
+    // The index powers week selection and charts. Do not transfer saved chat,
+    // revision history, or recommendation threads for every historical week.
+    .select('week_start,week_end,metrics_snapshot,headline,summary,findings,action_items,open_threads,resolved_threads,strategy,strategy_goal,strategy_decisions,model_used,created_at')
     .order('week_start', { ascending: true });
 
   if (error) throw new Error(`Supabase fetch failed: ${error.message}`);

@@ -5,7 +5,12 @@ import { computeEvidenceDelta } from './evidence-delta.js';
 import { collectMetrics } from './posthog.js';
 import { getCurrentWeek, getWeekFromArg } from './reporting-period.js';
 import { getCombinedSearchDigest, syncSearchForInsights } from './search-digest.js';
-import { getLatestEvidenceSnapshotBefore, saveEvidenceDelta } from './supabase.js';
+import {
+  saveEvidenceDelta,
+  saveSourceSnapshot,
+  saveSourceSyncState,
+  getLatestEvidenceSnapshotBefore,
+} from './supabase.js';
 import type { EvidenceDelta, EvidenceFreshness, MetricsSnapshot } from './types.js';
 
 export interface EvidenceCollectionResult {
@@ -26,6 +31,7 @@ export interface EvidenceCollectionResult {
 export async function collectEvidence(opts: {
   weekStart?: string | null;
   dryRun?: boolean;
+  skipSearchSync?: boolean;
   log?: (message: string) => void;
 } = {}): Promise<EvidenceCollectionResult> {
   const log = opts.log ?? console.log;
@@ -39,7 +45,7 @@ export async function collectEvidence(opts: {
   log(`Collecting evidence for ${weekStart} → ${weekEnd}${partial ? ' (week-to-date)' : ''}.`);
   // A dry-run is genuinely read-only: use the latest stored search rows rather
   // than invoking the GSC/Bing sync, which upserts their raw source tables.
-  const searchSync = opts.dryRun ? Promise.resolve() : syncSearchForInsights(log);
+  const searchSync = opts.dryRun || opts.skipSearchSync ? Promise.resolve() : syncSearchForInsights(log);
   const [posthog, ga4, priorSnapshot] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
@@ -79,7 +85,40 @@ export async function collectEvidence(opts: {
   ];
 
   if (!opts.dryRun) {
-    await saveEvidenceDelta(delta, currentSnapshot);
+    // The review reads this durable ingestion record. Saving the individual
+    // source payloads means a later review never has to query analytics again
+    // merely to reconstruct the same weekly evidence.
+    await Promise.all([
+      saveEvidenceDelta(delta, currentSnapshot),
+      saveSourceSnapshot({ source: 'PostHog', periodStart: weekStart, periodEnd: weekEnd, snapshot: posthog }),
+      saveSourceSnapshot({ source: 'GA4', periodStart: weekStart, periodEnd: weekEnd, snapshot: ga4 }),
+      saveSourceSyncState({ source: 'PostHog', latestDataDate: weekEnd, status: 'fresh' }),
+      saveSourceSyncState({ source: 'GA4', latestDataDate: weekEnd, status: 'fresh' }),
+      saveSourceSnapshot({
+        source: 'Google Search Console',
+        periodStart: weekStart,
+        periodEnd: weekEnd,
+        snapshot: searchPerformance?.google ?? null,
+      }),
+      saveSourceSnapshot({
+        source: 'Bing Webmaster Tools',
+        periodStart: weekStart,
+        periodEnd: weekEnd,
+        snapshot: searchPerformance?.bing ?? null,
+      }),
+      saveSourceSyncState({
+        source: 'Google Search Console',
+        latestDataDate: searchAsOf,
+        status: searchPerformance?.google ? 'fresh' : 'failed',
+        detail: searchPerformance?.google ? null : 'No Google search rows were available for this period.',
+      }),
+      saveSourceSyncState({
+        source: 'Bing Webmaster Tools',
+        latestDataDate: searchAsOf,
+        status: searchPerformance?.bing ? 'fresh' : 'failed',
+        detail: searchPerformance?.bing ? null : 'No Bing search rows were available for this period.',
+      }),
+    ]);
     log('Evidence snapshot and delta saved to Supabase.');
   }
   return {

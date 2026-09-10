@@ -41,6 +41,19 @@ export function getDefaultWeek(): { weekStart: string; weekEnd: string } {
   return { weekStart: current.weekStart, weekEnd: current.weekEnd };
 }
 
+/** The most recent complete Monday-to-Sunday reporting week. */
+export function getLastCompletedWeek(
+  now: Date = new Date(),
+  timeZone = process.env.REPORTING_TIME_ZONE?.trim() || DEFAULT_REPORTING_TIME_ZONE,
+): { weekStart: string; weekEnd: string } {
+  const current = getCurrentWeek(now, timeZone);
+  const end = new Date(`${current.weekStart}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - 1);
+  const start = new Date(end);
+  start.setUTCDate(end.getUTCDate() - 6);
+  return { weekStart: formatDate(start), weekEnd: formatDate(end) };
+}
+
 export function getWeekFromArg(weekStartArg: string): { weekStart: string; weekEnd: string } {
   const start = new Date(`${weekStartArg}T00:00:00Z`);
   if (Number.isNaN(start.getTime())) throw new Error(`Invalid week date: ${weekStartArg}`);

@@ -586,12 +586,36 @@ export async function computeOpportunities(opts: {
 
 /** Summary used in the LLM prompt + UI hints — how much data this site has. */
 export interface SiteScale {
-  total_impressions: number;
-  total_clicks: number;
-  unique_queries: number;
-  unique_pages: number;
+  total_impressions?: number;
+  total_clicks?: number;
+  /** Optional because an exact count requires downloading every query row. */
+  unique_queries?: number;
+  unique_pages?: number;
+  /** Cheap persisted-data proxy used by hosted plan generation. */
+  stored_query_rows?: number;
   /** True when the site is in early-stage territory: most queries get 1-handful of impressions. */
   is_small_site: boolean;
+}
+
+/**
+ * Cheap scale hint for hosted plan generation. This reads only an exact row
+ * count from the persisted ingestion store and never calls Search Console or
+ * downloads historical query rows.
+ */
+export async function getStoredSiteScale(siteId: string): Promise<SiteScale> {
+  const supabase = getSupabase();
+  const { count, error } = await supabase
+    .from('gsc_rows')
+    .select('*', { count: 'exact', head: true })
+    .eq('site_id', siteId);
+  if (error) throw new Error(`gsc_rows count failed: ${error.message}`);
+  const storedRows = count ?? 0;
+  return {
+    stored_query_rows: storedRows,
+    // A site with hundreds of query/page/day rows already has enough signal
+    // for the normal planning playbook. This is a scale category, not a KPI.
+    is_small_site: storedRows < 500,
+  };
 }
 
 export function summariseSiteScale(rows: GSCRow[]): SiteScale {
@@ -620,24 +644,76 @@ export function summariseSiteScale(rows: GSCRow[]): SiteScale {
  * once `query` is included, which drops the vast majority of clicks for a
  * site with a long tail of one-off search terms (752 real clicks over 90d
  * for LLMnesia vs. 36 once `query` is added — see getAccurateSiteTotals).
- * `unique_queries` still comes from the stored query-level rows since that's
- * only ever used as a rough "how many distinct things get searched" hint,
- * not summed into a total that needs to be accurate.
+ * Query cardinality is deliberately omitted here. Calculating it exactly used
+ * to download the entire 90-day query corpus (135k+ rows for LLMnesia) on
+ * every plan generation. It is only a descriptive hint, while the accurate
+ * site-wide clicks/impressions/page count comes back in one compact GSC call.
  */
 export async function getSiteScale(site: Site, weekStart?: string): Promise<SiteScale> {
   const { current } = detectionWindow({ weekStart });
-  const [totals, rows] = await Promise.all([
-    getAccurateSiteTotals(site, current.startDate, current.endDate),
-    fetchAllGscRows(site.id, current.startDate, current.endDate, 'query'),
-  ]);
-  const queries = new Set(rows.map((r) => r.query));
+  const totals = await getAccurateSiteTotals(site, current.startDate, current.endDate);
   return {
     total_impressions: totals.total_impressions,
     total_clicks: totals.total_clicks,
-    unique_queries: queries.size,
     unique_pages: totals.unique_pages,
     is_small_site: totals.total_impressions < 500,
   };
+}
+
+/**
+ * The plan only consumes the top ranked candidates. Keep this query bounded:
+ * loading every stored opportunity made a normal regeneration transfer almost
+ * 10,000 rows before the model call even began.
+ */
+export async function getTopOpportunities(
+  siteId: string,
+  weekStart: string,
+  limit = 25,
+): Promise<GrowthOpportunity[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('growth_opportunities')
+    .select('*')
+    .eq('site_id', siteId)
+    .eq('week_start', weekStart)
+    .order('score', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`growth_opportunities fetch failed: ${error.message}`);
+  return (data as GrowthOpportunity[]) ?? [];
+}
+
+/**
+ * Return the persisted weekly snapshot used by plan generation. Detection is
+ * expensive and belongs to snapshot creation, not every regeneration. A new
+ * site/week still computes once when no snapshot exists.
+ */
+export async function getPlanningOpportunities(
+  siteId: string,
+  weekStart: string,
+  limit = 25,
+): Promise<GrowthOpportunity[]> {
+  const existing = await getTopOpportunities(siteId, weekStart, limit);
+  if (existing.length > 0) return existing;
+
+  // A calendar rollover must not make the first plan of every week rebuild
+  // the whole historical corpus. Reuse the newest snapshot available at or
+  // before the selected week; each candidate carries its own evidence.as_of,
+  // so the model still sees exactly how fresh that snapshot is.
+  const supabase = getSupabase();
+  const { data: latest, error } = await supabase
+    .from('growth_opportunities')
+    .select('week_start')
+    .eq('site_id', siteId)
+    .lte('week_start', weekStart)
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`growth_opportunities latest snapshot failed: ${error.message}`);
+  const latestWeek = (latest as { week_start?: string } | null)?.week_start;
+  if (latestWeek) return getTopOpportunities(siteId, latestWeek, limit);
+
+  const computed = await computeOpportunities({ siteId, weekStart });
+  return computed.slice(0, limit);
 }
 
 export async function getOpportunities(
@@ -681,7 +757,8 @@ export async function getOpportunities(
  *   - the newest gsc_rows.synced_at is later than the oldest stored
  *     opportunity (meaning data has landed since we last detected), OR
  *   - the caller explicitly forces it.
- * Detection is cheap (pure SQL + JS) so being eager here is fine.
+ * This is intended for explicit opportunity refreshes. Plan regeneration uses
+ * the persisted weekly snapshot via `getPlanningOpportunities` instead.
  */
 export async function ensureOpportunities(opts: {
   siteId: string;

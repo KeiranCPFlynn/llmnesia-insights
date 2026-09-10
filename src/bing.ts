@@ -211,6 +211,7 @@ export async function getBingDigest(
   site: Site,
   windowDays = 90,
   asOf: Date = new Date(),
+  useLiveTotals = true,
 ): Promise<BingDigest | null> {
   const siteId = site.id;
   const supabase = getSupabase();
@@ -277,11 +278,16 @@ export async function getBingDigest(
   // break out, so summing it undercounts site-wide totals — see
   // fetchRankAndTrafficStats. Pull the real totals from the query-free
   // endpoint; avg_position and top_queries stay query-level/directional.
-  const { total_clicks, total_impressions } = await getAccurateBingTotals(
-    site,
-    isoDate(startDate),
-    isoDate(endDate),
-  );
+  const reportedQueryTotals = {
+    total_clicks: aggregated.reduce((sum, row) => sum + row.clicks, 0),
+    total_impressions: aggregated.reduce((sum, row) => sum + row.impressions, 0),
+  };
+  // Hosted plan/chat requests use the persisted query rows so they never pull
+  // Bing's full history merely to compose text. Explicit reporting callers can
+  // retain the accurate site-wide live totals via the default.
+  const { total_clicks, total_impressions } = useLiveTotals
+    ? await getAccurateBingTotals(site, isoDate(startDate), isoDate(endDate))
+    : reportedQueryTotals;
 
   return {
     total_clicks,
@@ -301,7 +307,7 @@ export function fullBackfillRange(now: Date = new Date()): { startDate: string; 
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
-export function deltaRange(days = 90, now: Date = new Date()): { startDate: string; endDate: string } {
+export function deltaRange(days = 7, now: Date = new Date()): { startDate: string; endDate: string } {
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() - 1);
   const start = new Date(end);
@@ -317,10 +323,16 @@ export async function autoSyncRange(
     .from('bing_rows')
     .select('date')
     .eq('site_id', siteId)
+    .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (!(data as { date?: string } | null)?.date) {
     return { ...fullBackfillRange(), mode: 'backfill' };
   }
-  return { ...deltaRange(), mode: 'delta' };
+  const end = new Date();
+  end.setUTCDate(end.getUTCDate() - 1);
+  const latest = new Date(`${(data as { date: string }).date}T00:00:00Z`);
+  latest.setUTCDate(latest.getUTCDate() - 6);
+  const start = latest > end ? end : latest;
+  return { startDate: isoDate(start), endDate: isoDate(end), mode: 'delta' };
 }

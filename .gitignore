@@ -12,6 +12,7 @@ build/
 .next/
 next-env.d.ts
 .vercel/
+/supabase/.temp/
 
 # TypeScript
 *.tsbuildinfo
@@ -22,6 +23,9 @@ npm-debug.log*
 
 # Local agent evidence and review drafts (may contain private business context)
 .insights/
+
+# Local outreach research and draft pitches (uncommitted lead data)
+/outreach/
 
 # OS
 .DS_Store

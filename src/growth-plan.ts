@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { callLlm, coerceStringArray, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
 import { GROWTH_PLAN_SYSTEM_PROMPT } from './prompts/growth-prompt.js';
-import { getSiteScale, type SiteScale } from './growth.js';
+import { getStoredSiteScale, type SiteScale } from './growth.js';
 import { getBingDigest } from './bing.js';
 import type {
   ChatMessage,
@@ -202,9 +202,9 @@ export async function getGrowthContextDigests(
   const supabase = getSupabase();
 
   const [siteScale, bingDigest] = await Promise.all([
-    getSiteScale(site, weekStart),
+    getStoredSiteScale(site.id),
     process.env.BING_WEBMASTER_API_KEY
-      ? getBingDigest(site).catch((e) => {
+      ? getBingDigest(site, 90, new Date(), false).catch((e) => {
         console.error('[growth-context] bing digest failed:', e);
         return null;
       })
@@ -264,6 +264,11 @@ export async function generateGrowthPlan(
   const { toolCall, text, modelUsed } = await callLlm({
     provider: resolved,
     model: inputs.model,
+    // A weekly plan is bounded to 5-10 concise recommendations. A low
+    // reasoning budget and finite output ceiling keep the hosted request well
+    // inside its five-minute execution window without affecting Insights.
+    reasoningEffort: 'low',
+    maxTokens: 16384,
     tools: [PLAN_TOOL],
     toolChoice: { type: 'tool', name: 'submit_growth_plan' },
     system: [{ text: GROWTH_PLAN_SYSTEM_PROMPT, cache: true }],
@@ -278,7 +283,7 @@ export async function generateGrowthPlan(
               `SITE REPO (use for target_repo and in coding_agent_prompt): ${inputs.site.repo ? `"${inputs.site.repo}"` : '(unknown — use "<your-site-repo>")'}\n` +
               `WEEK: ${inputs.weekStart}\n\n` +
               `CURRENT GROWTH GOAL — optimize the plan for this. If absent, default to qualified organic traffic, product discovery, and useful content expansion; do NOT drift into monetization strategy:\n${inputs.growthGoal?.trim() || '(none)'}\n\n` +
-              `SITE SCALE (rolling 90 days):\n${JSON.stringify(inputs.siteScale ?? null)}\n` +
+              `PERSISTED SEARCH SCALE HINT:\n${JSON.stringify(inputs.siteScale ?? null)}\n` +
               (inputs.siteScale?.is_small_site
                 ? `↑ This is a SMALL / EARLY-STAGE site. Recommendations should favour creating new content and improving page-1 CTR over tactics that need volume to measure.\n\n`
                 : '\n') +

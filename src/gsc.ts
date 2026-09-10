@@ -275,7 +275,7 @@ export function extendedBackfillRange(now: Date = new Date()): { startDate: stri
 }
 
 /** Delta sync: re-pull the last N days to absorb GSC lag + revisions. */
-export function deltaRange(days = 90, now: Date = new Date()): { startDate: string; endDate: string } {
+export function deltaRange(days = 7, now: Date = new Date()): { startDate: string; endDate: string } {
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() - 1);
   const start = new Date(end);
@@ -310,6 +310,9 @@ export async function catchUpRange(
   }
 
   const start = new Date(`${latestDate}T00:00:00Z`);
+  // Re-read a small settled window for GSC's late revisions, while avoiding
+  // the old 90-day refresh on every daily ingestion run.
+  start.setUTCDate(start.getUTCDate() - 6);
   if (start > end) start.setTime(end.getTime());
   return { startDate: isoDate(start), endDate: isoDate(end), mode: 'delta' };
 }
@@ -331,5 +334,5 @@ export async function autoSyncRange(siteId: string): Promise<{ startDate: string
   if (!(data as { date?: string } | null)?.date) {
     return { ...fullBackfillRange(), mode: 'backfill' };
   }
-  return { ...deltaRange(), mode: 'delta' };
+  return catchUpRange(siteId);
 }

@@ -113,6 +113,7 @@ function systemPrompt(
   brief: string,
   strategyGoal: string,
   focusedRecommendationId?: string,
+  allowRevision = true,
 ) {
   const focusedRecommendation = focusedRecommendationId
     ? insight.strategy?.recommendations.find(
@@ -122,7 +123,9 @@ function systemPrompt(
 
   return `You are LLMnesia's acting Head of Product & Growth, in conversation with the solo founder about THIS week's strategy. Be concise, plain, and operator-minded. The saved CURRENT STRATEGY GOAL is founder-owned and takes priority. Revenue matters long-term, but the current stage may require growth, activation, retention, or learning before monetization.
 
-When the founder asks for a concrete change to a recommendation (cheaper price, different gating, a new/updated coding-agent prompt, a brand-new idea), call revise_strategy with the FULL revised recommendation so they can apply it. Otherwise just answer. If they ask for a handoff prompt, write it self-contained and repo-targeted (name the repo, goal, change, acceptance criteria) so it pastes straight into Claude Code / Codex.
+${allowRevision
+    ? 'When the founder asks for a concrete change to a recommendation (cheaper price, different gating, a new/updated coding-agent prompt, a brand-new idea), call revise_strategy with the FULL revised recommendation so they can apply it.'
+    : 'This is a published, ledger-managed review. Discuss and challenge recommendations freely, but do not call revise_strategy or claim to have changed the strategy. Tell the founder that factual context can be saved in the report discussion for the next validated Insights review.'} Otherwise just answer. If they ask for a handoff prompt, write it self-contained and repo-targeted (name the repo, goal, change, acceptance criteria) so it pastes straight into Claude Code / Codex.
 
 ${focusedRecommendation
       ? `THIS IS A RECOMMENDATION-SPECIFIC THREAD.
@@ -160,12 +163,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, messages, provider, model, recommendationId } = (await req.json().catch(() => ({}))) as {
+  const { week, messages, provider, model, recommendationId, allowRevision = true } = (await req.json().catch(() => ({}))) as {
     week?: string;
     messages?: ChatMessage[];
     provider?: string;
     model?: string;
     recommendationId?: string;
+    allowRevision?: boolean;
   };
   if (!week || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'week and messages are required' }, { status: 400 });
@@ -191,13 +195,13 @@ export async function POST(req: Request) {
       provider: resolveProvider(provider ?? process.env.STRATEGY_PROVIDER ?? 'openai'),
       model,
       maxTokens: 8000,
-      tools: [REVISE_TOOL],
-      toolChoice: 'auto',
-      system: [{ text: systemPrompt(insight, brief, strategyGoal, recommendationId), cache: true }],
+      tools: allowRevision ? [REVISE_TOOL] : [],
+      toolChoice: allowRevision ? 'auto' : 'none',
+      system: [{ text: systemPrompt(insight, brief, strategyGoal, recommendationId, allowRevision), cache: true }],
       messages: chatToLlmMessages(messages),
     });
 
-    const revision = response.toolCall ? (response.toolCall.input as StrategyRevision) : null;
+    const revision = allowRevision && response.toolCall ? (response.toolCall.input as StrategyRevision) : null;
     const reply = formatRevisionReply(response.text.trim(), revision);
 
     const assistantMsg: ChatMessage = {

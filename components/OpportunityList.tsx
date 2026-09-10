@@ -42,6 +42,7 @@ export function OpportunityList({
   label,
   hint,
   opportunities,
+  count,
   acceptedIds,
 }: {
   siteId: string;
@@ -50,6 +51,8 @@ export function OpportunityList({
   label: string;
   hint: string;
   opportunities: GrowthOpportunity[];
+  /** Total candidates in this queue; `opportunities` is the top bounded slice. */
+  count: number;
   /** Opportunity ids already materialised as actions — hide the "Accept" button. */
   acceptedIds: string[];
 }) {
@@ -61,12 +64,12 @@ export function OpportunityList({
       <summary className="cursor-pointer text-sm font-semibold text-neutral-100">
         {label}{' '}
         <span className="ml-2 rounded-full border border-neutral-700 bg-neutral-950/60 px-2 py-0.5 text-[11px] font-medium text-neutral-300">
-          {opportunities.length}
+          {count}
         </span>
         <span className="ml-3 font-normal text-neutral-400">{hint}</span>
       </summary>
       <ul className="mt-3 space-y-3">
-        {opportunities.slice(0, 25).map((o) => (
+        {opportunities.map((o) => (
           <OpportunityCard
             key={o.id}
             siteId={siteId}

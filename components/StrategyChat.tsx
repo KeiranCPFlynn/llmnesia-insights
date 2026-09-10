@@ -117,12 +117,15 @@ export function StrategyChat({
   hasStrategy,
   recommendation,
   rank,
+  allowRevision = true,
 }: {
   week: string;
   initialChat: ChatMessage[];
   hasStrategy: boolean;
   recommendation?: StrategyRecommendation;
   rank?: number;
+  /** Agent-published reviews may be challenged, but changes return through validated publish. */
+  allowRevision?: boolean;
 }) {
   const [provider, setProvider] = useProvider({
     storageKey: 'llm-provider-strategy',
@@ -207,15 +210,16 @@ export function StrategyChat({
             provider: p,
             model: m,
             recommendationId: recommendation?.id,
+            allowRevision,
           }),
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || 'Chat failed');
         return { reply: body.reply as ChatMessage, extra: (body.revision as Revision) ?? null };
       }}
-      renderExtra={({ extra, clear }) => (
+      renderExtra={allowRevision ? ({ extra, clear }) => (
         <RevisionCard week={week} revision={extra} clear={clear} />
-      )}
+      ) : undefined}
       renderAction={({ messages, busy }) =>
         focused || messages.length === 0 ? null : (
           <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">

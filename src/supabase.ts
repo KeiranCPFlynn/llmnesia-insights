@@ -20,6 +20,18 @@ import type {
 } from './types.js';
 import { pickStrategyGoal } from './strategy-goal.js';
 
+export type AnalyticsSource = 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools';
+
+export interface SourceSyncState {
+  source: AnalyticsSource;
+  scope: string;
+  latest_data_date: string | null;
+  last_success_at: string | null;
+  last_attempt_at: string | null;
+  status: 'fresh' | 'failed' | 'never';
+  detail: string | null;
+}
+
 function getClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -585,6 +597,67 @@ export async function saveEvidenceDelta(
     { onConflict: 'week_start' },
   );
   if (error) throw new Error(`evidence_deltas upsert failed: ${error.message}`);
+}
+
+// --- Incremental analytics ingestion ---
+
+/** Store the exact source response that fed an evidence snapshot. */
+export async function saveSourceSnapshot(input: {
+  source: AnalyticsSource;
+  periodStart: string;
+  periodEnd: string;
+  snapshot: unknown;
+  scope?: string;
+}): Promise<void> {
+  const supabase = getClient();
+  const { error } = await supabase.from('source_snapshots').upsert(
+    {
+      source: input.source,
+      scope: input.scope ?? 'llmnesia',
+      period_start: input.periodStart,
+      period_end: input.periodEnd,
+      snapshot: input.snapshot,
+      collected_at: new Date().toISOString(),
+    },
+    { onConflict: 'source,scope,period_start,period_end' },
+  );
+  if (error) throw new Error(`source_snapshots upsert failed: ${error.message}`);
+}
+
+/** Record source freshness independently of a weekly strategic review. */
+export async function saveSourceSyncState(input: {
+  source: AnalyticsSource;
+  latestDataDate?: string | null;
+  status: 'fresh' | 'failed';
+  detail?: string | null;
+  scope?: string;
+}): Promise<void> {
+  const supabase = getClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('source_sync_state').upsert(
+    {
+      source: input.source,
+      scope: input.scope ?? 'llmnesia',
+      latest_data_date: input.latestDataDate ?? null,
+      last_attempt_at: now,
+      ...(input.status === 'fresh' ? { last_success_at: now } : {}),
+      status: input.status,
+      detail: input.detail ?? null,
+    },
+    { onConflict: 'source,scope' },
+  );
+  if (error) throw new Error(`source_sync_state upsert failed: ${error.message}`);
+}
+
+/** Source freshness shown in review packs and used to decide whether to ingest. */
+export async function getSourceSyncStates(scope = 'llmnesia'): Promise<SourceSyncState[]> {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('source_sync_state')
+    .select('*')
+    .eq('scope', scope);
+  if (error) throw new Error(`source_sync_state fetch failed: ${error.message}`);
+  return (data as SourceSyncState[]) ?? [];
 }
 
 // --- Ledger Entries (append-only audit trail) ---

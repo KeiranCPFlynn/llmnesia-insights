@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { week, kind, affected_metric, note, provider } = (await req
+  const { week, kind, affected_metric, note, provider, regenerate = true } = (await req
     .json()
     .catch(() => ({}))) as {
     week?: string;
@@ -22,6 +22,8 @@ export async function POST(req: Request) {
     affected_metric?: string;
     note?: string;
     provider?: string;
+    /** Agent-published reviews queue feedback for the validated republish flow. */
+    regenerate?: boolean;
   };
   if (!week || !affected_metric || !note) {
     return NextResponse.json(
@@ -48,24 +50,27 @@ export async function POST(req: Request) {
       source_excerpt: lastUser?.content.slice(0, 280),
     };
 
-    // Snapshot the report exactly as it stands BEFORE this correction rewrites
-    // it, so the pre-change analysis is preserved (append-only history).
-    const revision: Revision = {
-      revised_at: correction.created_at,
-      correction_id: correction.id,
-      model_used: row.model_used,
-      headline: row.headline,
-      summary: row.summary,
-      findings: row.findings,
-      action_items: row.action_items,
-      open_threads: row.open_threads,
-      resolved_threads: row.resolved_threads,
-    };
-    await addRevision(week, revision);
+    if (regenerate) {
+      // Legacy on-demand analysis remains available for legacy reports. Agent
+      // reviews instead save feedback and are republished through the
+      // validated CLI workflow, avoiding a partial strategy/ledger rewrite.
+      const revision: Revision = {
+        revised_at: correction.created_at,
+        correction_id: correction.id,
+        model_used: row.model_used,
+        headline: row.headline,
+        summary: row.summary,
+        findings: row.findings,
+        action_items: row.action_items,
+        open_threads: row.open_threads,
+        resolved_threads: row.resolved_threads,
+      };
+      await addRevision(week, revision);
+    }
 
     const corrections = await addCorrection(week, correction);
     // Regenerate from the stored snapshot, now with this caveat/context.
-    const analysis = await reanalyseWeek(week, provider);
+    const analysis = regenerate ? await reanalyseWeek(week, provider) : null;
 
     // Persist the acceptance into the transcript so the record itself shows
     // what was approved, when, and that it changed the report.
@@ -73,8 +78,10 @@ export async function POST(req: Request) {
       role: 'assistant',
       content:
         `✅ **Accepted ${correction.kind}** — *${affected_metric}* ` +
-        `(ref \`${correction.id.slice(0, 8)}\`). The report was regenerated with this applied; ` +
-        `the previous version is kept in the revision history.`,
+        `(ref \`${correction.id.slice(0, 8)}\`). ` +
+        (regenerate
+          ? 'The report was regenerated with this applied; the previous version is kept in the revision history.'
+          : 'Saved for the next validated Insights review. Ask Codex to revise this report and the context will be included.'),
       ts: correction.created_at,
     };
     const updatedChat = [...chat, acceptance];

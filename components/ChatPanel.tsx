@@ -15,12 +15,14 @@ function CorrectionCard({
   provider,
   clear,
   setMessages,
+  agentManaged,
 }: {
   week: string;
   suggestion: Suggestion;
   provider: Provider;
   clear: () => void;
   setMessages: (m: ChatMessage[]) => void;
+  agentManaged: boolean;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -35,7 +37,7 @@ function CorrectionCard({
       const res = await fetch('/api/corrections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week, ...suggestion, provider }),
+        body: JSON.stringify({ week, ...suggestion, provider, regenerate: !agentManaged }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Failed to save');
@@ -69,7 +71,9 @@ function CorrectionCard({
           disabled={saving}
           className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
         >
-          {saving ? 'Saving & regenerating…' : 'Save & regenerate report'}
+          {saving
+            ? agentManaged ? 'Saving…' : 'Saving & regenerating…'
+            : agentManaged ? 'Save for next Insights review' : 'Save & regenerate report'}
         </button>
         <button
           onClick={clear}
@@ -79,7 +83,7 @@ function CorrectionCard({
           Dismiss
         </button>
       </div>
-      {saving && (
+      {saving && !agentManaged && (
         <div className="mt-3">
           <ProgressBar
             seconds={elapsed}
@@ -95,9 +99,12 @@ function CorrectionCard({
 export function ChatPanel({
   week,
   initialChat,
+  agentManaged = false,
 }: {
   week: string;
   initialChat: ChatMessage[];
+  /** Agent-published reports must return through validated publish, not legacy reanalysis. */
+  agentManaged?: boolean;
 }) {
   const [provider, setProvider] = useProvider();
   const [model, setModel] = useModel(provider);
@@ -107,7 +114,7 @@ export function ChatPanel({
       title="Discuss this week"
       collapsedLabel={'\u{1F4AC} Discuss this week \u2014 question the numbers, flag bad data'}
       placeholder="Ask or challenge the data\u2026  (Enter to send, Shift+Enter for a new line)"
-      emptyHint={`Ask anything about this week, or point out data that looks wrong (e.g. "the zero-result spike is a PostHog misconfig, not real users"). If we agree it's skewed, I'll offer to save a caveat and regenerate the report.`}
+      emptyHint={`Ask anything about this week, or point out data that looks wrong (e.g. "the zero-result spike is a PostHog misconfig, not real users"). If we agree it's skewed, I'll offer to save context${agentManaged ? ' for the next validated Insights review.' : ' and regenerate the report.'}`}
       initialChat={initialChat}
       provider={provider}
       setProvider={setProvider}
@@ -131,6 +138,7 @@ export function ChatPanel({
           week={week}
           suggestion={extra}
           provider={p}
+          agentManaged={agentManaged}
           clear={clear}
           setMessages={setMessages}
         />

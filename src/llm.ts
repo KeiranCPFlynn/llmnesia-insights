@@ -145,11 +145,13 @@ export interface LlmRequest {
    * response short (e.g. chat replies).
    */
   maxTokens?: number;
+  /** Per-call OpenAI reasoning budget. Ignored by non-reasoning providers. */
+  reasoningEffort?: ReasoningEffort;
   system: LlmTextBlock[];
   messages: LlmMessage[];
   tools: LlmTool[];
   /** Force a specific tool by name, or let the model decide. */
-  toolChoice: { type: 'tool'; name: string } | 'auto';
+  toolChoice: { type: 'tool'; name: string } | 'auto' | 'none';
 }
 
 export interface LlmResponse {
@@ -267,15 +269,19 @@ async function callClaude(req: LlmRequest): Promise<LlmResponse> {
   const response = await client.messages.create({
     model: actualModel,
     max_tokens: req.maxTokens ?? CLAUDE_MAX_TOKENS,
-    tools: req.tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema as Anthropic.Tool.InputSchema,
-    })),
-    tool_choice:
-      req.toolChoice === 'auto'
-        ? { type: 'auto' }
-        : { type: 'tool', name: req.toolChoice.name },
+    ...(req.toolChoice === 'none'
+      ? {}
+      : {
+        tools: req.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+        })),
+        tool_choice:
+          req.toolChoice === 'auto'
+            ? { type: 'auto' as const }
+            : { type: 'tool' as const, name: req.toolChoice.name },
+      }),
     system: toBlocks(req.system),
     messages: req.messages.map((m) => ({ role: m.role, content: toBlocks(m.blocks) })),
   });
@@ -325,7 +331,7 @@ async function callOpenAICompatible(
 
   const tc = req.toolChoice;
   const forcedTool =
-    tc === 'auto' ? null : (req.tools.find((t) => t.name === tc.name) ?? req.tools[0]);
+    tc === 'auto' || tc === 'none' ? null : (req.tools.find((t) => t.name === tc.name) ?? req.tools[0]);
 
   let systemText = join(req.system);
   if (forcedTool) {
@@ -343,16 +349,19 @@ async function callOpenAICompatible(
   // GPT-5.6 rejects `reasoning_effort` + function tools on /v1/chat/completions
   // (it requires /v1/responses for that combo). The forced-tool path uses JSON
   // mode — no function tools — so reasoning_effort is safe there.
-  const includeReasoningEffort = cfg.reasoningEffort && forcedTool;
+  const reasoningEffort = req.reasoningEffort ?? cfg.reasoningEffort;
+  const includeReasoningEffort = reasoningEffort && forcedTool;
 
   const response = await client.chat.completions.create({
     model: resolveModelForConfig(cfg, req.model),
     [cfg.tokenParam]: req.maxTokens ?? cfg.maxTokensDefault,
     // The installed SDK predates GPT-5.6's `xhigh` / `max` levels, but the
     // Chat Completions API accepts them. Keep the runtime value intact.
-    ...(includeReasoningEffort ? { reasoning_effort: cfg.reasoningEffort as 'low' | 'medium' | 'high' } : {}),
+    ...(includeReasoningEffort ? { reasoning_effort: reasoningEffort as 'low' | 'medium' | 'high' } : {}),
     messages,
-    ...(forcedTool
+    ...(tc === 'none'
+      ? {}
+      : forcedTool
       ? { response_format: { type: 'json_object' as const } }
       : {
         tools: req.tools.map((t) => ({

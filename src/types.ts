@@ -43,14 +43,34 @@ export interface MetricsSnapshot {
   engagement: { wau: number; wau_any_event: number; total_searches: number; searches_per_wau: number };
   search_quality: {
     searches: number;
+    /** Search-result opens only; popup_recents has no search denominator. */
     clicks: number;
+    popup_recent_opens: number;
+    /** Frozen former numerator for historical continuity. */
+    clicks_including_popup_recents: number;
     zero_results: number;
     click_rate: number;
+    /** Frozen former rate; do not compare with the primary click_rate series. */
+    click_rate_including_popup_recents: number;
     zero_result_rate: number;
   };
   platforms: {
+    /** Intentional search-result impressions from search_submitted shown_{platform}. */
     searches: Record<string, number>;
+    /** Result opens from actual overlay/popup searches; excludes popup_recents. */
     clicks: Record<string, number>;
+    /** Opens from the popup's idle Recents list, which has no search denominator. */
+    popup_recents: Record<string, number>;
+    /**
+     * Frozen legacy definitions retained for historical continuity. These are
+     * not comparable with the intentional-search series above.
+     */
+    legacy: {
+      /** Keystroke-level search_performed results_by_platform (the original eight slugs). */
+      searches: Record<string, number>;
+      /** All result_opened events, including popup_recents (the original numerator). */
+      clicks: Record<string, number>;
+    };
   };
   email_capture: { wau: number; identified: number; rate: number };
   /**
@@ -765,6 +785,9 @@ export interface EvidenceFreshness {
   detail?: string;
 }
 
+/** The prior report without its duplicate raw metric snapshot. */
+export type PriorReviewContext = Omit<WeeklyInsight, 'metrics_snapshot'>;
+
 export interface AgentEvidencePack {
   schema_version: 1;
   generated_at: string;
@@ -782,7 +805,7 @@ export interface AgentEvidencePack {
   };
   strategy: {
     current_ledger: StrategyLedgerState | null;
-    previous_review: WeeklyInsight | null;
+    previous_review: PriorReviewContext | null;
     recent_decisions: StrategyDecision[];
     standing_caveats: StandingCaveat[];
     goals: string[];

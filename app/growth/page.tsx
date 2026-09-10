@@ -14,11 +14,10 @@ import { SiteSwitch } from '../../components/SiteSwitch';
 import { WeekSelect } from '../../components/WeekSelect';
 import { GrowthSyncToolbar } from '../../components/GrowthDashboard';
 import { GrowthGoalEditor } from '../../components/GrowthGoalEditor';
-import { GSCDataVisuals } from '../../components/GSCDataVisuals';
+import { GscDataLoader } from '../../components/GscDataLoader';
 import { WeeklyPlan } from '../../components/WeeklyPlan';
 import { OpportunityList } from '../../components/OpportunityList';
 import { ActionBoard } from '../../components/ActionBoard';
-import { ensureOpportunities } from '../../src/growth.js';
 import type { GrowthActionStatus, GrowthOpportunityType } from '../../src/types.js';
 
 export const dynamic = 'force-dynamic';
@@ -80,18 +79,9 @@ export default async function GrowthPage({
     );
   }
 
-  // If GSC data is synced but opportunities haven't been computed for this
-  // week yet, compute them now on the server — pure SQL + JS, no LLM, fast.
-  // Without this the page looks empty after a successful sync until the user
-  // also clicks "Generate weekly plan", which is bad UX.
-  let opportunities = data.opportunities;
-  if (data.rowCount > 0 && opportunities.length === 0) {
-    try {
-      opportunities = await ensureOpportunities({ siteId, weekStart });
-    } catch (e) {
-      console.error('[growth-page] opportunity detection failed:', e);
-    }
-  }
+  // Navigation is read-only. Opportunity calculation runs during plan
+  // generation/sync; never make a dashboard GET perform a large write.
+  const opportunities = data.opportunities;
   const grouped = groupOpportunities(opportunities);
   const orderedTypes: GrowthOpportunityType[] = [
     'near_win',
@@ -150,7 +140,7 @@ export default async function GrowthPage({
       eyebrow="Acquisition workspace"
       title="Organic growth"
       description="Move from Search Console signal to a ranked weekly plan, then track the work through to publication."
-      context={`${data.site.name} · week of ${formatWeek(weekStart)} · ${opportunities.length} opportunities`}
+      context={`${data.site.name} · week of ${formatWeek(weekStart)} · ${data.opportunityCount} opportunities`}
       controls={
         <div className="flex flex-wrap justify-end gap-2">
           <WeekSelect
@@ -197,7 +187,8 @@ export default async function GrowthPage({
           initialPlan={data.plan}
           recommendationActions={recommendationActions}
           handledPageActionKeys={handledPageActionKeys}
-          opportunityCount={opportunities.length}
+          opportunityCount={data.opportunityCount}
+          hasSearchData={data.rowCount > 0 || data.bingRowCount > 0}
         />
       </section>
 
@@ -208,18 +199,18 @@ export default async function GrowthPage({
             clicks, impressions, CTR and ranking context
           </span>
         </h2>
-        <GSCDataVisuals key={`${siteId}:${weekStart}`} digest={data.gscDigest} />
+        <GscDataLoader key={`${siteId}:${weekStart}`} siteId={siteId} weekStart={weekStart} />
       </section>
 
       <section id="opportunities" className="scroll-mt-36 mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
           Opportunity queues{' '}
           <span className="ml-2 font-normal text-neutral-500">
-            {opportunities.length === 0
+            {data.opportunityCount === 0
               ? data.rowCount === 0
                 ? 'sync GSC above to surface these'
                 : 'no opportunities matched the detectors this week — try a longer backfill or wait for more data'
-              : `${opportunities.length} detected from ${data.rowCount.toLocaleString('en-GB')} GSC rows`}
+              : `${data.opportunityCount} detected from ${data.rowCount.toLocaleString('en-GB')} GSC rows`}
           </span>
         </h2>
         <div className="space-y-3">
@@ -233,6 +224,7 @@ export default async function GrowthPage({
                 label={OPP_LABEL[t]}
                 hint={OPP_HINT[t]}
                 opportunities={grouped[t]}
+                count={data.opportunityCounts[t]}
                 acceptedIds={acceptedOpportunityIds}
               />
             ),

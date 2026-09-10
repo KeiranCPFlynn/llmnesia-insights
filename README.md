@@ -160,6 +160,14 @@ metrics snapshot as a starting point, and leaves an existing ledger untouched.
 schema. A permission error means the tables exist but the `service_role` Data
 API grant above is missing.
 
+### 1b(ii). Incremental analytics ingestion
+
+Apply [`supabase/insights-ingestion.sql`](supabase/insights-ingestion.sql).
+It stores every PostHog, GA4, GSC and Bing response used in a review and keeps
+a per-source freshness cursor. The daily collector updates recent data; an
+Insights review reads the stored evidence and only triggers ingestion when that
+cursor is behind.
+
 ### 1c. Traffic Growth Planner schema (`/growth`)
 
 The Growth Planner (Google Search Console + opportunity detection + weekly
@@ -450,7 +458,8 @@ How it works:
   page header. The data model is multi-site from day 1; adding a new site is
   just another row.
 - **GSC sync** — manual on first run (the **Backfill 90 days** button) and
-  then a **Sync latest data** button to catch up from the newest stored GSC date. No cron
+  then a **Sync latest data** button that refreshes only the latest seven-day
+  correction window. No cron
   yet; sync before generating the weekly plan.
 - **Opportunity queues** (deterministic — pure rules over the data, no LLM):
   - **Near-wins** — already ranks page 2–3 with real impressions: push to page 1.
@@ -460,9 +469,11 @@ How it works:
   - **Proven traffic expanders** — pages already pulling consistent clicks.
   Each opportunity shows the raw GSC numbers it was built from and a
   transparent 0–100 score — no opaque AI ranking.
-- **Weekly plan** — one LLM call (`GROWTH_PROVIDER`, default Claude) composes
-  a balanced plan over the top 25 ranked opportunities + your project brief
-  + prior plans + in-flight actions. The plan declares a one-line thesis, a
+- **Weekly plan** — one bounded LLM call (`GROWTH_PROVIDER`, default Claude)
+  composes a balanced plan over the top 25 candidates from the persisted weekly
+  opportunity snapshot + your project brief + prior plans + in-flight actions.
+  Regeneration reuses that snapshot; it does not re-read and rewrite the full
+  historical query corpus. The plan declares a one-line thesis, a
   balance object (create / improve / link / fix / distribute / measure), and
   5–10 ranked recommendations — each with action type, target, why,
   expected impact, effort/confidence, source-data line, and the next concrete

@@ -8,11 +8,13 @@ import { SourceBadge } from '../components/SourceBadge';
 import { LedgerOverview } from '../components/LedgerOverview';
 import { OperatingLoop } from '../components/OperatingLoop';
 import { StrategyPanel } from '../components/StrategyPanel';
+import { ChatPanel } from '../components/ChatPanel';
 import {
   getEvidenceRecordByWeek,
   getLatestEvidenceRecord,
   getRecentContextSources,
   getRecentLedgerEntries,
+  getInsightByWeek,
   getStrategyLedger,
 } from '../src/supabase.js';
 import type { DataSource } from '../src/types.js';
@@ -90,7 +92,8 @@ export default async function Page({
 }: {
   searchParams: Promise<{ week?: string; period?: string }>;
 }) {
-  const [insights, latestEvidence] = await Promise.all([
+  const [params, insights, latestEvidence] = await Promise.all([
+    searchParams,
     getAllInsights(),
     getLatestEvidenceRecord().catch(() => null),
   ]);
@@ -101,15 +104,17 @@ export default async function Page({
 
   // Persistent "known facts" — fail-soft so a pre-DDL / missing table never
   // takes down the whole dashboard.
-  const [ledger, ledgerEntries, contextSources] = await Promise.all([
+  const { week, period } = params;
+  const selection = selectWeek(insights, week, period);
+  const [ledger, ledgerEntries, contextSources, evidenceRecord, fullCurrent] = await Promise.all([
     getStrategyLedger().catch(() => null),
     getRecentLedgerEntries(12).catch(() => []),
     getRecentContextSources(50).catch(() => []),
+    getEvidenceRecordByWeek(selection.current.week_start).catch(() => null),
+    getInsightByWeek(selection.current.week_start).catch(() => null),
   ]);
-
-  const { week, period } = await searchParams;
-  const { weeks, current, prev } = selectWeek(insights, week, period);
-  const evidenceRecord = await getEvidenceRecordByWeek(current.week_start).catch(() => null);
+  const { weeks, prev } = selection;
+  const current = fullCurrent ?? selection.current;
   const evidenceDelta = evidenceRecord?.delta ?? null;
   const currentContextSources = contextSources.filter((source) => source.week_start === current.week_start);
   // Insights dropdown shows only weeks that have a published report — every
@@ -237,6 +242,15 @@ export default async function Page({
             {showSummary}
           </p>
         )}
+      </section>
+
+      <section className="mb-8">
+        <ChatPanel
+          key={current.week_start}
+          week={current.week_start}
+          initialChat={current.chat ?? []}
+          agentManaged
+        />
       </section>
 
       {/* Needs attention — concern/critical findings + high-priority actions only */}

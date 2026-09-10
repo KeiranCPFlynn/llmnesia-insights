@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { getOpportunities } from '../src/growth.js';
 import { calendarWeekStart } from './week.js';
 import type {
   GSCRow,
@@ -125,7 +124,10 @@ export interface GrowthPageData {
   /** All enabled sites — used by the site switcher. */
   allSites: Site[];
   plan: GrowthPlan | null;
+  /** Top 25 rows per queue; enough for inspection without transferring every candidate. */
   opportunities: GrowthOpportunity[];
+  opportunityCount: number;
+  opportunityCounts: Record<GrowthOpportunityType, number>;
   actions: GrowthAction[];
   /** Most recent synced_at across gsc_rows and bing_rows (null if never synced). */
   lastSyncedAt: string | null;
@@ -133,7 +135,51 @@ export interface GrowthPageData {
   rowCount: number;
   /** Total bing_rows for this site (0 = never synced, or Bing not configured). */
   bingRowCount: number;
-  gscDigest: GscDigest;
+}
+
+const OPPORTUNITY_TYPES: GrowthOpportunityType[] = [
+  'near_win',
+  'low_ctr',
+  'gap',
+  'declining',
+  'proven_expander',
+];
+
+async function getOpportunityOverview(siteId: string, weekStart: string): Promise<{
+  opportunities: GrowthOpportunity[];
+  count: number;
+  counts: Record<GrowthOpportunityType, number>;
+}> {
+  const supabase = getClient();
+  const results = await Promise.all(
+    OPPORTUNITY_TYPES.map((type) =>
+      supabase
+        .from('growth_opportunities')
+        .select('*', { count: 'exact' })
+        .eq('site_id', siteId)
+        .eq('week_start', weekStart)
+        .eq('type', type)
+        .order('score', { ascending: false })
+        .limit(25),
+    ),
+  );
+
+  const counts = Object.fromEntries(OPPORTUNITY_TYPES.map((type) => [type, 0])) as Record<
+    GrowthOpportunityType,
+    number
+  >;
+  const opportunities: GrowthOpportunity[] = [];
+  results.forEach((result, index) => {
+    if (result.error) throw new Error(`growth_opportunities fetch failed: ${result.error.message}`);
+    const type = OPPORTUNITY_TYPES[index];
+    counts[type] = result.count ?? 0;
+    opportunities.push(...((result.data as GrowthOpportunity[]) ?? []));
+  });
+  return {
+    opportunities,
+    counts,
+    count: OPPORTUNITY_TYPES.reduce((sum, type) => sum + counts[type], 0),
+  };
 }
 
 export interface GscDailyPoint {
@@ -283,7 +329,7 @@ async function getGscRowsForDigest(
   return out;
 }
 
-async function getGscDigest(siteId: string, weekStart: string): Promise<GscDigest> {
+export async function getGscDigest(siteId: string, weekStart: string): Promise<GscDigest> {
   const supabase = getClient();
   const targetEndDate = selectedWeekEnd(weekStart);
   const { data: latest, error: latestError } = await supabase
@@ -359,7 +405,7 @@ export async function getGrowthPageData(
   weekStart: string,
 ): Promise<GrowthPageData | null> {
   const supabase = getClient();
-  const [siteRes, sitesRes, planRes, opportunities, actionsRes, syncRes, countRes, bingSyncRes, bingCountRes, digest] =
+  const [siteRes, sitesRes, planRes, opportunityOverview, actionsRes, syncRes, countRes, bingSyncRes, bingCountRes] =
     await Promise.all([
       supabase.from('sites').select('*').eq('id', siteId).maybeSingle(),
       supabase
@@ -373,10 +419,7 @@ export async function getGrowthPageData(
         .eq('site_id', siteId)
         .eq('week_start', weekStart)
         .maybeSingle(),
-      // Same 1000-row cap as gsc_rows applies here — a well-detected week can
-      // exceed 1000 opportunities, so this needs getOpportunities' pagination
-      // rather than a raw unpaginated select.
-      getOpportunities(siteId, weekStart),
+      getOpportunityOverview(siteId, weekStart),
       supabase
         .from('growth_actions')
         .select('*')
@@ -398,7 +441,6 @@ export async function getGrowthPageData(
         .limit(1)
         .maybeSingle(),
       supabase.from('bing_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
-      getGscDigest(siteId, weekStart),
     ]);
 
   if (siteRes.error) throw new Error(`site fetch failed: ${siteRes.error.message}`);
@@ -419,12 +461,13 @@ export async function getGrowthPageData(
     weekStart,
     allSites: (sitesRes.data as Site[]) ?? [],
     plan: ((planRes.data as { plan: GrowthPlan } | null)?.plan) ?? null,
-    opportunities,
+    opportunities: opportunityOverview.opportunities,
+    opportunityCount: opportunityOverview.count,
+    opportunityCounts: opportunityOverview.counts,
     actions: (actionsRes.data as GrowthAction[]) ?? [],
     lastSyncedAt,
     rowCount: countRes.count ?? 0,
     bingRowCount: bingCountRes.count ?? 0,
-    gscDigest: digest,
   };
 }
 

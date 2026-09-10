@@ -3,7 +3,12 @@
 Use this runbook when the founder says **Run the Insights review.** Insights is
 the evidence store and dashboard; you are the strategy and execution agent.
 
-1. Run `npm run insights:prepare` first. Read `.insights/evidence-pack.json`
+1. Run `npm run insights:prepare` first. It defaults to the latest completed
+   Monday-to-Sunday week; use `--week-to-date` only when the founder explicitly
+   asks for an in-progress partial week. Analytics ingestion is mandatory:
+   PostHog, GA4, GSC and Bing are collected on the daily schedule and stored in
+   Supabase. Prepare normally reads that stored evidence; use
+   `--refresh-evidence` only to deliberately force a new ingestion run. Read `.insights/evidence-pack.json`
    completely. It contains the reporting period, current/prior snapshots,
    computed deltas, freshness, current Strategy Ledger, prior review and
    decisions, caveats, definitions, goals, and constraints. Never put secrets
@@ -11,12 +16,18 @@ the evidence store and dashboard; you are the strategy and execution agent.
 2. Inspect relevant repositories with your own Git and file tools. Read the
    changed code that matters; do not infer shipped work from commit messages
    alone. Record repository, commit refs, inspected files, and concise findings.
-3. Use LLMnesia MCP to retrieve relevant decisions, rejected ideas,
-   constraints, and recent work. Record only conversation identifiers, titles,
-   and why they mattered—never transcript text.
-4. If prepared evidence raises a material question, use PostHog or another
-   available source tool for a focused follow-up query and record the tool in
-   `sources.follow_up_tools`.
+3. Use LLMnesia MCP to retrieve only the decisions, rejected ideas,
+   constraints, and recent work relevant to the changed evidence. Record only
+   conversation identifiers, titles, and why they mattered—never transcript text.
+4. Inspect only the code changed since the previous review unless the evidence
+   requires a broader investigation. If the stored evidence raises a material
+   question, use a focused source follow-up query and record the tool in
+   `sources.follow_up_tools`; this is drill-down, not a replacement for the
+   mandatory stored analytics ingestion.
+   Keep a normal review bounded: inspect no more than 10 changed files across
+   the relevant repositories, retrieve one focused set of conversations, and
+   make at most three ranked recommendations. A founder can explicitly request
+   a deep review when wider research is warranted.
 5. Edit `.insights/review.json` to match the freshly generated
    `.insights/review.template.json` (the prepare command preserves an existing
    draft). Keep observed
@@ -31,6 +42,18 @@ the evidence store and dashboard; you are the strategy and execution agent.
 7. Report exactly what the publish command says it wrote: reporting period,
    data-as-of date, agent, counts of ledger patches, recommendations and
    provenance records, plus any section intentionally left empty.
+
+8. Lead the founder-facing answer with plain English under four short questions:
+   **What changed? Why? Do we have a problem? What should we do next?** Use the
+   latest completed week against the preceding completed week, show only the
+   decision-relevant numbers, and state uncertainty directly. Never foreground
+   a partial-day envelope when a completed-week comparison is available.
+9. Resolve founder follow-ups from the existing evidence pack, inspected Git,
+   and LLMnesia history before running new analytics queries. Treat founder
+   corrections as authoritative context, update and republish the same weekly
+   review when needed. Dashboard report chat can save factual context for this
+   validated republish flow; recommendation chat can be used to challenge a
+   published recommendation without bypassing the Strategy Ledger.
 
 Publishing rejects unknown operations, malformed recommendations, missing
 source evidence, mismatched or stale periods, and patches that cannot be fully

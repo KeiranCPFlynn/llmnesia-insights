@@ -39,7 +39,7 @@ async function runBingSync(
  * POST { siteId?: string, mode?: 'auto'|'backfill'|'delta' }
  *   - siteId omitted ⇒ sync every enabled site
  *   - mode 'auto' (default) ⇒ backfill if no rows yet, otherwise catch up
- *   - mode 'delta' ⇒ refresh the visible 90-day window through yesterday
+ *   - mode 'delta' ⇒ refresh the latest 7-day correction window through yesterday
  *   - mode 'backfill' ⇒ always re-pull the full 90-day history
  *
  * Bing sync runs alongside GSC when BING_WEBMASTER_API_KEY is set.

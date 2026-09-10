@@ -1,12 +1,12 @@
 import './env.js';
 import { createClient } from '@supabase/supabase-js';
 import {
-  deltaRange as gscDeltaRange,
+  autoSyncRange as gscAutoSyncRange,
   getAccurateSiteTotals,
   syncSite as gscSyncSite,
 } from './gsc.js';
 import {
-  deltaRange as bingDeltaRange,
+  autoSyncRange as bingAutoSyncRange,
   getAccurateBingTotals,
   syncSite as bingSyncSite,
 } from './bing.js';
@@ -84,10 +84,14 @@ export async function syncSearchForInsights(
 
   const resolved = site;
   const hasBing = !!process.env.BING_WEBMASTER_API_KEY;
+  const [gscRange, bingRange] = await Promise.all([
+    gscAutoSyncRange(resolved.id),
+    hasBing ? bingAutoSyncRange(resolved.id) : Promise.resolve(null),
+  ]);
   const results = await Promise.allSettled([
-    gscSyncSite(resolved, gscDeltaRange(), (m) => log(`[search-sync] ${m}`)),
-    hasBing
-      ? bingSyncSite(resolved, bingDeltaRange(), (m) => log(`[search-sync] ${m}`))
+    gscSyncSite(resolved, gscRange, (m) => log(`[search-sync] ${m}`)),
+    hasBing && bingRange
+      ? bingSyncSite(resolved, bingRange, (m) => log(`[search-sync] ${m}`))
       : Promise.resolve(0),
   ]);
   const [gsc, bing] = results;

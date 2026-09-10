@@ -16,7 +16,9 @@ import { ProgressBar, useElapsed } from './ProgressBar';
 import { GenerationContextBox } from './GenerationContextBox';
 import { GrowthPlanChat } from './GrowthPlanChat';
 
-const STALE_MS = 20 * 60 * 1000;
+// The hosted function is capped at five minutes. Do not leave a dead job
+// looking active for another fifteen minutes after the server has stopped it.
+const STALE_MS = 5 * 60 * 1000;
 const pendingKey = (siteId: string, week: string) =>
   `llmnesia:growth-plan-pending:${siteId}:${week}`;
 
@@ -77,6 +79,7 @@ export function WeeklyPlan({
   recommendationActions,
   handledPageActionKeys,
   opportunityCount,
+  hasSearchData,
 }: {
   siteId: string;
   weekStart: string;
@@ -92,6 +95,8 @@ export function WeeklyPlan({
    */
   handledPageActionKeys: string[];
   opportunityCount: number;
+  /** Allows a new week to reuse the latest persisted opportunity snapshot. */
+  hasSearchData: boolean;
 }) {
   const router = useRouter();
   const [plan, setPlan] = useState<GrowthPlan | null>(initialPlan);
@@ -151,11 +156,11 @@ export function WeeklyPlan({
       if (Date.now() - startMs > STALE_MS) {
         localStorage.removeItem(pendingKey(siteId, weekStart));
         setPolling(false);
-        setError('Generation took too long. Try again.');
+        setError('The server did not finish the plan within five minutes. Nothing was saved; try again.');
         stopPoll();
         return;
       }
-      pollTimer.current = setTimeout(step, 15000);
+      pollTimer.current = setTimeout(step, 5000);
     };
     pollTimer.current = setTimeout(step, 4000);
   }
@@ -222,6 +227,7 @@ export function WeeklyPlan({
   }
 
   const working = busy || polling;
+  const canGenerate = opportunityCount > 0 || hasSearchData;
   const handledPageActionSet = new Set(handledPageActionKeys);
   const activeRecommendations =
     plan?.recommendations.filter((rec) => {
@@ -259,8 +265,8 @@ export function WeeklyPlan({
           />
           <button
             onClick={generate}
-            disabled={working || opportunityCount === 0}
-            title={opportunityCount === 0 ? 'Sync GSC data first to surface opportunities.' : ''}
+            disabled={working || !canGenerate}
+            title={!canGenerate ? 'Sync GSC data first to surface opportunities.' : ''}
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-500 disabled:opacity-50 disabled:shadow-none"
           >
             {working ? 'Working…' : plan ? 'Regenerate plan' : 'Generate weekly plan'}
@@ -301,12 +307,16 @@ export function WeeklyPlan({
         <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/70 px-5 py-8 text-center shadow-[0_12px_34px_rgba(0,0,0,0.16)]">
           <p className="text-base text-neutral-300">
             {opportunityCount === 0
-              ? 'No GSC data synced yet — run a sync, then generate the plan.'
+              ? hasSearchData
+                ? 'No opportunity snapshot for this week yet.'
+                : 'No GSC data synced yet — run a sync, then generate the plan.'
               : 'No plan yet for this week.'}
           </p>
           <p className="mx-auto mt-2 max-w-xl text-[15px] leading-relaxed text-neutral-500">
             {opportunityCount === 0
-              ? "Use the Sync button above. The first run pulls 16 months of Search Console data; subsequent runs are a few days' delta."
+              ? hasSearchData
+                ? 'Generate the plan using the latest persisted opportunity snapshot; its evidence date is retained in every candidate.'
+                : "Use the Sync button above. The first run pulls 90 days of Search Console data; subsequent runs refresh only the latest seven-day correction window."
               : `Generate one — the planner reads ${opportunityCount} ranked opportunities plus prior plans and your action history, and composes a balanced weekly plan.`}
           </p>
         </div>

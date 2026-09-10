@@ -104,6 +104,23 @@ const SCHEMA: Record<string, Col[]> = {
     { name: 'digest', type: 'jsonb' },
     { name: 'created_at', type: 'timestamptz' },
   ],
+  source_sync_state: [
+    { name: 'source', type: 'text' },
+    { name: 'scope', type: 'text' },
+    { name: 'latest_data_date', type: 'date' },
+    { name: 'last_success_at', type: 'timestamptz' },
+    { name: 'last_attempt_at', type: 'timestamptz' },
+    { name: 'status', type: 'text' },
+    { name: 'detail', type: 'text' },
+  ],
+  source_snapshots: [
+    { name: 'source', type: 'text' },
+    { name: 'scope', type: 'text' },
+    { name: 'period_start', type: 'date' },
+    { name: 'period_end', type: 'date' },
+    { name: 'snapshot', type: 'jsonb' },
+    { name: 'collected_at', type: 'timestamptz' },
+  ],
 };
 
 /** True if the error is PostgREST's "column does not exist" signal. */
