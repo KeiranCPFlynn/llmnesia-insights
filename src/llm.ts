@@ -364,6 +364,14 @@ async function callOpenAICompatible(
       : forcedTool
       ? { response_format: { type: 'json_object' as const } }
       : {
+        // GPT-5.6's Chat Completions endpoint rejects any non-"none"
+        // reasoning effort alongside function tools. Set this explicitly for
+        // recommendation chats so an account/model default cannot turn an
+        // otherwise valid tool call into a 400. Structured jobs above use JSON
+        // mode instead, so they can retain their configured reasoning budget.
+        ...(cfg.label === 'openai'
+          ? { reasoning_effort: 'none' as unknown as 'low' | 'medium' | 'high' }
+          : {}),
         tools: req.tools.map((t) => ({
           type: 'function' as const,
           function: { name: t.name, description: t.description, parameters: t.input_schema },
