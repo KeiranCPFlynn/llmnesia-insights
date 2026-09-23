@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { collectEvidence } from '../src/evidence.js';
 import { evidenceHash } from '../src/agent-review.js';
-import { getLastCompletedWeek } from '../src/reporting-period.js';
+import { getReviewWeekStart } from '../src/reporting-period.js';
 import {
   getEvidenceRecordByWeek,
   getLatestEvidenceSnapshotBefore,
@@ -92,17 +92,9 @@ function reviewTemplate(pack: AgentEvidencePack): AgentReview {
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
   const refreshEvidence = process.argv.includes('--refresh-evidence');
-  const weekToDate = process.argv.includes('--week-to-date');
-  const weekStartFlag = process.argv.indexOf('--week-start');
-  const weekStart = weekStartFlag >= 0
-    ? process.argv[weekStartFlag + 1]
-    : weekToDate ? null : getLastCompletedWeek().weekStart;
-  if (weekStartFlag >= 0 && !weekStart) {
-    throw new Error('--week-start requires a YYYY-MM-DD value.');
-  }
-  // Reviews are consumers of the ingestion store. The scheduled collector
-  // refreshes sources daily; only collect here when the requested completed
-  // week has no stored evidence or a caller explicitly asks for a refresh.
+  const weekStart = getReviewWeekStart(process.argv.slice(2));
+  // A normal review refreshes through the run date. Historical/completed-week
+  // requests can reuse their stored evidence unless explicitly refreshed.
   const stored = weekStart ? await getEvidenceRecordByWeek(weekStart).catch(() => null) : null;
   const collected = !stored || refreshEvidence
     ? await collectEvidence({

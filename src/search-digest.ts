@@ -300,6 +300,10 @@ export async function getCombinedSearchDigest(
 
   return {
     site: 'llmnesia.com',
+    data_as_of: {
+      google: gscCurrent.map((row) => row.date).sort().at(-1) ?? null,
+      bing: bingCurrent.map((row) => row.date).sort().at(-1) ?? null,
+    },
     window: { start: weekStart, end: weekEnd },
     prior_window: { start: priorStartIso, end: priorEndIso },
     google,

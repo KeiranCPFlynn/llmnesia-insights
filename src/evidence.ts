@@ -37,7 +37,7 @@ export async function collectEvidence(opts: {
   const log = opts.log ?? console.log;
   const current = opts.weekStart ? null : getCurrentWeek();
   const period = opts.weekStart ? getWeekFromArg(opts.weekStart) : current!;
-  const partial = current && current.daysElapsed < 7
+  const partial = current
     ? { as_of: current.weekEnd, days_elapsed: current.daysElapsed }
     : null;
   const { weekStart, weekEnd } = period;
@@ -64,23 +64,22 @@ export async function collectEvidence(opts: {
     ...(partial ? { partial } : {}),
   };
   const delta = computeEvidenceDelta(currentSnapshot, priorSnapshot);
-  const searchAsOfDate = new Date(`${weekEnd}T00:00:00Z`);
-  if (current) searchAsOfDate.setUTCDate(searchAsOfDate.getUTCDate() - 1);
-  const searchAsOf = searchAsOfDate.toISOString().slice(0, 10);
+  const googleAsOf = searchPerformance?.data_as_of?.google ?? null;
+  const bingAsOf = searchPerformance?.data_as_of?.bing ?? null;
   const freshness: EvidenceFreshness[] = [
-    { source: 'PostHog', status: 'fresh', data_as_of: weekEnd },
-    { source: 'GA4', status: 'fresh', data_as_of: weekEnd },
+    { source: 'PostHog', status: 'fresh', data_as_of: weekEnd, detail: current ? 'Queried through this date at collection time; the current day is incomplete.' : 'Queried through the requested historical end date.' },
+    { source: 'GA4', status: 'fresh', data_as_of: weekEnd, detail: 'Queried through this date at collection time; recent GA4 data may still be processing.' },
     {
       source: 'Google Search Console',
       status: searchPerformance?.google ? 'fresh' : 'unavailable',
-      data_as_of: searchAsOf,
-      ...(!searchPerformance?.google ? { detail: 'No Google search rows were available for this period.' } : {}),
+      data_as_of: googleAsOf,
+      detail: googleAsOf ? 'Latest observed Google query-row date; provider data may lag or be incomplete.' : 'No Google search rows were available for this period.',
     },
     {
       source: 'Bing Webmaster Tools',
       status: searchPerformance?.bing ? 'fresh' : 'unavailable',
-      data_as_of: searchAsOf,
-      ...(!searchPerformance?.bing ? { detail: 'No Bing search rows were available for this period.' } : {}),
+      data_as_of: bingAsOf,
+      detail: bingAsOf ? 'Latest observed Bing query-row date; provider data may lag or be incomplete.' : 'No Bing search rows were available for this period.',
     },
   ];
 
@@ -98,23 +97,23 @@ export async function collectEvidence(opts: {
         source: 'Google Search Console',
         periodStart: weekStart,
         periodEnd: weekEnd,
-        snapshot: searchPerformance?.google ?? null,
+        snapshot: searchPerformance?.google ?? { unavailable: true, reason: 'No Google search rows available for this period.' },
       }),
       saveSourceSnapshot({
         source: 'Bing Webmaster Tools',
         periodStart: weekStart,
         periodEnd: weekEnd,
-        snapshot: searchPerformance?.bing ?? null,
+        snapshot: searchPerformance?.bing ?? { unavailable: true, reason: 'No Bing search rows available for this period.' },
       }),
       saveSourceSyncState({
         source: 'Google Search Console',
-        latestDataDate: searchAsOf,
+        latestDataDate: googleAsOf,
         status: searchPerformance?.google ? 'fresh' : 'failed',
         detail: searchPerformance?.google ? null : 'No Google search rows were available for this period.',
       }),
       saveSourceSyncState({
         source: 'Bing Webmaster Tools',
-        latestDataDate: searchAsOf,
+        latestDataDate: bingAsOf,
         status: searchPerformance?.bing ? 'fresh' : 'failed',
         detail: searchPerformance?.bing ? null : 'No Bing search rows were available for this period.',
       }),

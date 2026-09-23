@@ -61,3 +61,16 @@ export function getWeekFromArg(weekStartArg: string): { weekStart: string; weekE
   end.setUTCDate(start.getUTCDate() + 6);
   return { weekStart: formatDate(start), weekEnd: formatDate(end) };
 }
+
+/** A review includes the run date by default; completed weeks are opt-in. */
+export function getReviewWeekStart(args: string[], now = new Date()): string | null {
+  const index = args.indexOf('--week-start');
+  if (index >= 0) {
+    const value = args[index + 1];
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error('--week-start requires a YYYY-MM-DD value.');
+    }
+    return value;
+  }
+  return args.includes('--completed-week') ? getLastCompletedWeek(now).weekStart : null;
+}

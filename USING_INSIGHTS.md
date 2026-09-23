@@ -40,6 +40,10 @@ The conversational workflow is preferred. To run its two phases manually:
 npm run insights:prepare
 ```
 
+By default this refreshes evidence through today. Today and the current week
+are partial, and provider processing delays still apply. Use `--completed-week`
+only for an explicitly requested historical comparison.
+
 This creates an ignored `.insights/` workspace:
 
 - `evidence-pack.json` — the complete prepared context to review.

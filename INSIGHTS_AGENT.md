@@ -3,16 +3,18 @@
 Use this runbook when the founder says **Run the Insights review.** Insights is
 the evidence store and dashboard; you are the strategy and execution agent.
 
-1. Run `npm run insights:prepare` first. It defaults to the latest completed
-   Monday-to-Sunday week; use `--week-to-date` only when the founder explicitly
-   asks for an in-progress partial week. Analytics ingestion is mandatory:
-   PostHog, GA4, GSC and Bing are collected on the daily schedule and stored in
-   Supabase. Prepare normally reads that stored evidence; use
-   `--refresh-evidence` only to deliberately force a new ingestion run. Read `.insights/evidence-pack.json`
-   completely. It contains the reporting period, current/prior snapshots,
-   computed deltas, freshness, current Strategy Ledger, prior review and
-   decisions, caveats, definitions, goals, and constraints. Never put secrets
-   or raw private conversation transcripts in review output.
+1. Run `npm run insights:prepare` first. The default refreshes all sources
+   through the run date and stores the evidence in Supabase. This is a partial
+   week, including on Sunday while that day is still in progress. Report the
+   actual collection time and source availability; requesting today's date
+   does not mean a provider has finished processing today's data. Search data
+   can lag. Use `--completed-week` only when the founder requests a completed
+   week, or `--week-start YYYY-MM-DD` for a historical week. Those explicit
+   historical requests can reuse stored evidence; `--refresh-evidence` forces
+   a refresh. Read `.insights/evidence-pack.json` completely. It contains the
+   reporting period, current/prior snapshots, deltas, freshness, Strategy
+   Ledger, prior review and decisions, caveats, definitions, and constraints.
+   Never put secrets or raw private conversation transcripts in review output.
 2. Inspect relevant repositories with your own Git and file tools. Read the
    changed code that matters; do not infer shipped work from commit messages
    alone. Record repository, commit refs, inspected files, and concise findings.
@@ -44,10 +46,12 @@ the evidence store and dashboard; you are the strategy and execution agent.
    provenance records, plus any section intentionally left empty.
 
 8. Lead the founder-facing answer with plain English under four short questions:
-   **What changed? Why? Do we have a problem? What should we do next?** Use the
-   latest completed week against the preceding completed week, show only the
-   decision-relevant numbers, and state uncertainty directly. Never foreground
-   a partial-day envelope when a completed-week comparison is available.
+   **What changed? Why? Do we have a problem? What should we do next?**
+   Lead with evidence refreshed through the run date and explicitly label the
+   current day and week as partial. Do not compare partial-week totals with
+   complete-week totals as if the windows matched. Use completed weeks as
+   historical context, show only decision-relevant numbers, and state source
+   delays and uncertainty directly.
 9. Resolve founder follow-ups from the existing evidence pack, inspected Git,
    and LLMnesia history before running new analytics queries. Treat founder
    corrections as authoritative context, update and republish the same weekly

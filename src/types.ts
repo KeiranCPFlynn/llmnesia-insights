@@ -135,6 +135,8 @@ export interface SearchQueryRow {
 }
 
 export interface SearchPerformanceDigest {
+  /** Latest observed query-row dates, not assumed provider completeness. */
+  data_as_of?: { google: string | null; bing: string | null };
   site: string;
   window: { start: string; end: string };
   prior_window: { start: string; end: string };
@@ -781,7 +783,7 @@ export interface EvidenceDeltaRecord {
 export interface EvidenceFreshness {
   source: 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools';
   status: 'fresh' | 'unavailable';
-  data_as_of: string;
+  data_as_of: string | null;
   detail?: string;
 }
 
