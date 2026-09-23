@@ -61,22 +61,30 @@ async function fetchProperty(
 ): Promise<GA4PropertyMetrics> {
   const property = `properties/${propertyId}`;
   const dateRanges = [{ startDate: weekStart, endDate: weekEnd }];
+  // This property also receives localhost and preview traffic. Keep every
+  // website metric on the same production-host population, including history.
+  const websiteFilter = label === 'website'
+    ? { filter: { fieldName: 'hostName', inListFilter: { values: ['www.llmnesia.com', 'llmnesia.com'] } } }
+    : undefined;
 
   const [[overview], [acquisition], [pages], [geo], [devices]] = await Promise.all([
     client.runReport({
       property,
       dateRanges,
+      ...(websiteFilter ? { dimensionFilter: websiteFilter } : {}),
       metrics: [{ name: 'totalUsers' }, { name: 'newUsers' }, { name: 'sessions' }],
     }),
     client.runReport({
       property,
       dateRanges,
+      ...(websiteFilter ? { dimensionFilter: websiteFilter } : {}),
       dimensions: [{ name: 'sessionDefaultChannelGroup' }],
       metrics: [{ name: 'sessions' }],
     }),
     client.runReport({
       property,
       dateRanges,
+      ...(websiteFilter ? { dimensionFilter: websiteFilter } : {}),
       dimensions: [{ name: 'pagePath' }],
       metrics: [{ name: 'screenPageViews' }],
       orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
@@ -85,6 +93,7 @@ async function fetchProperty(
     client.runReport({
       property,
       dateRanges,
+      ...(websiteFilter ? { dimensionFilter: websiteFilter } : {}),
       dimensions: [{ name: 'country' }],
       metrics: [{ name: 'sessions' }],
       orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
@@ -93,6 +102,7 @@ async function fetchProperty(
     client.runReport({
       property,
       dateRanges,
+      ...(websiteFilter ? { dimensionFilter: websiteFilter } : {}),
       dimensions: [{ name: 'deviceCategory' }],
       metrics: [{ name: 'sessions' }],
     }),
@@ -151,17 +161,20 @@ async function fetchProperty(
   }
 
   if (opts.conversionEvents && opts.conversionEvents.length > 0) {
+    const eventFilter = {
+      filter: {
+        fieldName: 'eventName',
+        inListFilter: { values: opts.conversionEvents },
+      },
+    };
     const [events] = await client.runReport({
       property,
       dateRanges,
       dimensions: [{ name: 'eventName' }],
       metrics: [{ name: 'eventCount' }],
-      dimensionFilter: {
-        filter: {
-          fieldName: 'eventName',
-          inListFilter: { values: opts.conversionEvents },
-        },
-      },
+      dimensionFilter: websiteFilter
+        ? { andGroup: { expressions: [websiteFilter, eventFilter] } }
+        : eventFilter,
     });
     // Seed with zeros so a missing event reads as "0 this week" not "missing".
     const conv: Record<string, number> = Object.fromEntries(
