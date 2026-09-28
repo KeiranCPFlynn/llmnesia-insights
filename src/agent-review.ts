@@ -61,6 +61,45 @@ function dateMs(value: string): number {
   return new Date(value.includes('T') ? value : `${value}T23:59:59Z`).getTime();
 }
 
+// prepared_at must be an unambiguous instant: ISO 8601 with an explicit
+// timezone (Z or a numeric offset). Components are validated by range and
+// calendar round-trip instead of relying on `new Date()` parsing, which
+// silently turns malformed text and impossible dates into NaN and reads
+// timezone-less strings as local time.
+const ISO_TIMESTAMP_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+
+function preparedAtMs(value: string): number | null {
+  const match = ISO_TIMESTAMP_RE.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction, offsetSign, offsetHours, offsetMinutes] = match;
+  if (Number(hour) > 23 || Number(minute) > 59) return null;
+  if (second !== undefined && Number(second) > 59) return null;
+  if (offsetSign && (Number(offsetHours) > 23 || Number(offsetMinutes) > 59)) return null;
+  const utcMonth = Number(month) - 1;
+  const probe = new Date(Date.UTC(Number(year), utcMonth, Number(day)));
+  if (
+    probe.getUTCFullYear() !== Number(year) ||
+    probe.getUTCMonth() !== utcMonth ||
+    probe.getUTCDate() !== Number(day)
+  ) {
+    return null;
+  }
+  const milliseconds = fraction ? Math.round((Number(fraction) / 10 ** fraction.length) * 1000) : 0;
+  let ms = Date.UTC(
+    Number(year),
+    utcMonth,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    second !== undefined ? Number(second) : 0,
+    milliseconds,
+  );
+  if (offsetSign) {
+    ms -= (offsetSign === '-' ? -1 : 1) * (Number(offsetHours) * 60 + Number(offsetMinutes)) * 60_000;
+  }
+  return ms;
+}
+
 export function stableUuid(seed: string): string {
   const hex = createHash('sha256').update(seed).digest('hex').slice(0, 32).split('');
   hex[12] = '5';
@@ -212,8 +251,19 @@ export function validateAgentReview(
     const expectedAsOf = evidenceRecord.raw_snapshot.partial?.as_of ?? expected.week_end;
     if (evidence.data_as_of !== expectedAsOf) issues.push(`evidence.data_as_of must match prepared evidence (${expectedAsOf}).`);
     if (evidence.snapshot_hash !== evidenceHash(evidenceRecord)) issues.push('evidence.snapshot_hash does not match the persisted snapshot. Run insights:prepare again.');
-    if (!nonEmpty(evidence.prepared_at)) issues.push('evidence.prepared_at is required.');
-    else if (now.getTime() - dateMs(evidence.prepared_at) > 48 * 60 * 60 * 1000) issues.push('The evidence pack is stale (prepared more than 48 hours ago). Run insights:prepare again.');
+    const preparedAt = evidence.prepared_at;
+    if (typeof preparedAt !== 'string' || !preparedAt.trim() || PLACEHOLDER.test(preparedAt)) {
+      issues.push('evidence.prepared_at is required and must be a string.');
+    } else {
+      const preparedMs = preparedAtMs(preparedAt);
+      if (preparedMs === null) {
+        issues.push(`evidence.prepared_at must be a valid ISO 8601 timestamp with an explicit timezone (found "${preparedAt}").`);
+      } else if (preparedMs > now.getTime()) {
+        issues.push(`evidence.prepared_at is in the future (${preparedAt} is later than the validator clock). Run insights:prepare again.`);
+      } else if (now.getTime() - preparedMs > 48 * 60 * 60 * 1000) {
+        issues.push('The evidence pack is stale (prepared more than 48 hours ago). Run insights:prepare again.');
+      }
+    }
     if (now.getTime() - dateMs(expectedAsOf) > 8 * 24 * 60 * 60 * 1000) issues.push('The reporting period is stale. Prepare a current evidence pack before publishing.');
   }
 

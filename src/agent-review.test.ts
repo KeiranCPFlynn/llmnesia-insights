@@ -153,3 +153,97 @@ test('evidence hashes survive JSONB-style object key reordering', () => {
   } as unknown as EvidenceDeltaRecord;
   assert.equal(evidenceHash(left), evidenceHash(right));
 });
+
+test('accepts a current prepared_at on the fixed clock', () => {
+  const input = review();
+  input.evidence.prepared_at = '2026-08-22T11:00:00.000Z';
+  const result = validateAgentReview(input, evidence(), createInitialLedgerState(), NOW);
+  assert.equal(result.review.evidence.prepared_at, '2026-08-22T11:00:00.000Z');
+});
+
+test('accepts the exact 48-hour boundary and rejects just beyond it', () => {
+  const boundary = review();
+  boundary.evidence.prepared_at = '2026-08-20T12:00:00.000Z';
+  assert.doesNotThrow(() => validateAgentReview(boundary, evidence(), createInitialLedgerState(), NOW));
+
+  const beyond = review();
+  beyond.evidence.prepared_at = '2026-08-20T11:59:59.999Z';
+  assert.throws(
+    () => validateAgentReview(beyond, evidence(), createInitialLedgerState(), NOW),
+    (error) => error instanceof ReviewValidationError && error.message.includes('evidence pack is stale'),
+  );
+});
+
+test('rejects prepared_at that is not a parseable timezone-aware timestamp', () => {
+  const cases: Array<[unknown, string]> = [
+    ['not-a-date', 'valid ISO 8601 timestamp'],
+    ['2026-02-30T10:00:00.000Z', 'valid ISO 8601 timestamp'],
+    ['2025-02-29T10:00:00.000Z', 'valid ISO 8601 timestamp'],
+    ['2026-13-01T10:00:00.000Z', 'valid ISO 8601 timestamp'],
+    ['2026-08-22T25:00:00.000Z', 'valid ISO 8601 timestamp'],
+    ['2026-08-22T10:00:00', 'valid ISO 8601 timestamp'],
+    ['2026-08-22', 'valid ISO 8601 timestamp'],
+    [42, 'required and must be a string'],
+    [null, 'required and must be a string'],
+    [undefined, 'required and must be a string'],
+  ];
+  for (const [value, expected] of cases) {
+    const input = review();
+    (input.evidence as unknown as Record<string, unknown>).prepared_at = value;
+    assert.throws(
+      () => validateAgentReview(input, evidence(), createInitialLedgerState(), NOW),
+      (error) => error instanceof ReviewValidationError &&
+        error.message.includes('evidence.prepared_at') &&
+        error.message.includes(expected),
+      `prepared_at ${String(value)} should be rejected with an identifying message`,
+    );
+  }
+});
+
+test('rejects a prepared_at later than the supplied validator clock', () => {
+  const input = review();
+  input.evidence.prepared_at = '2026-08-22T12:00:00.001Z';
+  assert.throws(
+    () => validateAgentReview(input, evidence(), createInitialLedgerState(), NOW),
+    (error) => error instanceof ReviewValidationError && error.message.includes('in the future'),
+  );
+});
+
+test('treats numeric-offset timestamps as their actual instant', () => {
+  // 14:00+02:00 and 07:00-05:00 are both exactly the validator clock, so both
+  // count as brand-new evidence rather than stale or future.
+  for (const preparedAt of ['2026-08-22T14:00:00+02:00', '2026-08-22T07:00:00-05:00']) {
+    const input = review();
+    input.evidence.prepared_at = preparedAt;
+    assert.doesNotThrow(() => validateAgentReview(input, evidence(), createInitialLedgerState(), NOW));
+  }
+  // 12:00+02:00 is 10:00Z, two hours old and still fresh.
+  const offsetInput = review();
+  offsetInput.evidence.prepared_at = '2026-08-22T12:00:00+02:00';
+  assert.doesNotThrow(() => validateAgentReview(offsetInput, evidence(), createInitialLedgerState(), NOW));
+  // 13:59:59+02:00 is 11:59:59Z, one second past the 48-hour boundary.
+  const staleOffset = review();
+  staleOffset.evidence.prepared_at = '2026-08-20T13:59:59+02:00';
+  assert.throws(
+    () => validateAgentReview(staleOffset, evidence(), createInitialLedgerState(), NOW),
+    (error) => error instanceof ReviewValidationError && error.message.includes('evidence pack is stale'),
+  );
+});
+
+test('leaves the review, evidence record, and ledger untouched on rejection', () => {
+  const input = review();
+  const evidenceRecord = evidence();
+  const ledger = createInitialLedgerState();
+  const reviewBefore = structuredClone(input);
+  const evidenceBefore = structuredClone(evidenceRecord);
+  const ledgerBefore = structuredClone(ledger);
+  input.evidence.prepared_at = 'not-a-date';
+  assert.throws(() => validateAgentReview(input, evidenceRecord, ledger, NOW), ReviewValidationError);
+  // Only the field the test deliberately set may differ; the validator itself
+  // must not have mutated anything.
+  const expectedAfter = structuredClone(reviewBefore);
+  expectedAfter.evidence.prepared_at = 'not-a-date';
+  assert.deepEqual(input, expectedAfter);
+  assert.deepEqual(evidenceRecord, evidenceBefore);
+  assert.deepEqual(ledger, ledgerBefore);
+});
