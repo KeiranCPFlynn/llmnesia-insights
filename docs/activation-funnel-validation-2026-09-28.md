@@ -66,11 +66,13 @@ Ordered transitions:
 | Searched with no searchable content in 24h | 7/55 | 7/57 |
 | Searched AND opened a result | 36/55 | 43/57 |
 
-Read: import completion and searchable-content availability held steady week
-over week (47.5% to 48.6% and 67.4% to 68.1%), while the share of installs
-searching within 24h fell (39.0% to 30.8%). The decline sits entirely in
-"searched given content was available" (55/95 = 57.9% down to 57/126 = 45.2%),
-not upstream of it.
+Read: import completion and the proxy for searchable-content availability held
+steady week over week (47.5% to 48.6% and 67.4% to 68.1%), while the share of
+installs searching within 24h fell (39.0% to 30.8%). Among installs with the
+content-availability proxy, 48/95 (50.5%) searched in the prior cohort and
+50/126 (39.7%) in the current cohort. These are overlaps within 24 hours, not
+proof that the indexed content was ready before the search. The ordered
+search-after-content counts are 40 and 42, respectively (table above).
 
 By version (current cohort, >= 20 installs): 0.4.4 29/67 (43.3%) searched,
 0.4.5 12/46 (26.1%), 0.4.6 7/20 (35.0%), 0.4.7 9/48 (18.8%). Import completion
@@ -105,12 +107,14 @@ in both cohorts, consistent with the code finding that nothing arms it.
   (counts above), with the recents caveat recorded. A stricter "result opened
   after the install's first submitted search" can be computed from the same
   per-install timestamps as overlap ordering, same caveat.
-- Seven-day search return: installs with a `search_submitted` in days 0-7
-  after install (window = install_ts .. install_ts + 7 days). A cohort is
-  fully mature when every install has had the full window, which happens 7
-  days after its last install date: the 14-19 September cohort has been fully
-  7-day mature since 27 September, and the 21-26 September cohort becomes
-  fully mature for any run dated 4 October or later.
+- Seven-day search reach: installs with at least one `search_submitted` in the
+  seven days after install. This measures whether they searched at all, not
+  whether they returned.
+- Seven-day search return: among installs that searched during their first
+  24 hours, count those with another `search_submitted` on a later UTC calendar
+  date within seven days of install. Report both the returning count and the
+  first-day-searcher denominator. The 14-19 September cohort was fully mature
+  by 27 September; the 21-26 September cohort is fully mature on 4 October.
 - The existing 24-hour activation definition is unchanged by the first-search
   invitation work; these are companions, not replacements. Before/after
   comparisons of the invitation's effect are observational and cannot prove
