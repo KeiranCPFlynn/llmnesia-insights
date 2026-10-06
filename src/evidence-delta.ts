@@ -136,6 +136,27 @@ export function computeEvidenceDelta(
     { includeInNotable: includeCountChanges },
   );
 
+  // --- Vault funnel (monetisation) ---
+  const curVault = current.vault_funnel;
+  const priorVault = p?.vault_funnel;
+  const vaultFunnelStep = (
+    label: string,
+    step: keyof NonNullable<MetricsSnapshot['vault_funnel']>,
+  ): MetricDelta =>
+    delta(label, curVault?.[step] ?? 0, priorVault?.[step] ?? 0, {
+      includeInNotable: includeCountChanges,
+    });
+  const vault_funnel: EvidenceDelta['vault_funnel'] = {
+    waitlist_joined: vaultFunnelStep('Vault waitlist joins', 'waitlist_joined'),
+    created: vaultFunnelStep('Vault created', 'created'),
+    checkout_opened: vaultFunnelStep('Vault checkout opens', 'checkout_opened'),
+    phone_qr_shown: vaultFunnelStep('Vault phone QR shown', 'phone_qr_shown'),
+    unlocked: vaultFunnelStep('Vault unlocked', 'unlocked'),
+    sync_completed: vaultFunnelStep('Vault syncs completed', 'sync_completed'),
+    sync_failed: vaultFunnelStep('Vault sync failures', 'sync_failed'),
+    restore_completed: vaultFunnelStep('Vault restores completed', 'restore_completed'),
+  };
+
   // --- Search performance (optional, may be absent) ---
   const curSearch = current.search_performance;
   const priorSearch = p?.search_performance;
@@ -201,6 +222,7 @@ export function computeEvidenceDelta(
     email_capture_rate,
     website_sessions,
     store_installs,
+    vault_funnel,
     search_performance,
     notable_changes: notable.slice(0, 10),
   };

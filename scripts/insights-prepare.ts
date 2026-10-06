@@ -30,6 +30,7 @@ const METRIC_DEFINITIONS: Record<string, string> = {
   platform_distribution: 'Intentional search-result impressions from search_submitted shown_{platform}, compared with result_opened platform_source on search surfaces; popup_recents and the frozen legacy keystroke series are separate.',
   retention_w1: 'Share of users active in the prior week who returned in the reporting period.',
   retention_w4: 'Share of users active four weeks ago who returned in the reporting period.',
+  vault_funnel: 'Unique PostHog identities per Vault event in the reporting period. Funnel order: waitlist_joined (extension offer and website waitlist form), created, checkout_opened, phone_qr_shown, unlocked. checkout_opened fires on the subscribe-in-extension paywall only; the site purchase flow emits no analytics event, so it is not a drop-off point. sync_completed, sync_failed, and restore_completed are background scheduler runs (unsampled), reliability signals rather than user progression.',
 };
 
 function sanitizePreviousReview(review: WeeklyInsight | null): PriorReviewContext | null {

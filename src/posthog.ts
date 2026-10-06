@@ -495,6 +495,58 @@ export async function getBackfillSearchCorrelation(
   };
 }
 
+/**
+ * Vault monetisation funnel: unique users per Vault event in the period.
+ * Keyed on PostHog's own distinct_id so the website waitlist form's
+ * vault_waitlist_joined (which carries no anonymous_install_id property) and
+ * the extension's Vault events count in one series; funnel consumers treat a
+ * duplicate capture as inert. checkout_opened fires only on the
+ * subscribe-in-extension paywall: the site purchase flow emits no analytics
+ * event yet, so site-portal drop-off is invisible to this section. Vault and
+ * conversion events are never sampled (see LLMnesia's
+ * docs/POSTHOG_USAGE_REDUCTION.md), so these counts need no de-sampling.
+ */
+export async function getVaultFunnel(
+  weekStart: string,
+  weekEnd: string,
+): Promise<MetricsSnapshot['vault_funnel']> {
+  const rows = await runQuery(`
+    SELECT
+      uniqIf(distinct_id, event = 'vault_waitlist_joined') AS waitlist_joined,
+      uniqIf(distinct_id, event = 'vault_created') AS created,
+      uniqIf(distinct_id, event = 'vault_checkout_opened') AS checkout_opened,
+      uniqIf(distinct_id, event = 'vault_phone_qr_shown') AS phone_qr_shown,
+      uniqIf(distinct_id, event = 'vault_unlocked') AS unlocked,
+      uniqIf(distinct_id, event = 'vault_sync_completed') AS sync_completed,
+      uniqIf(distinct_id, event = 'vault_sync_failed') AS sync_failed,
+      uniqIf(distinct_id, event = 'vault_restore_completed') AS restore_completed
+    FROM events
+    WHERE toDate(timestamp) >= toDate('${weekStart}')
+      AND toDate(timestamp) <= toDate('${weekEnd}')
+      AND event IN (
+        'vault_waitlist_joined',
+        'vault_created',
+        'vault_checkout_opened',
+        'vault_phone_qr_shown',
+        'vault_unlocked',
+        'vault_sync_completed',
+        'vault_sync_failed',
+        'vault_restore_completed'
+      )
+  `);
+  const row = rows[0] ?? [];
+  return {
+    waitlist_joined: Number(row[0] ?? 0),
+    created: Number(row[1] ?? 0),
+    checkout_opened: Number(row[2] ?? 0),
+    phone_qr_shown: Number(row[3] ?? 0),
+    unlocked: Number(row[4] ?? 0),
+    sync_completed: Number(row[5] ?? 0),
+    sync_failed: Number(row[6] ?? 0),
+    restore_completed: Number(row[7] ?? 0),
+  };
+}
+
 export async function collectMetrics(weekStart: string, weekEnd: string): Promise<Omit<MetricsSnapshot, 'ga4'>> {
   console.log(`Fetching PostHog metrics for ${weekStart} → ${weekEnd}…`);
 
@@ -508,6 +560,7 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     email_capture,
     version_adoption,
     backfill_correlation,
+    vault_funnel,
   ] = await Promise.all([
     getWeeklyInstalls(weekStart, weekEnd),
     getActivationRate(weekStart, weekEnd),
@@ -518,6 +571,7 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     getEmailCaptureRate(weekStart, weekEnd),
     getVersionAdoption(weekStart, weekEnd),
     getBackfillSearchCorrelation(weekStart, weekEnd),
+    getVaultFunnel(weekStart, weekEnd),
   ]);
 
   return {
@@ -532,5 +586,6 @@ export async function collectMetrics(weekStart: string, weekEnd: string): Promis
     email_capture,
     version_adoption,
     backfill_correlation,
+    vault_funnel,
   };
 }

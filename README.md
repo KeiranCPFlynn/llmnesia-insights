@@ -6,6 +6,14 @@ is collected without an analysis-model call. Codex or Claude Code researches
 the code and prior decisions, reasons over the prepared evidence, and publishes
 a validated review to the local database.
 
+Each evidence pack includes a `vault_funnel` section: unique users per Vault
+event for the reporting week (waitlist join, vault created, checkout opened,
+phone QR shown, unlocked, plus background sync/restore completion and failure
+counts), diffed against the prior week in the computed delta. Note that the
+website purchase flow emits no analytics event today, so `checkout_opened`
+covers the in-extension paywall path only; it is not a measure of all
+checkout intent.
+
 To run a review, open this repository in Codex or Claude Code and say:
 
 > **Run the Insights review.**

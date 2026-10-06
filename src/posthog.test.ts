@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getPlatformDistribution, getSearchQuality } from './posthog.js';
+import { getPlatformDistribution, getSearchQuality, getVaultFunnel } from './posthog.js';
 
 const CANONICAL_PLATFORMS = [
   'chatgpt',
@@ -122,6 +122,81 @@ test('platform distribution follows the intentional-search contract and preserve
       click_rate: 0.4,
       click_rate_including_popup_recents: 0.6,
       zero_result_rate: 0.1,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalProjectId === undefined) delete process.env.POSTHOG_PROJECT_ID;
+    else process.env.POSTHOG_PROJECT_ID = originalProjectId;
+    if (originalApiKey === undefined) delete process.env.POSTHOG_API_KEY;
+    else process.env.POSTHOG_API_KEY = originalApiKey;
+  }
+});
+
+test('vault funnel counts unique identities per vault event within the reporting week', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalProjectId = process.env.POSTHOG_PROJECT_ID;
+  const originalApiKey = process.env.POSTHOG_API_KEY;
+  const queries: string[] = [];
+
+  process.env.POSTHOG_PROJECT_ID = 'test-project';
+  process.env.POSTHOG_API_KEY = 'test-key';
+  globalThis.fetch = (async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { query: { query: string } };
+    queries.push(body.query.query);
+    return new Response(JSON.stringify({ results: [[7, 5, 2, 2, 4, 3, 1, 2]] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const funnel = await getVaultFunnel('2026-09-28', '2026-10-04');
+
+    assert.equal(queries.length, 1);
+    const query = queries[0];
+    // Unique-user counts keyed on PostHog's own distinct_id (the website
+    // waitlist form has no anonymous_install_id property).
+    for (const step of [
+      'vault_waitlist_joined',
+      'vault_created',
+      'vault_checkout_opened',
+      'vault_phone_qr_shown',
+      'vault_unlocked',
+      'vault_sync_completed',
+      'vault_sync_failed',
+      'vault_restore_completed',
+    ]) {
+      assert.match(query, new RegExp(`uniqIf\\(distinct_id, event = '${step}'\\)`));
+    }
+    assert.match(query, /toDate\('2026-09-28'\)/);
+    assert.match(query, /toDate\('2026-10-04'\)/);
+    assert.deepEqual(funnel, {
+      waitlist_joined: 7,
+      created: 5,
+      checkout_opened: 2,
+      phone_qr_shown: 2,
+      unlocked: 4,
+      sync_completed: 3,
+      sync_failed: 1,
+      restore_completed: 2,
+    });
+
+    // An empty result degrades to zeroes, never undefined.
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as typeof fetch;
+    const empty = await getVaultFunnel('2026-09-28', '2026-10-04');
+    assert.deepEqual(empty, {
+      waitlist_joined: 0,
+      created: 0,
+      checkout_opened: 0,
+      phone_qr_shown: 0,
+      unlocked: 0,
+      sync_completed: 0,
+      sync_failed: 0,
+      restore_completed: 0,
     });
   } finally {
     globalThis.fetch = originalFetch;

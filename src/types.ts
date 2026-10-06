@@ -95,6 +95,25 @@ export interface MetricsSnapshot {
     weekly: Array<{ version: string; users: number }>;
     daily: Array<{ date: string; version: string; users: number }>;
   };
+  /**
+   * Vault monetisation funnel: unique PostHog identities firing each Vault
+   * event in the period. `waitlist_joined` arrives from both the extension
+   * and the website waitlist form; the later steps are extension-only (the
+   * site purchase flow emits no analytics event yet, so `checkout_opened`
+   * covers the in-extension paywall path only. `sync_completed` /
+   * `sync_failed` are background scheduler runs, not user progression: read
+   * them as reliability signals alongside `unlocked`.
+   */
+  vault_funnel: {
+    waitlist_joined: number;
+    created: number;
+    checkout_opened: number;
+    phone_qr_shown: number;
+    unlocked: number;
+    sync_completed: number;
+    sync_failed: number;
+    restore_completed: number;
+  };
   ga4: GA4Metrics;
   /**
    * Top-of-funnel search visibility for llmnesia.com — combined Google Search
@@ -754,6 +773,18 @@ export interface EvidenceDelta {
   email_capture_rate: MetricDelta;
   website_sessions: MetricDelta;
   store_installs: MetricDelta;
+
+  /** Per-step current/prior diff of the Vault monetisation funnel. */
+  vault_funnel: {
+    waitlist_joined: MetricDelta;
+    created: MetricDelta;
+    checkout_opened: MetricDelta;
+    phone_qr_shown: MetricDelta;
+    unlocked: MetricDelta;
+    sync_completed: MetricDelta;
+    sync_failed: MetricDelta;
+    restore_completed: MetricDelta;
+  };
 
   search_performance: {
     google: { impressions: MetricDelta; clicks: MetricDelta } | null;
