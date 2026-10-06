@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { applyStrategyRevision } from '../../../../src/supabase.js';
+import { applyStrategyRevision } from '../../../../src/data.js';
 import type { StrategyRecommendation } from '../../../../src/types.js';
 import { isAuthorized } from '../../../../lib/session';
 

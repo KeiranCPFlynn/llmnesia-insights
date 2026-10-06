@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   deleteStandingCaveat,
   updateStandingCaveat,
-} from '../../../../src/supabase.js';
+} from '../../../../src/data.js';
 import { reanalyseWeek } from '../../../../src/pipeline.js';
 import { isAuthorized } from '../../../../lib/session';
 

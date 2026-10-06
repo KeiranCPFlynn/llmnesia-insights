@@ -1,6 +1,6 @@
 import './env.js';
 import { createHash } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from './db/query.js';
 import { getAccurateSiteTotals } from './gsc.js';
 import type {
   BingRow,
@@ -44,20 +44,10 @@ interface DetectionRow {
   position: number;
 }
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
 /**
- * Supabase/PostgREST caps an unpaginated `.select()` at 1000 rows. A 90-day
- * `gsc_rows` window for an active site is routinely 10k+ rows (query × page ×
- * date × country × device), so fetching without `.range()` silently truncates
- * to ~7% of the data — opportunity detection and site-scale numbers were
- * being computed from that truncated slice instead of the real window.
- * Count first, then fetch every page of `columns` in parallel.
+ * Pagination (a leftover requirement from the Supabase/PostgREST 1000-row
+ * select cap) is kept so very large 90-day windows stay chunked: count first,
+ * then fetch every page of `columns` in parallel in stable row order.
  */
 async function fetchAllGscRows(
   siteId: string,
@@ -65,10 +55,10 @@ async function fetchAllGscRows(
   endDate: string,
   columns: string,
 ): Promise<GSCRow[]> {
-  const supabase = getSupabase();
+  const db = getClient();
   const pageSize = 1000;
   const page = (from: number) =>
-    supabase
+    db
       .from('gsc_rows')
       .select(columns)
       .eq('site_id', siteId)
@@ -76,7 +66,7 @@ async function fetchAllGscRows(
       .lte('date', endDate)
       .range(from, from + pageSize - 1);
 
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db
     .from('gsc_rows')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
@@ -101,10 +91,10 @@ async function fetchAllGscRows(
  * page dimension.
  */
 async function fetchAllBingRows(siteId: string, startDate: string, endDate: string): Promise<BingRow[]> {
-  const supabase = getSupabase();
+  const db = getClient();
   const pageSize = 1000;
   const page = (from: number) =>
-    supabase
+    db
       .from('bing_rows')
       .select('site_id, query, date, country, clicks, impressions, ctr, position')
       .eq('site_id', siteId)
@@ -112,7 +102,7 @@ async function fetchAllBingRows(siteId: string, startDate: string, endDate: stri
       .lte('date', endDate)
       .range(from, from + pageSize - 1);
 
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db
     .from('bing_rows')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
@@ -511,7 +501,7 @@ export async function computeOpportunities(opts: {
     weekStart: opts.weekStart,
     now: opts.now,
   });
-  const supabase = getSupabase();
+  const db = getClient();
   const hasBing = !!process.env.BING_WEBMASTER_API_KEY;
   const [all, allBing] = await Promise.all([
     fetchAllGscRows(
@@ -567,7 +557,7 @@ export async function computeOpportunities(opts: {
   // from prior definitions sitting alongside the fresh ones. `growth_actions`
   // carries its own copy of target_query / target_page / action_type, so a
   // dangling `growth_actions.opportunity_id` is just an unused soft pointer.
-  const { error: delErr } = await supabase
+  const { error: delErr } = await db
     .from('growth_opportunities')
     .delete()
     .eq('site_id', opts.siteId)
@@ -575,7 +565,7 @@ export async function computeOpportunities(opts: {
   if (delErr) throw new Error(`growth_opportunities delete failed: ${delErr.message}`);
 
   if (opportunities.length > 0) {
-    const { error: insErr } = await supabase
+    const { error: insErr } = await db
       .from('growth_opportunities')
       .insert(opportunities);
     if (insErr) throw new Error(`growth_opportunities insert failed: ${insErr.message}`);
@@ -603,8 +593,8 @@ export interface SiteScale {
  * downloads historical query rows.
  */
 export async function getStoredSiteScale(siteId: string): Promise<SiteScale> {
-  const supabase = getSupabase();
-  const { count, error } = await supabase
+  const db = getClient();
+  const { count, error } = await db
     .from('gsc_rows')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId);
@@ -670,8 +660,8 @@ export async function getTopOpportunities(
   weekStart: string,
   limit = 25,
 ): Promise<GrowthOpportunity[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('growth_opportunities')
     .select('*')
     .eq('site_id', siteId)
@@ -699,8 +689,8 @@ export async function getPlanningOpportunities(
   // the whole historical corpus. Reuse the newest snapshot available at or
   // before the selected week; each candidate carries its own evidence.as_of,
   // so the model still sees exactly how fresh that snapshot is.
-  const supabase = getSupabase();
-  const { data: latest, error } = await supabase
+  const db = getClient();
+  const { data: latest, error } = await db
     .from('growth_opportunities')
     .select('week_start')
     .eq('site_id', siteId)
@@ -720,10 +710,10 @@ export async function getOpportunities(
   siteId: string,
   weekStart: string,
 ): Promise<GrowthOpportunity[]> {
-  const supabase = getSupabase();
+  const db = getClient();
   const pageSize = 1000;
   const page = (from: number) =>
-    supabase
+    db
       .from('growth_opportunities')
       .select('*')
       .eq('site_id', siteId)
@@ -733,7 +723,7 @@ export async function getOpportunities(
 
   // Same 1000-row cap as gsc_rows — an active site now regularly detects
   // 1000+ opportunities in one week, so this needs the same pagination fix.
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db
     .from('growth_opportunities')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
@@ -771,16 +761,16 @@ export async function ensureOpportunities(opts: {
   if (existing.length === 0) return computeOpportunities(opts);
 
   // Recompute if a GSC or Bing sync has landed since these were detected.
-  const supabase = getSupabase();
+  const db = getClient();
   const [{ data: latestGsc }, { data: latestBing }] = await Promise.all([
-    supabase
+    db
       .from('gsc_rows')
       .select('synced_at')
       .eq('site_id', opts.siteId)
       .order('synced_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase
+    db
       .from('bing_rows')
       .select('synced_at')
       .eq('site_id', opts.siteId)

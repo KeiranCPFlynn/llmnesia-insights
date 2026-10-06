@@ -27,6 +27,10 @@ npm-debug.log*
 # Local outreach research and draft pitches (uncommitted lead data)
 /outreach/
 
+# Local SQLite database (insights.db + WAL/SHM siblings) and the one-off
+# Supabase migration dump
+/data/
+
 # OS
 .DS_Store
 

@@ -10,7 +10,7 @@ import {
   saveSourceSnapshot,
   saveSourceSyncState,
   getLatestEvidenceSnapshotBefore,
-} from './supabase.js';
+} from './data.js';
 import type { EvidenceDelta, EvidenceFreshness, MetricsSnapshot } from './types.js';
 
 export interface EvidenceCollectionResult {
@@ -118,7 +118,7 @@ export async function collectEvidence(opts: {
         detail: searchPerformance?.bing ? null : 'No Bing search rows were available for this period.',
       }),
     ]);
-    log('Evidence snapshot and delta saved to Supabase.');
+    log('Evidence snapshot and delta saved.');
   }
   return {
     weekStart,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { setStrategyDecision } from '../../../../src/supabase.js';
+import { setStrategyDecision } from '../../../../src/data.js';
 import type { StrategyDecision } from '../../../../src/types.js';
 import { isAuthorized } from '../../../../lib/session';
 

@@ -16,7 +16,7 @@ import {
   getRecentLedgerEntries,
   getInsightByWeek,
   getStrategyLedger,
-} from '../src/supabase.js';
+} from '../src/data.js';
 import type { DataSource } from '../src/types.js';
 
 export const dynamic = 'force-dynamic';

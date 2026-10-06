@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getHistoryBefore, getInsightByWeek, saveChat } from '../../../src/supabase.js';
+import { getHistoryBefore, getInsightByWeek, saveChat } from '../../../src/data.js';
 import type { ChatMessage } from '../../../src/types.js';
 import { callLlm, chatToLlmMessages, resolveProvider, type LlmTool } from '../../../src/llm.js';
 import { isAuthorized } from '../../../lib/session';

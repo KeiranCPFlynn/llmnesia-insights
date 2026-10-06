@@ -1,5 +1,5 @@
 import './env.js';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from './db/query.js';
 import {
   autoSyncRange as gscAutoSyncRange,
   getAccurateSiteTotals,
@@ -29,13 +29,6 @@ import type { SearchPerformanceDigest, SearchQueryRow, SearchSourceDigest, Site 
 
 const SITE_NAME = 'llmnesia';
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -46,8 +39,8 @@ function isoDate(d: Date): string {
  * degrade gracefully rather than throw.
  */
 async function getInsightsSite(): Promise<Site | null> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('sites')
     .select('*')
     .ilike('name', SITE_NAME)
@@ -172,10 +165,10 @@ async function fetchRows(
   startDate: string,
   endDate: string,
 ): Promise<DatedRow[]> {
-  const supabase = getSupabase();
+  const db = getClient();
   const pageSize = 1000;
   const page = (from: number) =>
-    supabase
+    db
       .from(table)
       .select('query, clicks, impressions, position, date')
       .eq('site_id', siteId)
@@ -183,9 +176,10 @@ async function fetchRows(
       .lte('date', endDate)
       .range(from, from + pageSize - 1);
 
-  // Same 1000-row Supabase/PostgREST cap as elsewhere — a 14-day window
+  // Paginated fetch (stable row order) — a 14-day window
+  // for an active site can be large.
   // (this week + prior week) for an active site already exceeds it.
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db
     .from(table)
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)

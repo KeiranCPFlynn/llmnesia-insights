@@ -1,27 +1,20 @@
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../src/db/query.js';
 import type { GA4PropertyMetrics, WeeklyInsight } from '../src/types.js';
-
-function getClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
-}
 
 /**
  * Every stored week, oldest → newest. Used for both the latest-week view
- * and the trend charts, so we only hit Supabase once per page load.
+ * and the trend charts, so we only hit the database once per page load.
  */
 export async function getAllInsights(): Promise<WeeklyInsight[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     // The index powers week selection and charts. Do not transfer saved chat,
     // revision history, or recommendation threads for every historical week.
     .select('week_start,week_end,metrics_snapshot,headline,summary,findings,action_items,open_threads,resolved_threads,strategy,strategy_goal,strategy_decisions,model_used,created_at')
     .order('week_start', { ascending: true });
 
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return (data as WeeklyInsight[]) ?? [];
 }
 

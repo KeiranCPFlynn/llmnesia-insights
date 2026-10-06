@@ -67,7 +67,7 @@ safely from that week's saved pre-review ledger.
 Start with a newly prepared template. Common causes are a stale or altered
 evidence hash, an invalid ledger patch, or a finding/recommendation without
 supporting evidence or source provenance. Correct `review.json` and re-run the
-same publish command. Do not bypass the error with direct Supabase writes.
+same publish command. Do not bypass the error with direct database writes.
 
 ## Safety and automation
 

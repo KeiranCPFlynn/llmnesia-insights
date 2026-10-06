@@ -1,7 +1,7 @@
 import '../src/env.js';
 import { randomUUID } from 'node:crypto';
 import { createInitialLedgerState } from '../src/ledger.js';
-import { getLatestInsight, getStrategyLedger, upsertStrategyLedger } from '../src/supabase.js';
+import { getLatestInsight, getStrategyLedger, upsertStrategyLedger } from '../src/data.js';
 import type { MetricsSnapshot } from '../src/types.js';
 
 function baselineFromSnapshot(snapshot: MetricsSnapshot) {

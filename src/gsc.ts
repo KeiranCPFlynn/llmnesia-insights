@@ -1,6 +1,6 @@
 import './env.js';
 import { OAuth2Client } from 'google-auth-library';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from './db/query.js';
 import type { GSCRow, Site } from './types.js';
 
 /**
@@ -36,30 +36,23 @@ function getOAuthClient(): OAuth2Client {
   return client;
 }
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
 export async function getSites(opts: { enabledOnly?: boolean } = {}): Promise<Site[]> {
-  const supabase = getSupabase();
-  let q = supabase.from('sites').select('*').order('created_at', { ascending: true });
+  const db = getClient();
+  let q = db.from('sites').select('*').order('created_at', { ascending: true });
   if (opts.enabledOnly !== false) q = q.eq('enabled', true);
   const { data, error } = await q;
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`sites fetch failed: ${error.message}`);
   return (data as Site[]) ?? [];
 }
 
 export async function getSiteById(id: string): Promise<Site | null> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('sites')
     .select('*')
     .eq('id', id)
     .maybeSingle();
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`sites fetch failed: ${error.message}`);
   return (data as Site) ?? null;
 }
 
@@ -185,7 +178,7 @@ export async function syncSite(
   log: (msg: string) => void = (m) => console.log(m),
 ): Promise<number> {
   const oauth = getOAuthClient();
-  const supabase = getSupabase();
+  const db = getClient();
 
   log(
     `[gsc:${site.name}] syncing ${range.startDate} → ${range.endDate} (${site.gsc_property})`,
@@ -236,10 +229,9 @@ export async function syncSite(
       })
       .filter((r) => r.date && r.query && r.page);
 
-    // Supabase upsert in batches — 1000 rows per request is a comfortable
-    // size; PostgREST rejects unbounded payloads.
+    // Upsert in batches of 1000 to keep each write transaction small.
     for (const batch of chunk(rows, 1000)) {
-      const { error } = await supabase
+      const { error } = await db
         .from('gsc_rows')
         .upsert(batch, { onConflict: 'site_id,query,page,date,country,device' });
       if (error) throw new Error(`gsc_rows upsert failed: ${error.message}`);
@@ -295,15 +287,15 @@ export async function catchUpRange(
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() - 1);
 
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('gsc_rows')
     .select('date')
     .eq('site_id', siteId)
     .order('date', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(`Supabase latest date failed: ${error.message}`);
+  if (error) throw new Error(`gsc_rows latest date failed: ${error.message}`);
   const latestDate = (data as { date?: string } | null)?.date;
   if (!latestDate) {
     return { ...fullBackfillRange(), mode: 'backfill' };
@@ -323,14 +315,14 @@ export async function catchUpRange(
  * on the first run vs subsequent runs.
  */
 export async function autoSyncRange(siteId: string): Promise<{ startDate: string; endDate: string; mode: 'backfill' | 'delta' }> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('gsc_rows')
     .select('date')
     .eq('site_id', siteId)
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(`Supabase latest date failed: ${error.message}`);
+  if (error) throw new Error(`gsc_rows latest date failed: ${error.message}`);
   if (!(data as { date?: string } | null)?.date) {
     return { ...fullBackfillRange(), mode: 'backfill' };
   }

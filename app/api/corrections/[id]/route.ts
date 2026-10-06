@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteCorrection, updateCorrection } from '../../../../src/supabase.js';
+import { deleteCorrection, updateCorrection } from '../../../../src/data.js';
 import { reanalyseWeek } from '../../../../src/pipeline.js';
 import { isAuthorized } from '../../../../lib/session';
 

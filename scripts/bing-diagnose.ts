@@ -9,15 +9,11 @@
  * Usage:  npx tsx scripts/bing-diagnose.ts
  */
 import '../src/env.js';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../src/db/query.js';
 
 const BING_API_BASE = 'https://ssl.bing.com/webmaster/api.svc/json';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-  { auth: { persistSession: false } },
-);
+const db = getClient();
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -30,7 +26,7 @@ function parseWcfDate(raw: string): string {
 
 async function main() {
   // 1. Sites
-  const { data: sites, error: sErr } = await supabase
+  const { data: sites, error: sErr } = await db
     .from('sites')
     .select('*')
     .order('created_at', { ascending: true });
@@ -46,7 +42,7 @@ async function main() {
 
   // 2. bing_rows count per site
   for (const s of sites ?? []) {
-    const { count, error } = await supabase
+    const { count, error } = await db
       .from('bing_rows')
       .select('*', { count: 'exact', head: true })
       .eq('site_id', s.id);

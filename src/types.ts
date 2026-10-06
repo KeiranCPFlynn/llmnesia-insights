@@ -369,7 +369,7 @@ export interface HistoricalInsight {
 // --- Traffic Growth Planner ---
 
 /**
- * A property the planner tracks. Sites are configured in Supabase (the `sites`
+ * A property the planner tracks. Sites are configured in the database (the `sites`
  * table) rather than in code so adding a new site is just a row insert.
  * `gsc_property` is the verified Search Console property string
  * (e.g. `sc-domain:llmnesia.com` for a Domain property, or

@@ -10,18 +10,12 @@ import {
   getPriorPlans,
   saveGrowthPlan,
 } from '../../../../src/growth-plan.js';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../../../../src/db/query.js';
 import type { GrowthAction } from '../../../../src/types.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
-
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
 
 /** Lightweight read so the panel can poll for a result that finished in the background. */
 export async function GET(req: Request) {
@@ -58,7 +52,7 @@ export async function POST(req: Request) {
   // Heavy work runs after the response is sent — survives tab close.
   after(async () => {
     try {
-      const supabase = getSupabase();
+      const db = getClient();
 
       // Reuse the persisted weekly opportunity snapshot (compute only when a
       // site/week has none), rather than rebuilding 180 days of raw rows on
@@ -71,7 +65,7 @@ export async function POST(req: Request) {
           getPlanningOpportunities(siteId, weekStart, 25),
           readBrief(),
           getPriorPlans(siteId, weekStart, 4),
-          supabase
+          db
             .from('growth_actions')
             .select('site_id, week_start, action_type, status, target_query, target_page, published_url')
             .eq('site_id', siteId)

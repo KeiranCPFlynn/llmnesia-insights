@@ -83,7 +83,7 @@ export interface DbError {
   code?: string;
 }
 
-export interface DbResult<T = unknown> {
+export interface DbResult<T = any> {
   data: T;
   error: DbError | null;
   count: number | null;
@@ -135,6 +135,13 @@ interface SelectOpts {
   head?: boolean;
 }
 
+/** Coerce a write payload (typed row or array) to the internal row list. */
+function toArray(values: object): Record<string, unknown>[] {
+  return Array.isArray(values)
+    ? (values as object[]).map((v) => v as Record<string, unknown>)
+    : [values as Record<string, unknown>];
+}
+
 class QueryChain implements PromiseLike<DbResult> {
   private readonly table: string;
   private op: 'select' | 'insert' | 'upsert' | 'update' | 'delete' | null = null;
@@ -144,6 +151,7 @@ class QueryChain implements PromiseLike<DbResult> {
   private orders: { col: string; asc: boolean }[] = [];
   private limitCount: number | null = null;
   private offsetCount = 0;
+  private rangeUsed = false;
   private maybeSingleMode = false;
   private singleMode = false;
   private countMode = false;
@@ -205,10 +213,13 @@ class QueryChain implements PromiseLike<DbResult> {
 
   limit(n: number): this { this.limitCount = n; return this; }
 
-  /** PostgREST-style inclusive range: rows [from, to]. */
+  /** PostgREST-style inclusive range: rows [from, to]. Paginates in the
+   *  stable physical row order when no explicit .order() is given, so pages
+   *  never overlap or skip rows. */
   range(from: number, to: number): this {
     this.offsetCount = from;
     this.limitCount = to - from + 1;
+    this.rangeUsed = true;
     return this;
   }
 
@@ -217,18 +228,18 @@ class QueryChain implements PromiseLike<DbResult> {
 
   // --- writes ---
 
-  insert(values: Record<string, unknown> | Record<string, unknown>[]): this {
+  insert(values: object): this {
     this.op = 'insert';
-    this.writeValues = Array.isArray(values) ? values : [values];
+    this.writeValues = toArray(values);
     return this;
   }
 
   upsert(
-    values: Record<string, unknown> | Record<string, unknown>[],
+    values: object,
     opts?: { onConflict?: string; ignoreDuplicates?: boolean },
   ): this {
     this.op = 'upsert';
-    this.writeValues = Array.isArray(values) ? values : [values];
+    this.writeValues = toArray(values);
     this.conflictCols = opts?.onConflict
       ? opts.onConflict.split(',').map((c) => c.trim())
       : (PRIMARY_KEYS[this.table] ?? ['id']);
@@ -236,9 +247,9 @@ class QueryChain implements PromiseLike<DbResult> {
     return this;
   }
 
-  update(values: Record<string, unknown>): this {
+  update(values: object): this {
     this.op = 'update';
-    this.writeValues = [values];
+    this.writeValues = toArray(values);
     return this;
   }
 
@@ -275,7 +286,7 @@ class QueryChain implements PromiseLike<DbResult> {
       }
     } catch (e) {
       const err = e as { message?: string; code?: string };
-      return { data: null, error: { message: err.message ?? String(e), code: err.code } };
+      return { data: null, error: { message: err.message ?? String(e), code: err.code }, count: null };
     }
   }
 
@@ -285,21 +296,26 @@ class QueryChain implements PromiseLike<DbResult> {
     const params: unknown[] = [];
     for (const f of this.filters) {
       const col = quoteIdent(f.col);
-      if (f.kind === 'isnull' || f.kind === 'isnotnull') {
-        parts.push(`${col} ${FILTER_SQL[f.kind]}`);
-      } else if (f.kind === 'in') {
-        if (!f.vals.length) {
-          parts.push('1 = 0');
-        } else {
-          parts.push(`${col} IN (${f.vals.map(() => '?').join(', ')})`);
-          for (const v of f.vals) params.push(encodeValue(this.table, f.col, v));
-        }
-      } else if (f.kind === 'ilike') {
-        parts.push(`${col} LIKE ?`);
-        params.push(f.pattern);
-      } else {
-        parts.push(`${col} ${FILTER_SQL[f.kind]} ?`);
-        params.push(encodeValue(this.table, f.col, f.val));
+      switch (f.kind) {
+        case 'isnull':
+        case 'isnotnull':
+          parts.push(`${col} ${FILTER_SQL[f.kind]}`);
+          break;
+        case 'in':
+          if (!f.vals.length) {
+            parts.push('1 = 0');
+          } else {
+            parts.push(`${col} IN (${f.vals.map(() => '?').join(', ')})`);
+            for (const v of f.vals) params.push(encodeValue(this.table, f.col, v));
+          }
+          break;
+        case 'ilike':
+          parts.push(`${col} LIKE ?`);
+          params.push(f.pattern);
+          break;
+        default:
+          parts.push(`${col} ${FILTER_SQL[f.kind]} ?`);
+          params.push(encodeValue(this.table, f.col, f.val));
       }
     }
     return { sql: ` WHERE ${parts.join(' AND ')}`, params };
@@ -323,6 +339,8 @@ class QueryChain implements PromiseLike<DbResult> {
     let sql = `SELECT ${cols} FROM ${quoteIdent(this.table)}${whereSql}`;
     if (this.orders.length) {
       sql += ` ORDER BY ${this.orders.map((o) => `${quoteIdent(o.col)} ${o.asc ? 'ASC' : 'DESC'}`).join(', ')}`;
+    } else if (this.rangeUsed) {
+      sql += ' ORDER BY rowid';
     }
     if (this.limitCount !== null) sql += ` LIMIT ${this.limitCount}`;
     if (this.offsetCount > 0) sql += ` OFFSET ${this.offsetCount}`;

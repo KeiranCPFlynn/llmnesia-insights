@@ -118,8 +118,8 @@ export function reviewHash(review: AgentReview): string {
 
 export function evidenceHash(record: EvidenceDeltaRecord): string {
   return createHash('sha256')
-    // Supabase stores these objects as JSONB, whose key order is not stable on
-    // readback. Canonical recursive ordering makes the digest semantic rather
+    // The database stores these objects as JSON text; key order on readback
+    // is whatever was written. Canonical recursive ordering makes the digest semantic rather
     // than dependent on insertion order while preserving array order.
     .update(JSON.stringify(canonicalJson({ delta: record.delta, raw_snapshot: record.raw_snapshot })))
     .digest('hex');

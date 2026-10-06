@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { addCorrection, addRevision, getInsightByWeek, saveChat } from '../../../src/supabase.js';
+import { addCorrection, addRevision, getInsightByWeek, saveChat } from '../../../src/data.js';
 import { reanalyseWeek } from '../../../src/pipeline.js';
 import type { ChatMessage, Correction, Revision } from '../../../src/types.js';
 import { isAuthorized } from '../../../lib/session';

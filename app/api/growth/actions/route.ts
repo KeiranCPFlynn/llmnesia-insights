@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../../../../src/db/query.js';
 import { isAuthorized } from '../../../../lib/session';
 import type { GrowthAction, GrowthActionStatus, GrowthActionType } from '../../../../src/types.js';
 
@@ -20,12 +20,6 @@ const VALID_STATUSES: GrowthActionStatus[] = [
   'completed',
   'monitoring',
 ];
-
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
 
 /**
  * POST — accept a recommendation (or create a free-form action).
@@ -68,12 +62,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Invalid status: ${body.status}` }, { status: 400 });
   }
 
-  const supabase = getSupabase();
+  const db = getClient();
 
   // Idempotency: if this action was already accepted for the same
   // recommendation, return the existing row rather than inserting a duplicate.
   if (body.recommendationId) {
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('growth_actions')
       .select('*')
       .eq('recommendation_id', body.recommendationId)
@@ -93,7 +87,7 @@ export async function POST(req: Request) {
 
       if (Object.keys(patch).length === 0) return NextResponse.json({ action: existing });
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('growth_actions')
         .update(patch)
         .eq('id', (existing as GrowthAction).id)
@@ -122,7 +116,7 @@ export async function POST(req: Request) {
     note: body.note ?? null,
   };
 
-  const { error } = await supabase.from('growth_actions').insert(row);
+  const { error } = await db.from('growth_actions').insert(row);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ action: row });
 }
@@ -172,8 +166,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'No changes provided' }, { status: 400 });
   }
 
-  const supabase = getSupabase();
-  const query = supabase.from('growth_actions').update(patch).in('id', ids).select();
+  const db = getClient();
+  const query = db.from('growth_actions').update(patch).in('id', ids).select();
   const { data, error } = body.ids ? await query : await query.maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(body.ids ? { actions: data } : { action: data });

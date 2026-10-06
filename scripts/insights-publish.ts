@@ -16,7 +16,7 @@ import {
   upsertContextSources,
   upsertLedgerEntries,
   upsertStrategyLedger,
-} from '../src/supabase.js';
+} from '../src/data.js';
 import type { AgentReview, WeeklyInsight } from '../src/types.js';
 import type { StrategyLedgerState } from '../src/types.js';
 

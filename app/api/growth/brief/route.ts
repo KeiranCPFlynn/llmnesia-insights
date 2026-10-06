@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../../../../src/db/query.js';
 import { isAuthorized } from '../../../../lib/session';
 import { callLlm, resolveProvider, type LlmTool } from '../../../../src/llm.js';
 import { GROWTH_BRIEF_SYSTEM_PROMPT } from '../../../../src/prompts/growth-prompt.js';
@@ -50,12 +50,6 @@ const BRIEF_TOOL: LlmTool = {
   },
 };
 
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
-
 export async function POST(req: Request) {
   if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -68,8 +62,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'actionId is required' }, { status: 400 });
   }
 
-  const supabase = getSupabase();
-  const { data: actionRow, error: actionErr } = await supabase
+  const db = getClient();
+  const { data: actionRow, error: actionErr } = await db
     .from('growth_actions')
     .select('*')
     .eq('id', actionId)
@@ -82,7 +76,7 @@ export async function POST(req: Request) {
   // and safer than PostgREST `.or()`, since queries/URLs can contain `.` and
   // `,` which break the or-string parser.
   const gscByQuery = action.target_query
-    ? supabase
+    ? db
         .from('gsc_rows')
         .select('query, page, date, clicks, impressions, ctr, position')
         .eq('site_id', action.site_id)
@@ -91,7 +85,7 @@ export async function POST(req: Request) {
         .limit(40)
     : Promise.resolve({ data: [] as GSCRow[] });
   const gscByPage = action.target_page
-    ? supabase
+    ? db
         .from('gsc_rows')
         .select('query, page, date, clicks, impressions, ctr, position')
         .eq('site_id', action.site_id)
@@ -101,9 +95,9 @@ export async function POST(req: Request) {
     : Promise.resolve({ data: [] as GSCRow[] });
 
   const [siteRes, oppRes, qRes, pRes, briefText] = await Promise.all([
-    supabase.from('sites').select('*').eq('id', action.site_id).maybeSingle(),
+    db.from('sites').select('*').eq('id', action.site_id).maybeSingle(),
     action.opportunity_id
-      ? supabase
+      ? db
           .from('growth_opportunities')
           .select('*')
           .eq('id', action.opportunity_id)
@@ -169,7 +163,7 @@ export async function POST(req: Request) {
     generated_at: new Date().toISOString(),
   };
 
-  const { error: updErr } = await supabase
+  const { error: updErr } = await db
     .from('growth_actions')
     .update({ brief })
     .eq('id', action.id);

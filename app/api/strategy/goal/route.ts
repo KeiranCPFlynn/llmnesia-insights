@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { getEffectiveStrategyGoal, getInsightByWeek } from '../../../../src/supabase.js';
+import { getClient } from '../../../../src/db/query.js';
+import { getEffectiveStrategyGoal, getInsightByWeek } from '../../../../src/data.js';
 import { readBrief } from '../../../../src/brief.js';
 import { callLlm, resolveProvider, type LlmTool } from '../../../../src/llm.js';
 import { isAuthorized } from '../../../../lib/session';
@@ -8,12 +8,6 @@ import { isAuthorized } from '../../../../lib/session';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
-
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
 
 const GOAL_TOOL: LlmTool = {
   name: 'submit_strategy_goal',
@@ -124,8 +118,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .update({ strategy_goal: value })
     .eq('week_start', week)

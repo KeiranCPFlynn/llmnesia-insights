@@ -1,5 +1,5 @@
 import './env.js';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from './db/query.js';
 import type { BingRow, Site } from './types.js';
 
 /**
@@ -24,13 +24,6 @@ function getApiKey(): string {
   const key = process.env.BING_WEBMASTER_API_KEY;
   if (!key) throw new Error('BING_WEBMASTER_API_KEY is not set');
   return key;
-}
-
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
 }
 
 // WCF date format from Bing: /Date(1625097600000)/ or with a timezone offset
@@ -155,7 +148,7 @@ export async function syncSite(
   log: (msg: string) => void = (m) => console.log(m),
 ): Promise<number> {
   const apiKey = getApiKey();
-  const supabase = getSupabase();
+  const db = getClient();
   const siteUrl = site.bing_site_url ?? site.root_url;
 
   log(`[bing:${site.name}] syncing ${range.startDate} → ${range.endDate} (${siteUrl})`);
@@ -182,7 +175,7 @@ export async function syncSite(
 
   let total = 0;
   for (const batch of chunk(rows, 1000)) {
-    const { error } = await supabase
+    const { error } = await db
       .from('bing_rows')
       .upsert(batch, { onConflict: 'site_id,query,date,country' });
     if (error) throw new Error(`bing_rows upsert failed: ${error.message}`);
@@ -214,17 +207,17 @@ export async function getBingDigest(
   useLiveTotals = true,
 ): Promise<BingDigest | null> {
   const siteId = site.id;
-  const supabase = getSupabase();
+  const db = getClient();
   const endDate = new Date(asOf);
   endDate.setUTCDate(endDate.getUTCDate() - 1);
   const startDate = new Date(endDate);
   startDate.setUTCDate(startDate.getUTCDate() - (windowDays - 1));
 
-  // Paginate past Supabase's default 1000-row cap — a well-synced site can
+  // Paginated fetch (stable row order): a well-synced site can
   // exceed that within the window (see the same fix in src/growth.ts).
   const pageSize = 1000;
   const page = (from: number) =>
-    supabase
+    db
       .from('bing_rows')
       .select('query, clicks, impressions, position')
       .eq('site_id', siteId)
@@ -232,7 +225,7 @@ export async function getBingDigest(
       .lte('date', isoDate(endDate))
       .range(from, from + pageSize - 1);
 
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db
     .from('bing_rows')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
@@ -318,8 +311,8 @@ export function deltaRange(days = 7, now: Date = new Date()): { startDate: strin
 export async function autoSyncRange(
   siteId: string,
 ): Promise<{ startDate: string; endDate: string; mode: 'backfill' | 'delta' }> {
-  const supabase = getSupabase();
-  const { data } = await supabase
+  const db = getClient();
+  const { data } = await db
     .from('bing_rows')
     .select('date')
     .eq('site_id', siteId)

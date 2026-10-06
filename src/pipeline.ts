@@ -15,7 +15,7 @@ import {
   saveEvidenceDelta,
   upsertStrategyLedger,
   updateAnalysis,
-} from './supabase.js';
+} from './data.js';
 import { analyseMetrics } from './analyse.js';
 import { computeEvidenceDelta } from './evidence-delta.js';
 import { collectGitContext } from './git-context.js';
@@ -119,11 +119,11 @@ function strategyFromLedger(
 }
 
 /**
- * Collect metrics → run Claude analysis → persist to Supabase.
+ * Collect metrics → run Claude analysis → persist to the database.
  * Shared by the CLI (src/index.ts) and the dashboard API route.
  *
  * @param weekStart Optional ISO Monday date to backfill a specific week.
- * @param dryRun    When true, skips the Supabase write.
+ * @param dryRun    When true, skips the database write.
  * @param log       Optional logger (defaults to console.log).
  */
 export async function runPipeline(opts: {
@@ -295,7 +295,7 @@ export async function runPipeline(opts: {
     ...(corrections.length ? { corrections } : {}),
   };
   await insertInsight(insight);
-  log('Saved to Supabase.');
+  log('Saved to the database.');
 
   // The historical insight is the required write. New ledger tables may not
   // have been migrated yet, so retain the old pipeline's availability while

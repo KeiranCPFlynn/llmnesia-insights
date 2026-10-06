@@ -4,7 +4,7 @@ Use this runbook when the founder says **Run the Insights review.** Insights is
 the evidence store and dashboard; you are the strategy and execution agent.
 
 1. Run `npm run insights:prepare` first. The default refreshes all sources
-   through the run date and stores the evidence in Supabase. This is a partial
+   through the run date and stores the evidence in the local database. This is a partial
    week, including on Sunday while that day is still in progress. Report the
    actual collection time and source availability; requesting today's date
    does not mean a provider has finished processing today's data. Search data
@@ -39,7 +39,7 @@ the evidence store and dashboard; you are the strategy and execution agent.
    never invent work to fill the dashboard. Do not change the generated
    reporting dates, prepared timestamp, or snapshot hash.
 6. Run `npm run insights:publish -- .insights/review.json`. Do not write review
-   or strategy state directly to Supabase. Fix validation errors in the review
+   or strategy state directly to the database. Fix validation errors in the review
    file and run the same command again.
 7. Report exactly what the publish command says it wrote: reporting period,
    data-as-of date, agent, counts of ledger patches, recommendations and

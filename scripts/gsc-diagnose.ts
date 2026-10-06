@@ -6,18 +6,14 @@
  * Usage:  npx tsx scripts/gsc-diagnose.ts
  */
 import '../src/env.js';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../src/db/query.js';
 import { OAuth2Client } from 'google-auth-library';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-  { auth: { persistSession: false } },
-);
+const db = getClient();
 
 async function main() {
   // 1. Sites
-  const { data: sites, error: sErr } = await supabase
+  const { data: sites, error: sErr } = await db
     .from('sites')
     .select('*')
     .order('created_at', { ascending: true });
@@ -33,7 +29,7 @@ async function main() {
 
   // 2. gsc_rows count per site
   for (const s of sites ?? []) {
-    const { count, error } = await supabase
+    const { count, error } = await db
       .from('gsc_rows')
       .select('*', { count: 'exact', head: true })
       .eq('site_id', s.id);

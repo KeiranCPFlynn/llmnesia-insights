@@ -5,9 +5,10 @@ const root = dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // The pipeline modules in src/ use Node APIs and the Anthropic / Supabase SDKs.
-  // Keep them external so they run as plain Node code inside the API route.
-  serverExternalPackages: ['@anthropic-ai/sdk', '@google-analytics/data', '@supabase/supabase-js'],
+  // The pipeline modules in src/ use Node APIs, native modules, and the
+  // Anthropic SDK. Keep them external so they run as plain Node code inside
+  // the API route. better-sqlite3 is a native addon and must never be bundled.
+  serverExternalPackages: ['@anthropic-ai/sdk', '@google-analytics/data', 'better-sqlite3'],
   // Repo lives next to other projects with their own lockfiles; pin the trace root.
   outputFileTracingRoot: root,
   // The strategist reads PROJECT_BRIEF.md at runtime via fs — make sure the

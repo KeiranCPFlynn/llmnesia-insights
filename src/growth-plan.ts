@@ -1,6 +1,6 @@
 import './env.js';
 import { randomUUID } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from './db/query.js';
 import { callLlm, coerceStringArray, resolveProvider, type LlmProvider, type LlmTool } from './llm.js';
 import { GROWTH_PLAN_SYSTEM_PROMPT } from './prompts/growth-prompt.js';
 import { getStoredSiteScale, type SiteScale } from './growth.js';
@@ -152,13 +152,6 @@ const PLAN_TOOL: LlmTool = {
   },
 };
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
 /**
  * The LLM does not need every opportunity row — pass the top-N already-ranked
  * candidates with their evidence. Keeps input tokens bounded and the model
@@ -199,7 +192,7 @@ export async function getGrowthContextDigests(
   site: Site,
   weekStart: string,
 ): Promise<{ ga4Digest: unknown; bingDigest: unknown; siteScale: SiteScale }> {
-  const supabase = getSupabase();
+  const db = getClient();
 
   const [siteScale, bingDigest] = await Promise.all([
     getStoredSiteScale(site.id),
@@ -215,7 +208,7 @@ export async function getGrowthContextDigests(
   // other sites get null and the prompt tolerates that (see growth-prompt.ts).
   let ga4Digest: unknown = null;
   if (site.name.toLowerCase() === 'llmnesia') {
-    const { data: latest } = await supabase
+    const { data: latest } = await db
       .from('weekly_insights')
       .select('metrics_snapshot')
       .order('week_start', { ascending: false })
@@ -347,13 +340,13 @@ export async function saveGrowthPlan(
   weekStart: string,
   plan: GrowthPlan,
 ): Promise<void> {
-  const supabase = getSupabase();
+  const db = getClient();
   const existing = await getGrowthPlan(siteId, weekStart);
   const nextPlan: GrowthPlan = {
     ...plan,
     ...(existing?.chat?.length ? { chat: existing.chat } : {}),
   };
-  const { error } = await supabase
+  const { error } = await db
     .from('growth_plans')
     .upsert(
       {
@@ -377,7 +370,7 @@ export async function saveGrowthPlanChat(
   const plan = await getGrowthPlan(siteId, weekStart);
   if (!plan) throw new Error(`No growth plan for ${siteId} in week ${weekStart}`);
 
-  const supabase = getSupabase();
+  const db = getClient();
   const nextPlan = recommendationId
     ? {
       ...plan,
@@ -387,7 +380,7 @@ export async function saveGrowthPlanChat(
       },
     }
     : { ...plan, chat };
-  const { error } = await supabase
+  const { error } = await db
     .from('growth_plans')
     .update({ plan: nextPlan })
     .eq('site_id', siteId)
@@ -459,8 +452,8 @@ export async function applyGrowthPlanRevision(
     balance: balanceFor(nextRecommendations),
   };
 
-  const supabase = getSupabase();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('growth_plans')
     .update({ plan: nextPlan })
     .eq('site_id', siteId)
@@ -468,7 +461,7 @@ export async function applyGrowthPlanRevision(
   if (error) throw new Error(`growth plan revision failed: ${error.message}`);
 
   if (replacesId) {
-    const { error: actionError } = await supabase
+    const { error: actionError } = await db
       .from('growth_actions')
       .update({
         opportunity_id: recommendation.opportunity_id ?? null,
@@ -491,8 +484,8 @@ export async function getGrowthPlan(
   siteId: string,
   weekStart: string,
 ): Promise<GrowthPlan | null> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('growth_plans')
     .select('plan')
     .eq('site_id', siteId)
@@ -507,8 +500,8 @@ export async function getPriorPlans(
   weekStart: string,
   limit = 4,
 ): Promise<{ week_start: string; thesis: string }[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('growth_plans')
     .select('week_start, plan')
     .eq('site_id', siteId)

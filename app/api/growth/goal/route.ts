@@ -1,15 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../../../../src/db/query.js';
 import { isAuthorized } from '../../../../lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
 
 export async function POST(req: Request) {
   if (!(await isAuthorized(req))) {
@@ -29,8 +23,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'growthGoal must be 2000 characters or fewer' }, { status: 400 });
   }
 
-  const supabase = getSupabase();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('sites')
     .update({ growth_goal: value })
     .eq('id', siteId)

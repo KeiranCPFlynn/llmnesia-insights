@@ -4,7 +4,7 @@ A self-hosted evidence store, durable Strategy Ledger, and read-oriented
 dashboard for LLMnesia. PostHog, GA4, Google Search Console, and Bing evidence
 is collected without an analysis-model call. Codex or Claude Code researches
 the code and prior decisions, reasons over the prepared evidence, and publishes
-a validated review to Supabase.
+a validated review to the local database.
 
 To run a review, open this repository in Codex or Claude Code and say:
 
@@ -28,302 +28,47 @@ primary workflow.
 
 ## Setup
 
-### 1. Supabase schema
+### 1. Local database (automatic)
 
-Run this in your Supabase SQL editor (unchanged from before):
+The app runs on a single local SQLite database file — no server, no cloud
+account, nothing to pause. The file and its full schema are created
+automatically on first use:
 
-```sql
-create table public.weekly_insights (
-  id uuid primary key default gen_random_uuid(),
-  week_start date not null unique,
-  week_end date not null,
-  metrics_snapshot jsonb not null,
-  headline text,
-  corrections jsonb not null default '[]',
-  revisions jsonb not null default '[]',
-  chat jsonb not null default '[]',
-  strategy jsonb,
-  strategy_goal text,
-  strategy_decisions jsonb not null default '[]',
-  strategy_chat jsonb not null default '[]',
-  summary text not null,
-  findings jsonb not null,
-  action_items jsonb not null,
-  open_threads jsonb not null,
-  resolved_threads jsonb not null,
-  model_used text not null,
-  created_at timestamptz not null default now()
-);
+- Default location: `data/insights.db` (gitignored). Back it up with Time
+  Machine or by copying the file; it is the only state the app keeps.
+- Set `INSIGHTS_DB_PATH` in `.env` to relocate it.
+- Schema source of truth: [`src/db/ddl.ts`](src/db/ddl.ts). Adding a table or
+  column means editing that file; it is applied on every startup, so code and
+  schema cannot drift apart.
 
-create index on public.weekly_insights (week_start desc);
+**Migrating from the old Supabase project** (wipe-and-reload per table, safe
+to re-run, but do not run it after writing new local data):
+
+```bash
+# 1. Restore the Supabase project in its dashboard if it is paused, then:
+npm run db:dump-supabase      # writes data/supabase-dump/*.json
+# 2. Load the dump into the local database:
+npm run db:import-sqlite
 ```
 
-> **Migration (existing databases):** the `headline` column was added after launch. If your table predates it, run this once before the next pipeline run or the insert will fail:
->
-> ```sql
-> alter table public.weekly_insights add column if not exists headline text;
-> alter table public.weekly_insights add column if not exists corrections jsonb not null default '[]';
-> alter table public.weekly_insights add column if not exists chat jsonb not null default '[]';
-> alter table public.weekly_insights add column if not exists revisions jsonb not null default '[]';
-> alter table public.weekly_insights add column if not exists strategy jsonb;
-> alter table public.weekly_insights add column if not exists strategy_goal text;
-> alter table public.weekly_insights add column if not exists strategy_decisions jsonb not null default '[]';
-> alter table public.weekly_insights add column if not exists strategy_chat jsonb not null default '[]';
-> ```
->
-> **Migration (Known facts / standing caveats):** persistent caveats & context
-> notes that apply to *every* week's analysis (so a confirmed non-issue — e.g.
-> the PostHog vs GA4 install gap — stops being re-flagged). Managed from the
-> "Known facts" panel on the Insights page. Run once:
->
-> ```sql
-> create table if not exists public.standing_caveats (
->   id uuid primary key,
->   created_at timestamptz not null default now(),
->   updated_at timestamptz,
->   kind text not null default 'caveat',   -- 'caveat' | 'context'
->   affected_metric text not null,
->   note text not null,
->   active boolean not null default true
-> );
-> alter table public.standing_caveats enable row level security;  -- service key bypasses RLS; no policies = anon locked out (safe)
-> ```
+**Fresh start** (no Supabase data to import): seed the site row the Growth
+Planner needs, then initialise the Strategy Ledger:
 
-### 1b. Stateful Strategy Ledger schema
-
-Run this once to enable the persistent ledger, evidence history, and audit
-trail. The existing weekly report table remains unchanged and is still written
-for backwards compatibility.
-
-```sql
-create table if not exists public.strategy_ledger (
-  id integer primary key default 1 check (id = 1),
-  state jsonb not null,
-  version integer not null default 1,
-  updated_at timestamptz not null default now(),
-  updated_by text
-);
-
-create table if not exists public.evidence_deltas (
-  id uuid primary key default gen_random_uuid(),
-  week_start date not null unique,
-  week_end date not null,
-  delta jsonb not null,
-  raw_snapshot jsonb not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists evidence_deltas_week_start on public.evidence_deltas (week_start desc);
-
-create table if not exists public.ledger_entries (
-  id uuid primary key default gen_random_uuid(),
-  week_start date not null,
-  entry_type text not null,
-  target text,
-  operation text not null,
-  patch jsonb,
-  evidence text,
-  confidence text,
-  model_used text not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists ledger_entries_week_start on public.ledger_entries (week_start desc);
-create index if not exists ledger_entries_entry_type on public.ledger_entries (entry_type);
-
-create table if not exists public.context_sources (
-  id uuid primary key default gen_random_uuid(),
-  week_start date not null,
-  source_type text not null,
-  repo text,
-  digest jsonb not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists context_sources_week_start on public.context_sources (week_start desc);
-
-alter table public.strategy_ledger enable row level security;
-alter table public.evidence_deltas enable row level security;
-alter table public.ledger_entries enable row level security;
-alter table public.context_sources enable row level security;
-
--- These tables are server-only. Current Supabase projects may require Data API
--- grants explicitly; keep browser roles locked out and grant only the server.
-revoke all on table public.strategy_ledger, public.evidence_deltas,
-  public.ledger_entries, public.context_sources from anon, authenticated;
-grant select, insert, update, delete on table public.strategy_ledger,
-  public.evidence_deltas, public.ledger_entries, public.context_sources
-  to service_role;
+```bash
+npx tsx scripts/seed-sites.ts
+npm run seed-ledger
 ```
 
-Then run `npm run seed-ledger` once. It uses the newest legacy strategy and
-metrics snapshot as a starting point, and leaves an existing ledger untouched.
+`seed-ledger` uses the newest legacy strategy and metrics snapshot as a
+starting point and leaves an existing ledger untouched.
 
-`npm run check-schema` verifies these four tables as well as the legacy report
-schema. A permission error means the tables exist but the `service_role` Data
-API grant above is missing.
+The Supabase-era `npm run check-schema` is gone: the schema is created by
+code, so it can never silently drift.
 
-### 1b(ii). Incremental analytics ingestion
-
-Apply [`supabase/insights-ingestion.sql`](supabase/insights-ingestion.sql).
-It stores every PostHog, GA4, GSC and Bing response used in a review and keeps
-a per-source freshness cursor. The daily collector updates recent data; an
-Insights review reads the stored evidence and only triggers ingestion when that
-cursor is behind.
-
-### 1c. Traffic Growth Planner schema (`/growth`)
-
-The Growth Planner (Google Search Console + opportunity detection + weekly
-action plan) lives in its own tables, **NOT** as more jsonb on
-`weekly_insights` — GSC data is row-per-query-per-day and multi-site, so it
-needs proper relational storage. Run this block once before opening `/growth`:
-
-```sql
-create table if not exists public.sites (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  root_url text not null,
-  gsc_property text not null,
-  sitemap_url text,
-  brief_override text,
-  -- Current objective for /growth. Keep this stage-specific, e.g.
-  -- "Build qualified organic traffic and product discovery; avoid monetization
-  -- recommendations until the product has a larger active base."
-  growth_goal text,
-  -- Code repo this site's content lives in. Used in handoff prompts so the
-  -- LLM can name the right repo for the founder to open in Claude Code /
-  -- Codex (e.g. "llmnesia-site njs"). Plain text — name it however the
-  -- folder is on disk.
-  repo text,
-  enabled boolean not null default true,
-  created_at timestamptz not null default now(),
-  unique (gsc_property)
-);
-
--- Existing-DB migration for the new column:
-alter table public.sites add column if not exists repo text;
-alter table public.sites add column if not exists growth_goal text;
-
-create table if not exists public.gsc_rows (
-  site_id uuid not null references public.sites(id) on delete cascade,
-  query text not null,
-  page text not null,
-  date date not null,
-  country text not null default 'zzz',
-  device text not null default 'all',
-  clicks integer not null default 0,
-  impressions integer not null default 0,
-  ctr double precision not null default 0,
-  position double precision not null default 0,
-  synced_at timestamptz not null default now(),
-  primary key (site_id, query, page, date, country, device)
-);
-create index if not exists gsc_rows_site_date on public.gsc_rows (site_id, date desc);
-create index if not exists gsc_rows_site_query on public.gsc_rows (site_id, query);
-create index if not exists gsc_rows_site_page on public.gsc_rows (site_id, page);
-
-create table if not exists public.growth_opportunities (
-  id uuid primary key default gen_random_uuid(),
-  site_id uuid not null references public.sites(id) on delete cascade,
-  week_start date not null,
-  type text not null,
-  target_query text,
-  target_page text,
-  evidence jsonb not null,
-  score double precision not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists growth_opps_site_week on public.growth_opportunities (site_id, week_start desc);
-
-create table if not exists public.growth_plans (
-  site_id uuid not null references public.sites(id) on delete cascade,
-  week_start date not null,
-  plan jsonb not null,
-  model_used text not null,
-  generated_at timestamptz not null default now(),
-  primary key (site_id, week_start)
-);
-
-create table if not exists public.growth_actions (
-  id uuid primary key default gen_random_uuid(),
-  site_id uuid not null references public.sites(id) on delete cascade,
-  week_start date not null,
-  recommendation_id uuid,
-  opportunity_id uuid,
-  action_type text not null,
-  target_query text,
-  target_page text,
-  suggested_title text,
-  brief jsonb,
-  status text not null default 'planned',
-  status_updated_at timestamptz not null default now(),
-  published_url text,
-  follow_up_date date,
-  note text,
-  created_at timestamptz not null default now()
-);
-create index if not exists growth_actions_site_status on public.growth_actions (site_id, status);
-create index if not exists growth_actions_recommendation on public.growth_actions (recommendation_id);
-
--- Sites seed. The gsc_property string MUST match exactly what Search Console
--- shows (top-left dropdown). Use `sc-domain:example.com` for a Domain property
--- (the modern default), or `https://example.com/` for a URL-prefix property
--- (note the trailing slash — must match GSC verbatim).
-insert into public.sites (name, root_url, gsc_property, sitemap_url, repo) values
-  ('LLMnesia',   'https://llmnesia.com',   'sc-domain:llmnesia.com',   'https://llmnesia.com/sitemap.xml',   'llmnesia-site njs')
-on conflict (gsc_property) do nothing;
-
--- Backfill repo for sites already seeded before the `repo` column existed:
-update public.sites set repo = 'llmnesia-site njs' where name = 'LLMnesia'   and repo is null;
-```
-
-> **Migration (Bing Webmaster Tools):** if you are adding Bing to an existing
-> database, run this block once before syncing:
->
-> ```sql
-> -- Optional override when the URL registered in Bing WMT differs from root_url:
-> alter table public.sites add column if not exists bing_site_url text;
->
-> create table if not exists public.bing_rows (
->   site_id  uuid not null references public.sites(id) on delete cascade,
->   query    text not null,
->   date     date not null,
->   country  text not null default 'all',
->   clicks   integer not null default 0,
->   impressions integer not null default 0,
->   ctr      double precision not null default 0,
->   position double precision not null default 0,
->   synced_at timestamptz not null default now(),
->   primary key (site_id, query, date, country)
-> );
-> create index if not exists bing_rows_site_date  on public.bing_rows (site_id, date desc);
-> create index if not exists bing_rows_site_query on public.bing_rows (site_id, query);
-> ```
->
-> After that, set `BING_WEBMASTER_API_KEY` and click **Sync** in `/growth` to
-> backfill. If the site URL in Bing WMT differs from `root_url` (e.g. it has a
-> trailing slash), update the row:
-> `update public.sites set bing_site_url = 'https://llmnesia.com/' where name = 'LLMnesia';`
->
-> **Migration (Bing opportunity detection):** run once to let opportunity
-> detection tag which engine a candidate came from (existing rows default to
-> 'google'):
->
-> ```sql
-> alter table public.growth_opportunities add column if not exists source text not null default 'google';
-> ```
->
-> **Bing + Google feed two places:** (1) the `/growth` planner, where the raw
-> multi-site query data drives opportunity detection and the weekly SEO plan,
-> and (2) the **weekly insights** analysis, which gets a combined Google + Bing
-> search-visibility digest for **llmnesia.com only** (impressions, top queries,
-> ranking, week-over-week) under `metrics_snapshot.search_performance`. That's
-> the top-of-funnel demand layer GA4/PostHog can't see. It's `jsonb` so no extra
-> DDL is needed; it simply appears once `gsc_rows` / `bing_rows` have data, and
-> the pipeline omits it (and never fails) when they don't.
-
-> Run as-is. If a later sync returns "property not found", that site's GSC
-> entry is URL-prefix instead of Domain — update just that row in the `sites`
-> table (e.g. `update public.sites set gsc_property = 'https://llmnesia.com/' where name = 'LLMnesia';`).
-> Changing the `gsc_property` value is safe: existing `gsc_rows` reference the
-> row's `id`, not the property string.
+The `/growth` tables (sites, gsc_rows, bing_rows, growth_opportunities,
+growth_plans, growth_actions) live in the same database and are created
+together with the rest. Sites are rows in `sites` (not code) — add another
+site by inserting a row (`npx tsx scripts/seed-sites.ts` shows the shape).
 
 ### 2. Environment variables
 
@@ -333,8 +78,7 @@ Copy `.env.example` to `.env` and fill in:
 |---|---|
 | `POSTHOG_PROJECT_ID` | PostHog → Project settings → Project ID |
 | `POSTHOG_API_KEY` | PostHog → Project settings → **Personal** API keys (starts `phx_`, read-only is fine). The query API rejects *project* keys (`phc_`). `.env` is authoritative — `src/env.ts` loads it with `override: true`, so a stray `phc_` exported in your shell can't shadow it. |
-| `SUPABASE_URL` | Supabase → Project settings → API → Project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase → Project settings → API → service_role key |
+| `INSIGHTS_DB_PATH` | Optional — path of the SQLite database file. Defaults to `data/insights.db`, created automatically. |
 | `ANTHROPIC_API_KEY` | console.anthropic.com (required for the Claude provider) |
 | `ANTHROPIC_MODEL` | Optional — override the Claude model (default `claude-sonnet-5`) |
 | `DEEPSEEK_API_KEY` | platform.deepseek.com — required only when DeepSeek is selected |
@@ -527,7 +271,7 @@ npm run pipeline -- --provider=deepseek   # use DeepSeek instead of Claude (defa
 - [scripts/insights-publish.ts](scripts/insights-publish.ts) — validates and
   idempotently publishes the agent review, ledger patches, and provenance.
 - [app/api/run/route.ts](app/api/run/route.ts) — evidence-only manual/cron route.
-- [app/page.tsx](app/page.tsx) — the dashboard. [lib/dashboard.ts](lib/dashboard.ts) reads Supabase once and flattens metrics for charts.
+- [app/page.tsx](app/page.tsx) — the dashboard. [lib/dashboard.ts](lib/dashboard.ts) reads the database once and flattens metrics for charts.
 - [middleware.ts](middleware.ts) + [app/login](app/login) — the password gate (no-op when `DASHBOARD_PASSWORD` is unset).
 
 ## Adding new metrics

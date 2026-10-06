@@ -6,7 +6,7 @@
  *   npx tsx scripts/growth-debug.ts
  */
 import '../src/env.js';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../src/db/query.js';
 import { computeOpportunities, detectionWindow, getSiteScale, summariseSiteScale } from '../src/growth.js';
 import type { GSCRow, Site } from '../src/types.js';
 
@@ -20,12 +20,8 @@ function getCurrentWeekStart(): string {
 }
 
 async function main() {
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
-    { auth: { persistSession: false } },
-  );
-  const { data: sites, error } = await supabase
+  const db = getClient();
+  const { data: sites, error } = await db
     .from('sites')
     .select('*')
     .eq('enabled', true);

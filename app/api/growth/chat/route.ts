@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../../../../src/db/query.js';
 import { isAuthorized } from '../../../../lib/session';
 import { readBrief } from '../../../../src/brief.js';
 import { getSiteById } from '../../../../src/gsc.js';
@@ -98,12 +98,6 @@ type GrowthRevision = {
   replaces_id?: string;
   recommendation: Omit<GrowthRecommendation, 'id'>;
 };
-
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
 
 function systemPrompt({
   brief,
@@ -225,16 +219,16 @@ export async function POST(req: Request) {
   }
 
   try {
-    const supabase = getSupabase();
+    const db = getClient();
     const [opportunitiesRes, actionsRes, { ga4Digest, bingDigest, siteScale }] = await Promise.all([
-      supabase
+      db
         .from('growth_opportunities')
         .select('*')
         .eq('site_id', siteId)
         .eq('week_start', weekStart)
         .order('score', { ascending: false })
         .limit(25),
-      supabase
+      db
         .from('growth_actions')
         .select('*')
         .eq('site_id', siteId)

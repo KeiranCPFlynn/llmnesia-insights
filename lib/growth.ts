@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from '../src/db/query.js';
 import { calendarWeekStart } from './week.js';
 import type {
   GSCRow,
@@ -9,16 +9,9 @@ import type {
   Site,
 } from '../src/types.js';
 
-function getClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
 export async function getEnabledSites(): Promise<Site[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('sites')
     .select('*')
     .eq('enabled', true)
@@ -31,21 +24,21 @@ export async function getGrowthWeekOptions(
   siteId: string,
   currentWeekStart = getCurrentWeekStart(),
 ): Promise<{ weeks: string[]; defaultWeek: string }> {
-  const supabase = getClient();
+  const db = getClient();
   const [plansRes, actionsRes, oppsRes] = await Promise.all([
-    supabase
+    db
       .from('growth_plans')
       .select('week_start')
       .eq('site_id', siteId)
       .order('week_start', { ascending: false })
       .limit(52), // Increased from 26 to 52 weeks
-    supabase
+    db
       .from('growth_actions')
       .select('week_start')
       .eq('site_id', siteId)
       .order('week_start', { ascending: false })
       .limit(52), // Increased from 26 to 52 weeks
-    supabase
+    db
       .from('growth_opportunities')
       .select('week_start')
       .eq('site_id', siteId)
@@ -102,12 +95,12 @@ export function getCurrentWeekStart(now: Date = new Date()): string {
  * identical across all three tabs.
  */
 export async function getAllWeeks(siteId: string): Promise<string[]> {
-  const supabase = getClient();
+  const db = getClient();
   const [insightsRes, plansRes, actionsRes, oppsRes] = await Promise.all([
-    supabase.from('weekly_insights').select('week_start'),
-    supabase.from('growth_plans').select('week_start').eq('site_id', siteId),
-    supabase.from('growth_actions').select('week_start').eq('site_id', siteId),
-    supabase.from('growth_opportunities').select('week_start').eq('site_id', siteId),
+    db.from('weekly_insights').select('week_start'),
+    db.from('growth_plans').select('week_start').eq('site_id', siteId),
+    db.from('growth_actions').select('week_start').eq('site_id', siteId),
+    db.from('growth_opportunities').select('week_start').eq('site_id', siteId),
   ]);
   const all = new Set<string>([getCurrentWeekStart()]);
   for (const res of [insightsRes, plansRes, actionsRes, oppsRes]) {
@@ -150,10 +143,10 @@ async function getOpportunityOverview(siteId: string, weekStart: string): Promis
   count: number;
   counts: Record<GrowthOpportunityType, number>;
 }> {
-  const supabase = getClient();
+  const db = getClient();
   const results = await Promise.all(
     OPPORTUNITY_TYPES.map((type) =>
-      supabase
+      db
         .from('growth_opportunities')
         .select('*', { count: 'exact' })
         .eq('site_id', siteId)
@@ -294,10 +287,10 @@ async function getGscRowsForDigest(
   startDate: string,
   endDate: string,
 ): Promise<GSCRow[]> {
-  const supabase = getClient();
+  const db = getClient();
   const pageSize = 1000;
   const page = (from: number) =>
-    supabase
+    db
       .from('gsc_rows')
       .select('date,query,page,clicks,impressions,ctr,position,country,device,site_id')
       .eq('site_id', siteId)
@@ -308,7 +301,7 @@ async function getGscRowsForDigest(
 
   // Count first, then fetch every page in parallel — far faster than the old
   // sequential one-page-at-a-time loop for a 90-day window of GSC rows.
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db
     .from('gsc_rows')
     .select('*', { count: 'exact', head: true })
     .eq('site_id', siteId)
@@ -330,9 +323,9 @@ async function getGscRowsForDigest(
 }
 
 export async function getGscDigest(siteId: string, weekStart: string): Promise<GscDigest> {
-  const supabase = getClient();
+  const db = getClient();
   const targetEndDate = selectedWeekEnd(weekStart);
-  const { data: latest, error: latestError } = await supabase
+  const { data: latest, error: latestError } = await db
     .from('gsc_rows')
     .select('date')
     .eq('site_id', siteId)
@@ -404,43 +397,43 @@ export async function getGrowthPageData(
   siteId: string,
   weekStart: string,
 ): Promise<GrowthPageData | null> {
-  const supabase = getClient();
+  const db = getClient();
   const [siteRes, sitesRes, planRes, opportunityOverview, actionsRes, syncRes, countRes, bingSyncRes, bingCountRes] =
     await Promise.all([
-      supabase.from('sites').select('*').eq('id', siteId).maybeSingle(),
-      supabase
+      db.from('sites').select('*').eq('id', siteId).maybeSingle(),
+      db
         .from('sites')
         .select('*')
         .eq('enabled', true)
         .order('created_at', { ascending: true }),
-      supabase
+      db
         .from('growth_plans')
         .select('plan')
         .eq('site_id', siteId)
         .eq('week_start', weekStart)
         .maybeSingle(),
       getOpportunityOverview(siteId, weekStart),
-      supabase
+      db
         .from('growth_actions')
         .select('*')
         .eq('site_id', siteId)
         .order('status_updated_at', { ascending: false }),
-      supabase
+      db
         .from('gsc_rows')
         .select('synced_at')
         .eq('site_id', siteId)
         .order('synced_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.from('gsc_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
-      supabase
+      db.from('gsc_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
+      db
         .from('bing_rows')
         .select('synced_at')
         .eq('site_id', siteId)
         .order('synced_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.from('bing_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
+      db.from('bing_rows').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
     ]);
 
   if (siteRes.error) throw new Error(`site fetch failed: ${siteRes.error.message}`);

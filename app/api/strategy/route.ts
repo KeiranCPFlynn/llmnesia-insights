@@ -4,7 +4,7 @@ import {
   getInsightByWeek,
   getStrategyHistoryBefore,
   saveStrategy,
-} from '../../../src/supabase.js';
+} from '../../../src/data.js';
 import { generateStrategy } from '../../../src/strategy.js';
 import { readBrief } from '../../../src/brief.js';
 import { topChannel } from '../../../lib/dashboard';
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
   if (!insight) return NextResponse.json({ error: `No report for ${week}` }, { status: 404 });
 
   // …then run the expensive generation AFTER the response is sent. `after()`
-  // is owned by the server/platform, so it completes (and saves to Supabase)
+  // is owned by the server/platform, so it completes (and saves to the database)
   // regardless of the client — closing the tab, navigating or reloading does
   // not stop it. The client polls GET until the row has it.
   after(async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import { getClient } from './db/query.js';
 import type {
   AnalysisResult,
   ChatMessage,
@@ -32,22 +32,15 @@ export interface SourceSyncState {
   detail: string | null;
 }
 
-function getClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  return createClient(url, key);
-}
-
 export async function getRecentInsights(limit = 6): Promise<HistoricalInsight[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .select('week_start, summary, findings, action_items, open_threads')
     .order('week_start', { ascending: false })
     .limit(limit);
 
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return ((data as HistoricalInsight[]) ?? []).reverse();
 }
 
@@ -58,35 +51,35 @@ export async function getRecentInsights(limit = 6): Promise<HistoricalInsight[]>
  * `chat` survive a re-run untouched.
  */
 export async function insertInsight(insight: Omit<WeeklyInsight, 'id' | 'created_at'>): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .upsert(insight, { onConflict: 'week_start' });
-  if (error) throw new Error(`Supabase upsert failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights upsert failed: ${error.message}`);
 }
 
 export async function getInsightByWeek(weekStart: string): Promise<WeeklyInsight | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .select('*')
     .eq('week_start', weekStart)
     .maybeSingle();
 
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return (data as WeeklyInsight) ?? null;
 }
 
 /** Latest complete report, used to seed the ledger from the existing history. */
 export async function getLatestInsight(): Promise<WeeklyInsight | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .select('*')
     .order('week_start', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return (data as WeeklyInsight) ?? null;
 }
 
@@ -95,15 +88,14 @@ export async function getHistoryBefore(
   weekStart: string,
   limit = 6,
 ): Promise<HistoricalInsight[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .select('week_start, summary, findings, action_items, open_threads')
     .lt('week_start', weekStart)
     .order('week_start', { ascending: false })
     .limit(limit);
-
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return ((data as HistoricalInsight[]) ?? []).reverse();
 }
 
@@ -112,8 +104,8 @@ export async function updateAnalysis(
   analysis: AnalysisResult,
   modelUsed: string,
 ): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({
       headline: analysis.headline,
@@ -126,7 +118,7 @@ export async function updateAnalysis(
     })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
 }
 
 export async function addCorrection(
@@ -137,13 +129,13 @@ export async function addCorrection(
   if (!row) throw new Error(`No insight for week ${weekStart}`);
   const corrections = [...(row.corrections ?? []), correction];
 
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ corrections })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
   return corrections;
 }
 
@@ -164,13 +156,13 @@ export async function updateCorrection(
   }
   const corrections = existing.map((c) => (c.id === id ? { ...c, ...patch } : c));
 
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ corrections })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
   return corrections;
 }
 
@@ -183,13 +175,13 @@ export async function deleteCorrection(
   if (!row) throw new Error(`No insight for week ${weekStart}`);
   const corrections = (row.corrections ?? []).filter((c) => c.id !== id);
 
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ corrections })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
   return corrections;
 }
 
@@ -202,23 +194,23 @@ export async function addRevision(weekStart: string, revision: Revision): Promis
   if (!row) throw new Error(`No insight for week ${weekStart}`);
   const revisions = [...(row.revisions ?? []), revision];
 
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ revisions })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
 }
 
 export async function saveChat(weekStart: string, chat: ChatMessage[]): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ chat })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
 }
 
 // --- Standing caveats (persistent, cross-week "known facts") ---
@@ -229,8 +221,8 @@ export async function saveChat(weekStart: string, chat: ChatMessage[]): Promise<
  * passes `false` to also list retired ones.
  */
 export async function getStandingCaveats(activeOnly = true): Promise<StandingCaveat[]> {
-  const supabase = getClient();
-  let query = supabase
+  const db = getClient();
+  let query = db
     .from('standing_caveats')
     .select('*')
     .order('created_at', { ascending: true });
@@ -243,7 +235,7 @@ export async function getStandingCaveats(activeOnly = true): Promise<StandingCav
 export async function addStandingCaveat(
   input: Pick<StandingCaveat, 'kind' | 'affected_metric' | 'note'>,
 ): Promise<StandingCaveat> {
-  const supabase = getClient();
+  const db = getClient();
   const caveat: StandingCaveat = {
     id: randomUUID(),
     created_at: new Date().toISOString(),
@@ -252,7 +244,7 @@ export async function addStandingCaveat(
     note: input.note,
     active: true,
   };
-  const { error } = await supabase.from('standing_caveats').insert(caveat);
+  const { error } = await db.from('standing_caveats').insert(caveat);
   if (error) throw new Error(`standing_caveats insert failed: ${error.message}`);
   return caveat;
 }
@@ -261,8 +253,8 @@ export async function updateStandingCaveat(
   id: string,
   patch: Partial<Pick<StandingCaveat, 'kind' | 'affected_metric' | 'note' | 'active'>>,
 ): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('standing_caveats')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id);
@@ -270,8 +262,8 @@ export async function updateStandingCaveat(
 }
 
 export async function deleteStandingCaveat(id: string): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase.from('standing_caveats').delete().eq('id', id);
+  const db = getClient();
+  const { error } = await db.from('standing_caveats').delete().eq('id', id);
   if (error) throw new Error(`standing_caveats delete failed: ${error.message}`);
 }
 
@@ -282,13 +274,13 @@ export async function saveStrategy(
   weekStart: string,
   strategy: StrategyResult,
 ): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ strategy })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
 }
 
 /**
@@ -307,13 +299,13 @@ export async function setStrategyDecision(
   );
   const decisions = [...others, decision];
 
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ strategy_decisions: decisions })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
   return decisions;
 }
 
@@ -339,13 +331,13 @@ export async function applyStrategyRevision(
       : [...recs, recommendation];
   const strategy: StrategyResult = { ...row.strategy, recommendations: next };
 
-  const supabase = getClient();
-  const { error } = await supabase
+  const db = getClient();
+  const { error } = await db
     .from('weekly_insights')
     .update({ strategy })
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
   return strategy;
 }
 
@@ -354,15 +346,15 @@ export async function getStrategyHistoryBefore(
   weekStart: string,
   limit = 6,
 ): Promise<{ week_start: string; strategy: StrategyResult | null; strategy_decisions: StrategyDecision[] }[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .select('week_start, strategy, strategy_decisions')
     .lt('week_start', weekStart)
     .order('week_start', { ascending: false })
     .limit(limit);
 
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return (
     (data as { week_start: string; strategy: StrategyResult | null; strategy_decisions: StrategyDecision[] }[]) ??
     []
@@ -371,8 +363,8 @@ export async function getStrategyHistoryBefore(
 
 /** Most recent week before `weekStart` that has a non-empty strategy goal. */
 export async function getStrategyGoalBefore(weekStart: string): Promise<string | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('weekly_insights')
     .select('strategy_goal')
     .lt('week_start', weekStart)
@@ -381,7 +373,7 @@ export async function getStrategyGoalBefore(weekStart: string): Promise<string |
     .limit(1)
     .maybeSingle();
 
-  if (error) throw new Error(`Supabase fetch failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights fetch failed: ${error.message}`);
   return (data?.strategy_goal as string | null)?.trim() || null;
 }
 
@@ -411,7 +403,7 @@ export async function saveStrategyChat(
   const row = recommendationId ? await getInsightByWeek(weekStart) : null;
   if (recommendationId && !row) throw new Error(`No insight for week ${weekStart}`);
 
-  const supabase = getClient();
+  const db = getClient();
   const update = recommendationId
     ? {
         strategy_recommendation_chats: {
@@ -420,35 +412,29 @@ export async function saveStrategyChat(
         },
       }
     : { strategy_chat: chat };
-  const { error } = await supabase
+  const { error } = await db
     .from('weekly_insights')
     .update(update)
     .eq('week_start', weekStart);
 
-  if (error) throw new Error(`Supabase update failed: ${error.message}`);
+  if (error) throw new Error(`weekly_insights update failed: ${error.message}`);
 }
 
 // --- Strategy Ledger (singleton living strategy document) ---
 
 /**
- * Read the single strategy_ledger row (id=1). Returns null when the table
- * doesn't exist yet (pre-DDL) or the ledger hasn't been seeded.
+ * Read the single strategy_ledger row (id=1). Null when the ledger hasn't
+ * been seeded yet.
  */
 export async function getStrategyLedger(): Promise<StrategyLedgerState | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('strategy_ledger')
     .select('state, version, updated_at, updated_by')
     .eq('id', 1)
     .maybeSingle();
 
-  if (error) {
-    // Table may not exist yet — fail-soft so the pipeline doesn't break.
-    if (error.code === '42P01' || error.message.includes('does not exist')) {
-      return null;
-    }
-    throw new Error(`strategy_ledger fetch failed: ${error.message}`);
-  }
+  if (error) throw new Error(`strategy_ledger fetch failed: ${error.message}`);
   if (!data) return null;
   const state = data.state as StrategyLedgerState;
   state.version = data.version as number;
@@ -464,8 +450,8 @@ export async function upsertStrategyLedger(
   state: StrategyLedgerState,
   updatedBy: string,
 ): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase.from('strategy_ledger').upsert(
+  const db = getClient();
+  const { error } = await db.from('strategy_ledger').upsert(
     {
       id: 1,
       state,
@@ -480,8 +466,8 @@ export async function upsertStrategyLedger(
 
 /** Used only to roll back a failed first publish after creating the singleton. */
 export async function deleteStrategyLedger(): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase.from('strategy_ledger').delete().eq('id', 1);
+  const db = getClient();
+  const { error } = await db.from('strategy_ledger').delete().eq('id', 1);
   if (error) throw new Error(`strategy_ledger rollback failed: ${error.message}`);
 }
 
@@ -489,33 +475,27 @@ export async function deleteStrategyLedger(): Promise<void> {
 
 /** Get the most recent evidence delta (for computing the next delta's "prior"). */
 export async function getLatestEvidenceDelta(): Promise<EvidenceDelta | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('evidence_deltas')
     .select('delta')
     .order('week_start', { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    if (error.code === '42P01' || error.message.includes('does not exist')) return null;
-    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
-  }
+  if (error) throw new Error(`evidence_deltas fetch failed: ${error.message}`);
   return (data?.delta as EvidenceDelta) ?? null;
 }
 
 /** Read the evidence delta belonging to one reporting week. */
 export async function getEvidenceDeltaByWeek(weekStart: string): Promise<EvidenceDelta | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('evidence_deltas')
     .select('delta')
     .eq('week_start', weekStart)
     .maybeSingle();
-  if (error) {
-    if (error.code === '42P01' || error.message.includes('does not exist')) return null;
-    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
-  }
+  if (error) throw new Error(`evidence_deltas fetch failed: ${error.message}`);
   return (data?.delta as EvidenceDelta) ?? null;
 }
 
@@ -523,8 +503,8 @@ export async function getEvidenceDeltaByWeek(weekStart: string): Promise<Evidenc
 export async function getEvidenceRecordByWeek(
   weekStart: string,
 ): Promise<EvidenceDeltaRecord | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('evidence_deltas')
     .select('delta, raw_snapshot, created_at')
     .eq('week_start', weekStart)
@@ -535,17 +515,15 @@ export async function getEvidenceRecordByWeek(
 
 /** Newest evidence record, even when no agent review has been published yet. */
 export async function getLatestEvidenceRecord(): Promise<EvidenceDeltaRecord | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('evidence_deltas')
     .select('delta, raw_snapshot, created_at')
     .order('week_start', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) {
-    if (error.code === '42P01' || error.message.includes('does not exist')) return null;
-    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
-  }
+
+  if (error) throw new Error(`evidence_deltas fetch failed: ${error.message}`);
   return (data as EvidenceDeltaRecord) ?? null;
 }
 
@@ -553,8 +531,8 @@ export async function getLatestEvidenceRecord(): Promise<EvidenceDeltaRecord | n
 export async function getLatestEvidenceSnapshotBefore(
   weekStart: string,
 ): Promise<MetricsSnapshot | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('evidence_deltas')
     .select('raw_snapshot')
     .lt('week_start', weekStart)
@@ -562,15 +540,13 @@ export async function getLatestEvidenceSnapshotBefore(
     .limit(1)
     .maybeSingle();
 
-  if (error && error.code !== '42P01' && !error.message.includes('does not exist')) {
-    throw new Error(`evidence_deltas fetch failed: ${error.message}`);
-  }
+  if (error) throw new Error(`evidence_deltas fetch failed: ${error.message}`);
   if (data?.raw_snapshot) return data.raw_snapshot as MetricsSnapshot;
 
   // During migration the delta table is empty even though legacy weekly
   // snapshots already exist. Reuse the latest one so the very first ledger
   // update has a meaningful comparison instead of treating every value as new.
-  const { data: insight, error: insightError } = await supabase
+  const { data: insight, error: insightError } = await db
     .from('weekly_insights')
     .select('metrics_snapshot')
     .lt('week_start', weekStart)
@@ -586,8 +562,8 @@ export async function saveEvidenceDelta(
   delta: EvidenceDelta,
   rawSnapshot: MetricsSnapshot,
 ): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase.from('evidence_deltas').upsert(
+  const db = getClient();
+  const { error } = await db.from('evidence_deltas').upsert(
     {
       week_start: delta.week_start,
       week_end: delta.week_end,
@@ -609,8 +585,8 @@ export async function saveSourceSnapshot(input: {
   snapshot: unknown;
   scope?: string;
 }): Promise<void> {
-  const supabase = getClient();
-  const { error } = await supabase.from('source_snapshots').upsert(
+  const db = getClient();
+  const { error } = await db.from('source_snapshots').upsert(
     {
       source: input.source,
       scope: input.scope ?? 'llmnesia',
@@ -632,9 +608,9 @@ export async function saveSourceSyncState(input: {
   detail?: string | null;
   scope?: string;
 }): Promise<void> {
-  const supabase = getClient();
+  const db = getClient();
   const now = new Date().toISOString();
-  const { error } = await supabase.from('source_sync_state').upsert(
+  const { error } = await db.from('source_sync_state').upsert(
     {
       source: input.source,
       scope: input.scope ?? 'llmnesia',
@@ -651,8 +627,8 @@ export async function saveSourceSyncState(input: {
 
 /** Source freshness shown in review packs and used to decide whether to ingest. */
 export async function getSourceSyncStates(scope = 'llmnesia'): Promise<SourceSyncState[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('source_sync_state')
     .select('*')
     .eq('scope', scope);
@@ -665,7 +641,7 @@ export async function getSourceSyncStates(scope = 'llmnesia'): Promise<SourceSyn
 /** Append one or more entries to the ledger_entries table. */
 export async function appendLedgerEntries(entries: LedgerEntry[]): Promise<void> {
   if (!entries.length) return;
-  const supabase = getClient();
+  const db = getClient();
   const rows = entries.map((e) => ({
     id: e.id ?? randomUUID(),
     week_start: e.week_start,
@@ -677,14 +653,14 @@ export async function appendLedgerEntries(entries: LedgerEntry[]): Promise<void>
     confidence: e.confidence,
     model_used: e.model_used,
   }));
-  const { error } = await supabase.from('ledger_entries').insert(rows);
+  const { error } = await db.from('ledger_entries').insert(rows);
   if (error) throw new Error(`ledger_entries insert failed: ${error.message}`);
 }
 
 /** Idempotent audit writes for agent-published reviews (callers supply stable ids). */
 export async function upsertLedgerEntries(entries: LedgerEntry[]): Promise<void> {
   if (!entries.length) return;
-  const supabase = getClient();
+  const db = getClient();
   const rows = entries.map((entry) => ({
     id: entry.id ?? randomUUID(),
     week_start: entry.week_start,
@@ -696,13 +672,13 @@ export async function upsertLedgerEntries(entries: LedgerEntry[]): Promise<void>
     confidence: entry.confidence,
     model_used: entry.model_used,
   }));
-  const { error } = await supabase.from('ledger_entries').upsert(rows, { onConflict: 'id' });
+  const { error } = await db.from('ledger_entries').upsert(rows, { onConflict: 'id' });
   if (error) throw new Error(`ledger_entries upsert failed: ${error.message}`);
 }
 
 export async function getLedgerEntryById(id: string): Promise<LedgerEntry | null> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('ledger_entries')
     .select('*')
     .eq('id', id)
@@ -713,17 +689,14 @@ export async function getLedgerEntryById(id: string): Promise<LedgerEntry | null
 
 /** Read recent ledger entries, newest first. */
 export async function getRecentLedgerEntries(limit = 50): Promise<LedgerEntry[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('ledger_entries')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (error) {
-    if (error.code === '42P01' || error.message.includes('does not exist')) return [];
-    throw new Error(`ledger_entries fetch failed: ${error.message}`);
-  }
+  if (error) throw new Error(`ledger_entries fetch failed: ${error.message}`);
   return (data as LedgerEntry[]) ?? [];
 }
 
@@ -732,7 +705,7 @@ export async function getRecentLedgerEntries(limit = 50): Promise<LedgerEntry[]>
 /** Save context sources for a pipeline run. */
 export async function saveContextSources(sources: ContextSource[]): Promise<void> {
   if (!sources.length) return;
-  const supabase = getClient();
+  const db = getClient();
   const rows = sources.map((s) => ({
     id: s.id ?? randomUUID(),
     week_start: s.week_start,
@@ -740,14 +713,14 @@ export async function saveContextSources(sources: ContextSource[]): Promise<void
     repo: s.repo,
     digest: s.digest,
   }));
-  const { error } = await supabase.from('context_sources').insert(rows);
+  const { error } = await db.from('context_sources').insert(rows);
   if (error) throw new Error(`context_sources insert failed: ${error.message}`);
 }
 
 /** Idempotent provenance writes for agent-published reviews. */
 export async function upsertContextSources(sources: ContextSource[]): Promise<void> {
   if (!sources.length) return;
-  const supabase = getClient();
+  const db = getClient();
   const rows = sources.map((source) => ({
     id: source.id ?? randomUUID(),
     week_start: source.week_start,
@@ -755,21 +728,18 @@ export async function upsertContextSources(sources: ContextSource[]): Promise<vo
     repo: source.repo,
     digest: source.digest,
   }));
-  const { error } = await supabase.from('context_sources').upsert(rows, { onConflict: 'id' });
+  const { error } = await db.from('context_sources').upsert(rows, { onConflict: 'id' });
   if (error) throw new Error(`context_sources upsert failed: ${error.message}`);
 }
 
 /** Read the context artifacts that informed recent ledger updates. */
 export async function getRecentContextSources(limit = 20): Promise<ContextSource[]> {
-  const supabase = getClient();
-  const { data, error } = await supabase
+  const db = getClient();
+  const { data, error } = await db
     .from('context_sources')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (error) {
-    if (error.code === '42P01' || error.message.includes('does not exist')) return [];
-    throw new Error(`context_sources fetch failed: ${error.message}`);
-  }
+  if (error) throw new Error(`context_sources fetch failed: ${error.message}`);
   return (data as ContextSource[]) ?? [];
 }

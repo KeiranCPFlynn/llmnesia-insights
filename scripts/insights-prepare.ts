@@ -12,7 +12,7 @@ import {
   getSourceSyncStates,
   getStandingCaveats,
   getStrategyLedger,
-} from '../src/supabase.js';
+} from '../src/data.js';
 import type { AgentEvidencePack, AgentReview, EvidenceFreshness, PriorReviewContext, WeeklyInsight } from '../src/types.js';
 
 const OUTPUT_DIR = resolve(process.cwd(), '.insights');
@@ -187,7 +187,7 @@ async function main() {
   console.log(`\nPrepared ${PACK_PATH}`);
   console.log(`Current template: ${REVIEW_TEMPLATE_PATH}`);
   console.log(`Review draft: ${REVIEW_PATH}${await readFile(REVIEW_PATH, 'utf8').then((contents) => contents === template ? '' : ' (preserved; update its evidence envelope from the current template)')}`);
-  console.log(dryRun ? 'Read-only dry run: evidence was not written to Supabase. Do not publish this pack.' : 'Evidence was saved. Research the sources, complete review.json, then publish it.');
+  console.log(dryRun ? 'Read-only dry run: evidence was not written to the database. Do not publish this pack.' : 'Evidence was saved. Research the sources, complete review.json, then publish it.');
 }
 
 main().catch((error) => {

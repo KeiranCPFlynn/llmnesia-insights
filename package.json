@@ -13,13 +13,13 @@
     "insights:publish": "node --import tsx scripts/insights-publish.ts",
     "audit:ai-referrals": "node --import tsx scripts/ai-assistant-referral-audit.ts",
     "insights:validate-fixture": "node --import tsx scripts/validate-review-fixture.ts",
-    "check-schema": "node --import tsx scripts/check-schema.ts",
-    "seed-ledger": "tsx scripts/seed-ledger.ts"
+    "seed-ledger": "tsx scripts/seed-ledger.ts",
+    "db:dump-supabase": "node --import tsx scripts/dump-supabase.ts",
+    "db:import-sqlite": "node --import tsx scripts/import-sqlite.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
     "@google-analytics/data": "^6.0.0",
-    "@supabase/supabase-js": "^2.47.0",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
     "google-auth-library": "^10.6.2",

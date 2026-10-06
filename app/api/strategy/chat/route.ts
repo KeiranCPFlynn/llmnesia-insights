@@ -3,7 +3,7 @@ import {
   getEffectiveStrategyGoal,
   getInsightByWeek,
   saveStrategyChat,
-} from '../../../../src/supabase.js';
+} from '../../../../src/data.js';
 import { readBrief } from '../../../../src/brief.js';
 import type { ChatMessage, StrategyRecommendation } from '../../../../src/types.js';
 import { callLlm, chatToLlmMessages, resolveProvider, type LlmTool } from '../../../../src/llm.js';

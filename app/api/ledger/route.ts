@@ -4,7 +4,7 @@ import {
   getRecentContextSources,
   getRecentLedgerEntries,
   getStrategyLedger,
-} from '../../../src/supabase.js';
+} from '../../../src/data.js';
 import { isAuthorized } from '../../../lib/session';
 
 export const runtime = 'nodejs';
