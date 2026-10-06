@@ -3,15 +3,19 @@
 Use this runbook when the founder says **Run the Insights review.** Insights is
 the evidence store and dashboard; you are the strategy and execution agent.
 
-1. Run `npm run insights:prepare` first. The default refreshes all sources
-   through the run date and stores the evidence in the local database. This is a partial
-   week, including on Sunday while that day is still in progress. Report the
-   actual collection time and source availability; requesting today's date
-   does not mean a provider has finished processing today's data. Search data
-   can lag. Use `--completed-week` only when the founder requests a completed
-   week, or `--week-start YYYY-MM-DD` for a historical week. Those explicit
-   historical requests can reuse stored evidence; `--refresh-evidence` forces
-   a refresh. Read `.insights/evidence-pack.json` completely. It contains the
+1. Run `npm run insights:prepare -- --completed-week --refresh-evidence`
+   first. The founder's standing preference is to review the most recent
+   completed week regardless of the run date; never prepare a week-to-date or
+   single-day window unless the founder explicitly asks for it. If a stored
+   full-week record for that week already exists, the refresh may be omitted;
+   never reuse a stored record whose week end is earlier than its week start
+   plus six days. If the pack's stored prior snapshot is itself partial, do
+   not use its automatic deltas: compare against the completed-week figures
+   recorded in the stored prior reviews, or run one focused source read.
+   Report the actual collection time and source availability; search data can
+   lag, so name the last date each source has rows for. Use
+   `--week-start YYYY-MM-DD` for a different historical week. Read
+   `.insights/evidence-pack.json` completely. It contains the
    reporting period, current/prior snapshots, deltas, freshness, Strategy
    Ledger, prior review and decisions, caveats, definitions, and constraints.
    Never put secrets or raw private conversation transcripts in review output.
