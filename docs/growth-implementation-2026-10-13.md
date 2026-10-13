@@ -347,3 +347,35 @@ Welcome page. The generated local backup remains available for restoration.
 No email, account mutation, push, store release or production deployment was
 performed. This completes verification of the duplicate-counting fix; it is
 not evidence of measured customer activation uplift.
+
+## Site guide push and production deployment completed
+
+Keiran explicitly approved pushing the site changes first. On 13 October 2026,
+isolated the four-guide change and its regression script on top of the fetched
+site `origin/main`, excluding the separate local workflow-document commit and
+uncommitted changelog/support work. Pushed only site commit
+`b7cdd6b81b6448a66354a87cc1b81a3c855902d8` to `origin/main` in
+`KeiranCPFlynn/llmnesia-site-njs`. This is the published equivalent of the earlier
+local guide commit `5537717`.
+
+The four-guide regression check passed. The clean worktree's default Turbopack
+build rejected the installed-dependency symlink outside its inferred filesystem
+root. Reused the installed Next CLI's supported webpack production build, which
+passed, then ran the normal exported-language, 223-content-route, homepage and
+core-localization checks successfully. No dependency was installed or changed.
+The temporary build checkout was removed afterward.
+
+The push triggered the existing Vercel integration. Its status changed from
+pending to success, with description "Deployment has completed":
+https://vercel.com/keiranflynns-projects/llmnesia-site-njs/HV4Mv32hGYtTVNFCGxqh1qeLVvFM
+
+Fetched all four production URLs and confirmed HTTP 200, the new copy and
+the `2026-10-13` update date:
+
+- https://www.llmnesia.com/blog/search-gemini-conversation-history
+- https://www.llmnesia.com/blog/how-to-find-old-gemini-conversations
+- https://www.llmnesia.com/blog/gemini-conversation-history-limits
+- https://www.llmnesia.com/blog/recover-deleted-gemini-conversation
+
+The primary site checkout's unrelated edits were preserved. No extension commit
+was pushed, and no extension store release or Insights deployment was performed.
