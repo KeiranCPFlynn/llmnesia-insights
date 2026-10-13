@@ -22,6 +22,19 @@ The command writes `.insights/ai-assistant-referral-audit.json`, containing a
 six-week trend plus source and landing-page breakdowns for the latest completed
 week. Use `-- --week-start=YYYY-MM-DD` to audit a different completed week.
 
+Keep the original `weeks` series as the GA4 AI Assistant channel measure.
+`known_source_supplement` separately includes production-host traffic from the
+explicit assistant source list, including sessions classified as Unassigned.
+`production_combined` is their production-host union, not the sum of the two
+overlapping series. Never silently replace the historical channel definition.
+
+Use `all_landing_pages` and `source_page_days` for loss analysis; the compact
+`landing_pages` view contains only the top 15. Check `calendar_timezone`, GA4
+metadata and the generation timestamp. A completed week can still be restated.
+`previous_run` distinguishes a rerun of the same window from a weekly comparison.
+Dated citation audit snapshots remain as-of records and must not be overwritten
+merely because GA4 later reports different totals.
+
 ## Citation presence checks
 
 Test each prompt in a fresh, non-personalized conversation on ChatGPT, Claude,

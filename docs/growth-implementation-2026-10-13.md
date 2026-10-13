@@ -1,0 +1,111 @@
+# Growth changes implemented locally, 13 October 2026
+
+## Delivered
+
+### First useful search
+
+LLMnesia commit `aa0ca8ea`: first-search guidance in the search overlay.
+
+- Before the first completed search, offer up to three local suggestions from
+  at most five recent indexed web conversations, including a one-chat corpus.
+- Verify the entire proposed phrase against the real keyword search and require
+  a match to its originating conversation. Probes bypass the intentional-search
+  analytics handler and do not start semantic processing.
+- Suggestions are optional. Opening the palette does not submit one. A user
+  click submits through the existing search path. Empty imports, failed probes,
+  generic titles and coding-session directory names do not produce invented
+  examples. Stored filters suppress suggestions rather than hiding their match.
+- Late responses after closing or completing a search are ignored. Ordinary
+  search remains usable if the suggestion service fails.
+- Add `search_ready_palette_opened` after the invitation actually opens the
+  palette. Keep it passive, not a successful search or activation event.
+- Overlay `result_opened` adds a boolean `from_search` only when the displayed
+  results correspond to the current nonempty query. Recents and pending query
+  edits do not qualify. Other surfaces without this field remain unknown, not
+  implicitly false. This is not a cross-surface query-ID attribution system.
+- Diagnostic telemetry contains no suggestion text, query, title, document ID
+  or URL. The original `search_submitted` activation definition is unchanged.
+
+### Gemini acquisition guides
+
+Site commit `5537717`: corrected search, old-conversations, history-limits and
+deleted-conversation guides, with focused content regression checks.
+
+- Document native Search without unsupported title-only claims.
+- Correct the claim that My Activity is a separate recovery copy after deletion.
+- Explain accessible historical import, partial coverage and keyword readiness.
+- Remove universal history, instant-search and guaranteed-recovery promises.
+- Use current Google export instructions: chat activity under My Activity and
+  Gemini Apps, distinct from the Gems-only Gemini selection.
+- Keep canonical URLs, original publication dates and keyword metadata. Set
+  truthful per-page install copy and link to current primary sources.
+
+### Referral reporting
+
+Insights commit `f2e143f`, plus the accompanying audit-protocol documentation:
+
+- Preserve the original GA4 AI Assistant channel series.
+- Add separately labelled production-host known-source and combined-union
+  series, including Gemini visits classified outside the AI channel.
+- Retain full page and source/day details alongside the top-15 summary.
+- Record property timezone, GA4 metadata, as-of timestamp and prior-run context.
+- Reject incomplete returned row sets rather than silently analysing a truncated
+  report. Dated citation audit snapshots are not modified.
+
+## Verification and remaining release gates
+
+- Insights: all 54 repository tests passed, including five new aggregation tests.
+- Live report validation: two bounded read-only six-week queries succeeded.
+  The sample completed week had 56 AI-channel sessions and 58 in the separately
+  labelled production combined union. Same-window prior-run detection worked.
+- Website: four-guide metadata/fact/link checks passed. Full Next build,
+  223 content-route export checks and all homepage/core localization checks passed.
+- Extension: 97 focused tests passed in both the shared checkout and a clean
+  detached checkout of `aa0ca8ea`. The clean checkout's typecheck passed.
+  Its exact-commit production build passed too, without the shared tree's
+  unrelated database edits.
+- Full extension regression suite on the clean commit: 234 files and all
+  2,779 tests passed (`npm run test --workspace=extension -- --maxWorkers=4`).
+- The shared checkout's typecheck reported two transaction-type errors in another
+  session's uncommitted `extension/src/background/db.ts`. Those edits were
+  preserved. The isolated check establishes that they are not introduced by
+  this activation commit; it does not fix or approve that separate work.
+- Local dogfood and prod-composition outputs rebuilt successfully. Their build
+  metadata is explicitly dirty because the canonical checkout includes that
+  other session's edits. They are not clean store-release packages. Do not
+  publish those outputs as if they contain only this task.
+- Browser fixture: generated synthetic chat saved through the real local
+  database/index write path, focused overlay opened, verified suggestion
+  appeared, a real user click returned the keyword match, and opening it
+  displayed the correct synthetic transcript with `from_search: true`.
+  The fixture used stubbed extension messaging, no production analytics, no
+  real account or founder corpus. Screenshot: `/private/tmp/llmnesia-first-search-proof.jpg`.
+  Its disposable synthetic record was removed after verification. Temporary
+  fixture tabs and the localhost server were closed.
+- Full installed-extension fresh-install/import/invitation flow remains
+  unverified in this turn. Browser tooling denied access to the extension
+  management page; no alternate surface or security workaround was used.
+  The local fixture is not a substitute for that release gate.
+
+No push, deployment, store submission, email, site publication or recurring job
+was performed. These changes have no measured activation uplift yet.
+
+## Next release and measurement
+
+1. Complete a bounded installed-extension canary in an approved isolated
+   testing profile with generated synthetic history. Verify truthful readiness,
+   invitation CTA, input focus, deliberate search, result open and actual
+   diagnostic event delivery. Do not use the founder's corpus or reset a profile.
+2. Resolve or isolate the unrelated shared-checkout work before packaging.
+   Obtain explicit approval before extension/store release or website deployment.
+   Inspect outgoing commit history so another session's commits are not bundled.
+3. After release, compare mature external-install cohorts using unchanged
+   24-hour first-search conversion, searches returning results and qualified
+   result opens. Track invitation click-to-palette and palette-to-search gaps,
+   import coverage and zero-only searchers. Release comparisons are observational,
+   not a randomized causal estimate.
+4. Continue citation sampling separately from referral traffic and Bing results.
+   Content corrections are justified by accuracy, not a promise of citation gains.
+
+Rollback preparation: revert the focused commit in the affected repository and
+rebuild/test before any approved redeployment. No rollout was executed here.
