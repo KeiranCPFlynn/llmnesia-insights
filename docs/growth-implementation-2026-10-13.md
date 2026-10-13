@@ -379,3 +379,36 @@ the `2026-10-13` update date:
 
 The primary site checkout's unrelated edits were preserved. No extension commit
 was pushed, and no extension store release or Insights deployment was performed.
+
+## Google source-recovery follow-up
+
+After resuming the remaining Google investigation, reproduced and fixed two
+source retrieval gaps: a response finishing after the DOM quiet window could
+be missed, and an already-selected thread's observed restore was always ignored
+because it predated the retry. Primary extension fix `99b2a0f2` adds bounded
+late-response observation for explicit single-chat retries, exact current
+restore token/query matching, a temporary 32-entry observer and revalidation of
+rendered messages before saving. It does not invent endpoints or certify full
+history from a balanced snapshot.
+
+Independent synthetic source recovery preserved all 500 messages across 25
+modelled days through real local storage, first/middle/last keyword searches,
+backup export and empty-index reimport. A bounded browser replay of the existing
+eight-message synthetic Google thread verified the current-restore selection
+behavior, roles, markers and formatting. That console check was not an installed
+candidate storage/UI test and does not prove recovery of a real long thread.
+
+Final clean runtime source `1159def597b8fd96895e35ba19a10aac2b097037` includes
+intervening committed storage/viewer repairs. TypeScript, all 2,846 full-suite
+tests in 241 files, and all 204 public-composition tests in 21 files passed with
+no unhandled errors. Both sanctioned unpacked scripts rebuilt dogfood and prod
+at that exact source with the existing local configuration; both install checks
+passed. Unfinished work in the shared primary checkout was excluded. No release
+ZIP, download, push, deployment or email was performed for this follow-up.
+
+The existing support thread already asks whether the customer uses AI Mode or
+Gemini and whether Google still displays the older missing messages. No newer
+answer was found; the installed version is also unconfirmed. Full-history
+coverage remains unverified, and the Google recovery release hold remains.
+Detailed evidence: sibling extension repository
+`docs/handoffs/GOOGLE_AI_MODE_SOURCE_TIMING_FIX_2026-10-13.md`.
