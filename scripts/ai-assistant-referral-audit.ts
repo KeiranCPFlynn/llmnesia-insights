@@ -1,24 +1,11 @@
 import '../src/env.js';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
-
-interface RowBucket {
-  sessions: number;
-  sources: Record<string, number>;
-  landing_pages: Record<string, number>;
-}
+import { buildReferralSeries, KNOWN_ASSISTANT_SOURCES, mondayOf } from '../src/ai-referrals.js';
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-function mondayOf(date: Date): Date {
-  const out = new Date(date);
-  const day = out.getUTCDay();
-  out.setUTCDate(out.getUTCDate() - (day === 0 ? 6 : day - 1));
-  out.setUTCHours(0, 0, 0, 0);
-  return out;
 }
 
 function completedWeekStart(now = new Date()): Date {
@@ -62,54 +49,54 @@ const [report] = await makeClient().runReport({
     { name: 'sessionSource' },
     { name: 'sessionMedium' },
     { name: 'landingPage' },
+    { name: 'sessionDefaultChannelGroup' },
+    { name: 'hostName' },
   ],
   metrics: [{ name: 'sessions' }],
   dimensionFilter: {
-    filter: {
+    orGroup: { expressions: [{ filter: {
       fieldName: 'sessionDefaultChannelGroup',
       stringFilter: { value: 'AI Assistant', matchType: 'EXACT' },
-    },
+    } }, { filter: {
+      fieldName: 'sessionSource',
+      inListFilter: { values: [...KNOWN_ASSISTANT_SOURCES], caseSensitive: false },
+    } }] },
   },
   limit: 100000,
 });
 
-const buckets: Record<string, RowBucket> = {};
-for (const row of report.rows ?? []) {
-  const rawDate = row.dimensionValues?.[0]?.value ?? '';
-  const date = new Date(
-    `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}T00:00:00Z`,
-  );
-  const week = isoDate(mondayOf(date));
-  const bucket = (buckets[week] ??= { sessions: 0, sources: {}, landing_pages: {} });
-  const source = row.dimensionValues?.[1]?.value ?? '(unknown)';
-  const medium = row.dimensionValues?.[2]?.value ?? '(unknown)';
-  const landingPage = row.dimensionValues?.[3]?.value ?? '(unknown)';
-  const sessions = Number(row.metricValues?.[0]?.value ?? 0);
-  bucket.sessions += sessions;
-  const sourceKey = `${source} / ${medium}`;
-  bucket.sources[sourceKey] = (bucket.sources[sourceKey] ?? 0) + sessions;
-  bucket.landing_pages[landingPage] = (bucket.landing_pages[landingPage] ?? 0) + sessions;
+if ((report.rowCount ?? 0) > (report.rows?.length ?? 0)) {
+  throw new Error('GA4 returned an incomplete row set; audit not written. Narrow the period or add pagination.');
 }
+const rows = (report.rows ?? []).map(row => {
+  const rawDate = row.dimensionValues?.[0]?.value ?? '';
+  return {
+    date: `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`,
+    source: row.dimensionValues?.[1]?.value ?? '(unknown)',
+    medium: row.dimensionValues?.[2]?.value ?? '(unknown)',
+    landingPage: row.dimensionValues?.[3]?.value ?? '(unknown)',
+    channel: row.dimensionValues?.[4]?.value ?? '(unknown)',
+    host: row.dimensionValues?.[5]?.value ?? '(unknown)',
+    sessions: Number(row.metricValues?.[0]?.value ?? 0),
+  };
+});
+const series = buildReferralSeries(rows);
+const { weeks } = series;
 
-const sortRecord = (record: Record<string, number>, limit?: number) =>
-  Object.fromEntries(
-    Object.entries(record)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit),
-  );
-
-const weeks = Object.fromEntries(
-  Object.entries(buckets)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([week, bucket]) => [
-      week,
-      {
-        sessions: bucket.sessions,
-        sources: sortRecord(bucket.sources),
-        landing_pages: sortRecord(bucket.landing_pages, 15),
-      },
-    ]),
-);
+const outputArg = process.argv.find((value) => value.startsWith('--output='));
+const outputPath = path.resolve(process.cwd(), outputArg?.slice('--output='.length) || '.insights/ai-assistant-referral-audit.json');
+let previousRun: unknown = null;
+try {
+  const previous = JSON.parse(await readFile(outputPath, 'utf8'));
+  previousRun = {
+    generated_at: previous.generated_at, current_window: previous.current_window,
+    sessions: previous.weeks?.[isoDate(currentStart)]?.sessions ?? null,
+    same_window: previous.current_window?.start === isoDate(currentStart) && previous.current_window?.end === isoDate(currentEnd),
+    note: 'Same-window differences are reporting restatements, not week-over-week changes. Dated citation audit snapshots are not modified.',
+  };
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
 
 const payload = {
   generated_at: new Date().toISOString(),
@@ -117,19 +104,21 @@ const payload = {
   caveat:
     'This measures referral clicks from AI assistants, not citation appearances that received no click.',
   current_window: { start: isoDate(currentStart), end: isoDate(currentEnd) },
-  weeks,
+  calendar_timezone: report.metadata?.timeZone ?? '(not returned)',
+  freshness: 'Completed calendar week, not guaranteed final. GA4 may restate recent dates.',
+  channel_host_scope: 'Original all-host channel population retained for compatibility; supplements use production hosts only.',
+  metadata: report.metadata,
+  row_count: report.rowCount,
+  previous_run: previousRun,
+  ...series,
 };
-
-const outputArg = process.argv.find((value) => value.startsWith('--output='));
-const outputPath = path.resolve(
-  process.cwd(),
-  outputArg?.slice('--output='.length) || '.insights/ai-assistant-referral-audit.json',
-);
 await writeFile(outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 
 const current = weeks[isoDate(currentStart)] ?? { sessions: 0, sources: {}, landing_pages: {} };
 console.log(`AI Assistant referral audit: ${isoDate(currentStart)} to ${isoDate(currentEnd)}`);
 console.log(`Sessions: ${current.sessions}`);
+console.log(`Known-source supplement (production, all channels): ${series.known_source_supplement.weeks[isoDate(currentStart)]?.sessions ?? 0}`);
+console.log(`Production combined union: ${series.production_combined.weeks[isoDate(currentStart)]?.sessions ?? 0}`);
 for (const [source, sessions] of Object.entries(current.sources)) {
   console.log(`  ${source}: ${sessions}`);
 }
