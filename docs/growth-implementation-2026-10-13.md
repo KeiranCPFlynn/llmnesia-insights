@@ -94,7 +94,7 @@ was performed. These changes have no measured activation uplift yet.
 
 1. Installed Brave Test 2 UI canary and actual diagnostic event delivery are
    complete, as recorded below. The delayed-result-open duplicate is fixed in
-   local commit `b1f61e65`, with final installed live verification still to do.
+   local commit `b1f61e65`, with the final installed/PostHog recheck now passed.
    Keep internal diagnostics out of customer-cohort analysis explicitly.
 2. Resolve or isolate the unrelated shared-checkout work before packaging.
    Obtain explicit approval before extension/store release or website deployment.
@@ -302,9 +302,48 @@ Verification:
   `0.4.17`. Both install checks passed, including baked Vault configuration.
   Unrelated uncommitted database and prototype work was not bundled.
 
-The final installed-browser/PostHog recheck of this fix has not run. Brave was
-still focused on the main signed-in Gmail window when control resumed; the
-safety check rejected reading that unrelated private page. No diagnostic opt-in
-was enabled for this attempt, no canary was imported, and no account was changed.
-To resume, put Brave's Test 2 window in front. The prepared fix does not need
-another implementation approval. No push or store release was performed.
+The first attempt at the final browser recheck was blocked because the tool
+reported the main Gmail window. Keiran clarified that Test 2 was already
+selected. Resetting the computer-use connection and reacquiring Brave returned
+the correct Test 2 window. The earlier request for Keiran to switch windows was
+unnecessary; stale tool targeting was the issue, not his browser selection.
+
+## Final installed/PostHog regression passed
+
+On 13 October 2026, reloaded clean dogfood commit `b1f61e65` in Brave Test 2
+with a documented ten-minute internal diagnostics opt-in. Confirmed zero chats,
+messages and tokens before importing the same generated backup through the
+real Options UI. It imported one conversation and both messages. Vault showed
+the normal Set up Vault state. No sign-in or real historical backfill was used.
+
+Opened the real Gemini page, invoked the installed search palette, entered
+`sourdough starter` once and verified the correct result. Left it open beyond
+the former 15-second duplicate window, then opened the saved transcript. It
+displayed both synthetic messages and the expected canary code.
+
+A bounded, uncached PostHog query for only the Test 2 anonymous install, with
+an explicit UTC lower bound, returned exactly these two relevant events:
+
+| Event | Asia/Bangkok time, 13 October | Verified properties |
+| --- | --- | --- |
+| search_submitted | 18:54:26.370 | internal, intentional, overlay, result count 1 |
+| result_opened | 18:55:20.363 | internal, intentional, overlay, from_search true |
+
+The result open occurred **53.993 seconds after submission**, with no second
+submission event. Fresh query as-of: `2026-10-13T11:56:41.267369Z`.
+Neither inspected payload contained canary text, raw-query/title/document/URL
+properties, or the new local receipt ID. This verifies the formerly failing
+delayed-open case in the actual installed extension and at the ingestion server.
+Worker restart, repeated-open and early-open variants remain covered by the
+automated regression suite, not asserted as separate live tests.
+
+Screenshot: `/private/tmp/llmnesia-test2-fixed-delayed-open.png`.
+
+Cleanup completed: deleted only the generated chat through the UI, refreshed
+Options to zero conversations/messages/tokens, removed the diagnostic setting,
+observed `diagnosticsDisabled: true`, and reloaded the extension to stop its
+active session. Closed temporary Viewer/Gemini/Options pages and restored the
+Welcome page. The generated local backup remains available for restoration.
+No email, account mutation, push, store release or production deployment was
+performed. This completes verification of the duplicate-counting fix; it is
+not evidence of measured customer activation uplift.
