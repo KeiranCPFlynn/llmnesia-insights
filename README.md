@@ -1,7 +1,7 @@
 # LLMnesia Insights
 
 A self-hosted evidence store, durable Strategy Ledger, and read-oriented
-dashboard for LLMnesia. PostHog, GA4, Google Search Console, and Bing evidence
+dashboard for LLMnesia. PostHog, GA4, Google Search Console, Bing, and optional Stripe evidence
 is collected without an analysis-model call. Codex or Claude Code researches
 the code and prior decisions, reasons over the prepared evidence, and publishes
 a validated review to the local database.
@@ -176,6 +176,69 @@ Then run the migration block in §1b above to create `sites`, `gsc_rows`,
 into public.sites` block in that SQL to match the GSC properties for your
 real sites (use `sc-domain:example.com` for Domain properties, or the full
 `https://example.com/` URL for URL-prefix properties — match GSC exactly).
+
+### 2d. Stripe revenue (optional)
+
+Open `/revenue` for date-filtered payments, refunds, new customer records,
+current MRR/ARR before discounts, subscription health, daily totals, and the
+latest 100 payment/refund records. The Strategy dashboard includes a compact
+revenue overview, and the Data explorer includes Stripe in its copied digest.
+
+To connect an existing Stripe account:
+
+1. In Stripe, create a **restricted API key** with **Read** access to Charges,
+   Refunds, Customers, Subscriptions, and the Products/Prices resources required
+   for subscription items. Leave write permissions disabled. See
+   [Stripe API keys](https://docs.stripe.com/keys).
+2. Set `STRIPE_READ_ONLY_KEY=rk_live_...` in the local `.env` (or the existing
+   server's secret configuration). Use `rk_test_...` only for labelled test data.
+   Keep the key out of chat, source control, and `NEXT_PUBLIC_` variables.
+3. Restart the local app if needed and open Revenue. The page reads Stripe
+   directly without changing Stripe records. No SDK or new dependency is needed.
+4. Refresh evidence with `npm run insights:prepare -- --refresh-evidence` before
+   the next review to include Stripe in the saved evidence and report. Existing
+   reports retain their original snapshots. Follow the normal validated review
+   workflow to publish a report.
+
+Definitions and limits:
+
+- The view covers the entire Stripe account associated with the configured key.
+  Other products in that account are included. Use a key from the account that
+  should feed these reports; product filtering is not implemented.
+
+- Money uses Stripe minor units internally and is displayed per currency.
+  Currencies are never combined or converted.
+- MRR is the current fixed-price contractual run rate **before discounts and
+  tax**, including `active` and `past_due`. Trials, canceled/unpaid subscriptions,
+  usage-based prices, and one-time purchases are excluded. Annual and multi-month
+  plans are normalized monthly; weekly plans use 52/12 and daily plans 365/12.
+  Tiered, transformed, tax-inclusive, unknown, or incomplete fixed pricing
+  withholds MRR for that currency instead of displaying a partial total. This
+  metric can differ from [Stripe Billing analytics](https://docs.stripe.com/billing/subscriptions/analytics),
+  which has configurable definitions and discount treatment.
+- Subscription health and MRR are timestamped **current observations**, even
+  when payment dates cover a historical period. No historical MRR or churn rate
+  is fabricated from today's subscription objects. Saved snapshots preserve
+  what was observed at each collection.
+- Collected payments sum captured amounts on charges **created in the selected
+  period**, including one-time purchases and tax. Delayed captures appear with
+  their original charge date, not their settlement date. Refunds are successful
+  refunds created in the selected period and can refer to older purchases.
+  Collected less refunds does not deduct Stripe fees, disputes, tax, or payouts.
+- New customers means Stripe records created in the period, including customers
+  who have not paid. Paying customers counts distinct customer IDs with captured
+  payments in the period; guest charges are excluded. Failed payments counts
+  failed charge attempts, including retries, rather than distinct customers.
+- The range uses `REPORTING_TIME_ZONE` (default `Asia/Bangkok`), is limited to 366
+  days, and uses full pagination up to 2,500 objects per resource with a shared
+  60-second timeout. Incomplete reads, permission failures, and missing keys
+  show unavailable data rather than false zero totals. Subscription reads cover
+  all statuses; very large account histories can exceed this bounded limit.
+- Only IDs and necessary payment amounts/statuses are saved. Customer names,
+  emails, billing addresses, and payment method details are discarded. The
+  existing dashboard password gate applies to the Revenue page.
+- Fees, bank payouts, accounting revenue, historical churn, and first-ever
+  paying customer cohorts are not included in this first integration.
 
 ### 3. Install & run
 

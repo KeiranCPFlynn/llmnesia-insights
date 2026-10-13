@@ -1,5 +1,6 @@
 import { collectMetrics } from './posthog.js';
 import { collectGA4Metrics } from './ga4.js';
+import { collectStripeMetrics } from './stripe.js';
 import { getCombinedSearchDigest, syncSearchForInsights } from './search-digest.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -164,9 +165,10 @@ export async function runPipeline(opts: {
   // from being mistaken for a first run and overwriting the living strategy
   // with a fresh default document.
   let ledgerReadFailure: string | null = null;
-  const [posthogMetrics, ga4, history, existingRow, standingCaveats, priorSnapshot, persistedLedger] = await Promise.all([
+  const [posthogMetrics, ga4, stripe, history, existingRow, standingCaveats, priorSnapshot, persistedLedger] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
+    collectStripeMetrics(weekStart, weekEnd),
     getRecentInsights(6),
     getInsightByWeek(weekStart),
     // Persistent "known facts" the founder has confirmed once and should not
@@ -200,6 +202,7 @@ export async function runPipeline(opts: {
   const metrics = {
     ...posthogMetrics,
     ga4,
+    stripe,
     ...(searchPerformance ? { search_performance: searchPerformance } : {}),
     ...(partial ? { partial } : {}),
   };

@@ -6,7 +6,7 @@ WRITING STYLE — this is read by a solo founder, not an analyst. Be ruthlessly 
 - The headline is ONE sentence: the single most important thing this week, in everyday language. No metric names, no percentages-as-jargon — say what it MEANS (e.g. "Almost no one who installs is using it within the first day" not "Activation rate fell to 8%").
 - Keep findings to what actually matters. Prefer 3-5 sharp findings over 10 exhaustive ones. Fold trivia into nothing — omit it.
 - One sentence per observation. No hedging, no analyst throat-clearing. Plain words over metric jargon.
-- For every finding set "source" to where the data comes from: "PostHog" for in-product usage (installs, activation, retention, searches, clicks), "GA4" for website/store traffic and acquisition channels, "Search" for search-console visibility (Google + Bing impressions, queries, ranking), "Combined" when the point depends on more than one.
+- For every finding set "source" to where the data comes from: "PostHog" for in-product usage (installs, activation, retention, searches, clicks), "GA4" for website/store traffic and acquisition channels, "Search" for search-console visibility (Google + Bing impressions, queries, ranking), "Stripe" for revenue, payments, and customers, "Combined" when the point depends on more than one.
 
 You are not a cheerleader. Flag concerns clearly. If a metric is moving the wrong way, say so. If a previously flagged issue is now worse, escalate it. If the data is too sparse to draw a conclusion, say that — plainly.
 
@@ -18,6 +18,8 @@ METRIC DEFINITIONS — READ BEFORE INTERPRETING. As of the July 2026 instrumenta
 - Retention, click rate, and zero-result rate are all measured on \`search_submitted\` / \`zero_results_submitted\` / \`result_opened\`. \`search_quality.clicks\` and \`click_rate\` exclude \`surface = popup_recents\` because an idle Recents open has no search denominator; \`clicks_including_popup_recents\` and \`click_rate_including_popup_recents\` preserve the former all-surface definition for continuity only and are not comparable to the primary series.
 - Platform distribution uses \`platforms.searches\` = intentional-search result impressions from \`search_submitted.shown_{platform}\` and \`platforms.clicks\` = \`result_opened.platform_source\` from search surfaces only. \`platforms.popup_recents\` is separate because an idle Recents open has no search denominator. The frozen \`platforms.legacy\` block reproduces the old eight-slug \`search_performed.results_by_platform\` and all-surface click definitions for historical continuity only; NEVER compare it to the primary series or use it as current evidence.
 - \`backfill_correlation\` tests directly whether finishing the initial backfill lifts search engagement (\`rate\` = share of installs that finished a backfill this week and searched afterward). Use it to judge the "backfill drives usage" hypothesis instead of inferring it.
+
+Stripe data (when present under \`stripe\`, source "Stripe") is account-wide, not product-filtered. Do not attribute all revenue to LLMnesia unless the account is dedicated to it. It separates period payment flows from current subscription state. Read status first: unavailable or unconfigured is NOT zero; test mode is NOT live revenue. Amounts are Stripe minor units and currencies must never be summed. MRR is monthly normalized fixed recurring pricing BEFORE discounts and tax, includes active/past_due, and excludes trials, canceled/unpaid, metered usage, and one-time purchases. Unsupported pricing produces null MRR, never a complete total. Subscription state is observed at subscriptions_as_of, including in historical reports; never claim it represents historical end-of-period MRR or infer a churn rate from it. New customers are records created, not first-time paying customers. Paying customers are distinct customer IDs with captured payments, excluding guest charges. Failed payments are charge attempts, not customers. Collected payments include tax; collected_less_refunds does not deduct fees, disputes, taxes, or payouts. Refunds belong to their creation period, including refunds of older purchases. Treat period-created subscriptions as including trials/incomplete checkouts. Include all warnings and distinguish recurring run rate from cash collected.
 
 Pay particular attention to: zero-result rate (rising = indexing or coverage problem), gap between search-by-platform and click-by-platform (high searches, low clicks on a platform = search isn't surfacing the right results there), W1 to W4 retention drop-off (steep drop = not sticky beyond curiosity).
 
@@ -40,7 +42,7 @@ export const RESPONSE_SCHEMA = `{
   "headline": "one plain-English sentence — the single most important thing this week",
   "summary": "2-3 plain sentences expanding the headline",
   "findings": [
-    { "metric": "short plain label", "observation": "one plain sentence", "severity": "info|watch|concern|critical", "source": "PostHog|GA4|Search|Combined" }
+    { "metric": "short plain label", "observation": "one plain sentence", "severity": "info|watch|concern|critical", "source": "PostHog|GA4|Search|Stripe|Combined" }
   ],
   "action_items": [
     { "action": "...", "rationale": "...", "priority": "high|medium|low" }

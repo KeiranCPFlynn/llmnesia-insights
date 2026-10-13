@@ -21,6 +21,7 @@ const REVIEW_PATH = resolve(OUTPUT_DIR, 'review.json');
 const REVIEW_TEMPLATE_PATH = resolve(OUTPUT_DIR, 'review.template.json');
 
 const METRIC_DEFINITIONS: Record<string, string> = {
+  stripe: 'Account-wide data for the configured Stripe account, not product-filtered. Do not attribute all revenue to LLMnesia unless this account is dedicated to it. Payments, successful refunds, and new Stripe customer records cover the reporting period in the configured timezone. Subscription health and MRR are CURRENT observations at subscriptions_as_of, never reconstructed historical balances. MRR is fixed-price monthly run rate before discounts and tax, includes active and past_due, excludes trials/canceled/unpaid/metered usage and one-time purchases. Money is in Stripe minor units grouped by currency. Collected less refunds is before fees, disputes, tax, and payouts. New customers means records created, not first-time buyers. Failed payments means charge attempts, not distinct customers. Missing/unavailable Stripe is not zero. Test mode is not real revenue.',
   installs: 'PostHog extension_installed events in the reporting period.',
   activation_rate: 'Share of installs with an activation event within 24 hours.',
   wau: 'Distinct installs with a user-initiated event during the reporting period.',
@@ -167,6 +168,7 @@ async function main() {
       'Inspect relevant repositories with the coding agent’s own Git and file tools; do not rely on commit-message summaries alone.',
       'Search LLMnesia MCP for decisions, rejected ideas, constraints, and recent work. Do not copy raw private transcripts into the review.',
       'Use PostHog or other source tools for follow-up queries when the prepared evidence raises a material question.',
+      'For Stripe, use the raw snapshot and its definitions. Do not call the current subscription snapshot historical MRR, infer churn or first-time paying customers from record creation, sum currencies, treat test mode as live revenue, or interpret unavailable data as zero.',
       'Distinguish facts, inferences, and recommendations. Do not invent work to fill a section.',
       'Publish only with the validated insights:publish command.',
     ],

@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RevenueOverview } from './RevenueOverview';
+import { stripeMoney } from '../lib/stripe-format';
+import type { StripeMetrics } from '../src/stripe-types.js';
 import { num, pct } from '../lib/format';
 import type {
   GA4Metrics,
@@ -17,6 +20,7 @@ interface DataResponse {
   /** Ground-truth event-name → count for the range. */
   events: Array<{ event: string; count: number }>;
   ga4: GA4Metrics;
+  stripe?: StripeMetrics;
   search: SearchPerformanceDigest | null;
 }
 
@@ -276,6 +280,18 @@ function buildDigest(d: DataResponse): string {
     }
     out.push('');
   };
+  const stripe = d.stripe;
+  out.push('\nSTRIPE');
+  if (stripe?.status === 'available') {
+    out.push(`Mode: ${stripe.mode}; payments ${stripe.period.start} to ${stripe.period.end} (${stripe.period.time_zone}); subscriptions observed ${stripe.subscriptions_as_of}`);
+    out.push(`New customer records: ${stripe.new_customers}; paying customer IDs: ${stripe.paying_customers}`);
+    for (const c of stripe.currencies) {
+      out.push(`${c.currency.toUpperCase()}: MRR before discounts ${stripeMoney(c.mrr_before_discounts, c.currency)}; ARR before discounts ${stripeMoney(c.arr_before_discounts, c.currency)}; collected ${stripeMoney(c.collected, c.currency)}; refunds ${stripeMoney(c.refunded, c.currency)}; collected less refunds before fees ${stripeMoney(c.collected_less_refunds, c.currency)}; successful payments ${c.successful_payments}; failed attempts ${c.failed_payments}`);
+    }
+    out.push(`Current subscription health: ${JSON.stringify(stripe.subscriptions)}`);
+    out.push(...stripe.warnings);
+  } else out.push(stripe?.detail ?? 'Stripe evidence unavailable.');
+
   emitGA4('Website', ga4?.website);
   emitGA4('Chrome Web Store listing', ga4?.extension);
 
@@ -477,6 +493,8 @@ export function DataExplorer() {
           Fetching data for the selected range…
         </div>
       )}
+
+      {data && <RevenueOverview metrics={data.stripe} />}
 
       {ph && (
         <Panel title="PostHog · in-product">

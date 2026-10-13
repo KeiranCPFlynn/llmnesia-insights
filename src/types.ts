@@ -1,3 +1,5 @@
+import type { StripeMetrics } from './stripe-types.js';
+
 export interface GA4PropertyMetrics {
   property: 'website' | 'extension';
   users: { total: number; new_users: number; returning: number };
@@ -115,6 +117,7 @@ export interface MetricsSnapshot {
     restore_completed: number;
   };
   ga4: GA4Metrics;
+  stripe?: StripeMetrics;
   /**
    * Top-of-funnel search visibility for llmnesia.com — combined Google Search
    * Console + Bing Webmaster Tools (impressions, queries, ranking). The demand
@@ -167,7 +170,7 @@ export interface SearchPerformanceDigest {
   top_queries_by_clicks: SearchQueryRow[];
 }
 
-export type DataSource = 'PostHog' | 'GA4' | 'Search' | 'Combined';
+export type DataSource = 'PostHog' | 'GA4' | 'Search' | 'Stripe' | 'Combined';
 
 export interface Finding {
   metric: string;
@@ -774,6 +777,20 @@ export interface EvidenceDelta {
   website_sessions: MetricDelta;
   store_installs: MetricDelta;
 
+  /** Only period flows are compared. Subscription state is a current observation. */
+  stripe?: {
+    mode: 'live' | 'test';
+    new_customers: MetricDelta | null;
+    paying_customers: MetricDelta | null;
+    currencies: Array<{
+      currency: string;
+      collected: MetricDelta | null;
+      refunded: MetricDelta | null;
+      successful_payments: MetricDelta | null;
+      failed_payments: MetricDelta | null;
+    }>;
+  };
+
   /** Per-step current/prior diff of the Vault monetisation funnel. */
   vault_funnel: {
     waitlist_joined: MetricDelta;
@@ -812,7 +829,7 @@ export interface EvidenceDeltaRecord {
 // --- Agent-driven review contract ---
 
 export interface EvidenceFreshness {
-  source: 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools';
+  source: 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools' | 'Stripe';
   status: 'fresh' | 'unavailable';
   data_as_of: string | null;
   detail?: string;

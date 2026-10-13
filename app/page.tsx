@@ -3,6 +3,7 @@ import { selectWeek } from '../lib/week';
 import { calendarWeekStart } from '../lib/week';
 import { delta, formatWeek, num, pct } from '../lib/format';
 import { AppShell } from '../components/AppShell';
+import { RevenueOverview } from '../components/RevenueOverview';
 import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
 import { LedgerOverview } from '../components/LedgerOverview';
@@ -168,6 +169,7 @@ export default async function Page({
         { href: '#strategy-ledger', label: 'Current direction' },
         { href: '#recommendations', label: 'This week’s plan' },
         { href: '#overview', label: 'Evidence' },
+        { href: '#revenue', label: 'Revenue' },
       ]}
     >
 
@@ -298,6 +300,8 @@ export default async function Page({
           </ul>
         )}
       </section>
+
+      <RevenueOverview metrics={m.stripe} compact />
 
       {/* Key product numbers */}
       <section id="metrics" className="scroll-mt-36 mb-10">

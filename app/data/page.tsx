@@ -28,8 +28,8 @@ export default async function DataPage({
       week={currentWeek}
       eyebrow="Raw data"
       title="Data explorer"
-      description="Every GA4, PostHog and search metric in one place. Pick any date range, then copy the key numbers to hand to another AI."
-      context={`Active period week of ${formatWeek(calendarWeekStart(currentWeek))} · GA4 · PostHog · Google + Bing`}
+      description="Stripe revenue, GA4, PostHog and search metrics in one place. Pick any date range, then copy the key numbers to hand to another AI."
+      context={`Active period week of ${formatWeek(calendarWeekStart(currentWeek))} · Stripe · GA4 · PostHog · Google + Bing`}
     >
       <DataExplorer />
     </AppShell>

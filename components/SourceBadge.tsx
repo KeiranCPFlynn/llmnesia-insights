@@ -4,6 +4,7 @@ const STYLE: Record<DataSource, string> = {
   PostHog: 'bg-indigo-500/10 text-indigo-200 border-indigo-500/30',
   GA4: 'bg-orange-500/10 text-orange-200 border-orange-500/30',
   Search: 'bg-sky-500/10 text-sky-200 border-sky-500/30',
+  Stripe: 'bg-violet-500/10 text-violet-200 border-violet-500/30',
   Combined: 'bg-teal-500/10 text-teal-200 border-teal-500/30',
 };
 
@@ -11,6 +12,7 @@ const WHAT: Record<DataSource, string> = {
   PostHog: 'in-product usage',
   GA4: 'website / store traffic',
   Search: 'Google + Bing search visibility',
+  Stripe: 'revenue, payments, and customers',
   Combined: 'multiple sources',
 };
 

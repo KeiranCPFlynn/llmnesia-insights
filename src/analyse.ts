@@ -31,9 +31,9 @@ const ANALYSIS_TOOL: LlmTool = {
             severity: { type: 'string', enum: ['info', 'watch', 'concern', 'critical'] },
             source: {
               type: 'string',
-              enum: ['PostHog', 'GA4', 'Search', 'Combined'],
+              enum: ['PostHog', 'GA4', 'Search', 'Stripe', 'Combined'],
               description:
-                'Where this comes from: PostHog (in-product usage), GA4 (website / store traffic), Search (Google + Bing search-console visibility — impressions, queries, ranking), or Combined (uses more than one).',
+                'Where this comes from: PostHog (in-product usage), GA4 (website / store traffic), Search (Google + Bing visibility), Stripe (revenue, payments, customers), or Combined (multiple sources).',
             },
           },
           required: ['metric', 'observation', 'severity', 'source'],

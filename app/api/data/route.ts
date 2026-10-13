@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { collectMetrics, getEventBreakdown } from '../../../src/posthog.js';
+import { collectStripeMetrics } from '../../../src/stripe.js';
 import { collectGA4Metrics } from '../../../src/ga4.js';
 import { getCombinedSearchDigest } from '../../../src/search-digest.js';
 import { isAuthorized } from '../../../lib/session';
@@ -36,17 +37,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    const [posthog, events, ga4, search] = await Promise.all([
+    const [posthog, events, ga4, stripe, search] = await Promise.all([
       collectMetrics(start, end),
       getEventBreakdown(start, end),
       collectGA4Metrics(start, end),
+      collectStripeMetrics(start, end),
       getCombinedSearchDigest(start, end).catch((e) => {
         console.warn('[data] search digest failed (omitting):', e);
         return null;
       }),
     ]);
 
-    return NextResponse.json({ range: { start, end }, posthog, events, ga4, search });
+    return NextResponse.json({ range: { start, end }, posthog, events, ga4, stripe, search });
   } catch (e) {
     console.error('[data] fetch failed:', e);
     return NextResponse.json(

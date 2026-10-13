@@ -27,7 +27,7 @@ const EFFORTS = new Set(['S', 'M', 'L']);
 const CONFIDENCES = new Set(['low', 'medium', 'high']);
 const SEVERITIES = new Set(['info', 'watch', 'concern', 'critical']);
 const PRIORITIES = new Set(['high', 'medium', 'low']);
-const DATA_SOURCES = new Set(['PostHog', 'GA4', 'Search', 'Combined']);
+const DATA_SOURCES = new Set(['PostHog', 'GA4', 'Search', 'Stripe', 'Combined']);
 const PLACEHOLDER = /\bREPLACE\b|replace with/i;
 
 export class ReviewValidationError extends Error {

@@ -77,3 +77,16 @@ evidence only; it does not ask a model to analyze or change strategy. The old
 `npm run pipeline` remains only as a temporary rollback path and is not the
 normal workflow.
 
+
+## Revenue and Stripe
+
+Open **Revenue** in the navigation for date-filtered Stripe payments and customer
+activity. MRR and subscription health show the current state at the displayed
+collection time. Payment totals cover the selected dates. MRR is before discounts;
+collected less refunds is before fees, disputes, taxes, and payouts.
+
+Configure the optional restricted read-only key as described in the
+[Stripe setup](README.md#2d-stripe-revenue-optional). Then refresh evidence before
+the next Insights review to include revenue in the report. Older reports keep
+their original evidence. A missing or failed Stripe connection shows unavailable
+data, and test-mode figures are clearly labelled.

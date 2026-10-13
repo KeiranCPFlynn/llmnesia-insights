@@ -197,6 +197,29 @@ export function computeEvidenceDelta(
         : null,
   };
 
+  // Missing Stripe evidence or a different mode is not a zero baseline.
+  // MRR is deliberately absent: fetching old payments cannot reconstruct old
+  // subscription state. Counts remain structured, with no partial-week trend claims.
+  const cs = current.stripe?.status === 'available' ? current.stripe : null;
+  const ps = p?.stripe?.status === 'available' && p.stripe.mode === cs?.mode ? p.stripe : null;
+  const flowDelta = (label: string, value: number | null, before: number | null | undefined) =>
+    value != null && before != null ? delta(label, value, before, { includeInNotable: false }) : null;
+  const stripe: EvidenceDelta['stripe'] = cs && cs.mode ? {
+    mode: cs.mode,
+    new_customers: flowDelta('New Stripe customer records', cs.new_customers, ps?.new_customers),
+    paying_customers: flowDelta('Stripe paying customer IDs', cs.paying_customers, ps?.paying_customers),
+    currencies: cs.currencies.map(c => {
+      const before = ps?.currencies.find(row => row.currency === c.currency);
+      return {
+        currency: c.currency,
+        collected: flowDelta('Collected payments', c.collected, before?.collected),
+        refunded: flowDelta('Refunds', c.refunded, before?.refunded),
+        successful_payments: flowDelta('Successful payments', c.successful_payments, before?.successful_payments),
+        failed_payments: flowDelta('Failed payment attempts', c.failed_payments, before?.failed_payments),
+      };
+    }),
+  } : undefined;
+
   // Sort notable changes by magnitude (biggest pct_change first).
   notable.sort((a, b) => {
     const parsePct = (s: string) => {
@@ -222,6 +245,7 @@ export function computeEvidenceDelta(
     email_capture_rate,
     website_sessions,
     store_installs,
+    ...(stripe ? { stripe } : {}),
     vault_funnel,
     search_performance,
     notable_changes: notable.slice(0, 10),

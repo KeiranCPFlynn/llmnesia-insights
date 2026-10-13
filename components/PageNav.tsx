@@ -11,6 +11,7 @@ const NAV_ITEMS = [
     description: 'Ledger, evidence, and decisions',
     path: '/',
   },
+  { key: 'revenue', label: 'Revenue', description: 'Stripe payments and customers', path: '/revenue' },
   {
     key: 'workspace',
     label: 'Workspace',
@@ -28,7 +29,7 @@ export function PageNav({
   variant?: 'tabs' | 'rail';
 }) {
   const path = usePathname() ?? '/';
-  const activeKey = path.startsWith('/workspace') || path.startsWith('/growth') || path.startsWith('/data')
+  const activeKey = path.startsWith('/revenue') ? 'revenue' : path.startsWith('/workspace') || path.startsWith('/growth') || path.startsWith('/data')
     ? 'workspace'
     : 'strategy';
 
@@ -39,7 +40,7 @@ export function PageNav({
   return (
     <nav
       aria-label="Primary"
-      className={variant === 'rail' ? 'space-y-1' : 'grid grid-cols-2 gap-1 rounded-lg bg-white/[0.035] p-1'}
+      className={variant === 'rail' ? 'space-y-1' : 'grid grid-cols-3 gap-1 rounded-lg bg-white/[0.035] p-1'}
     >
       {NAV_ITEMS.map((item) => {
         const active = activeKey === item.key;

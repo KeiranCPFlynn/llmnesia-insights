@@ -1,6 +1,7 @@
 import './env.js';
 
 import { collectGA4Metrics } from './ga4.js';
+import { collectStripeMetrics } from './stripe.js';
 import { computeEvidenceDelta } from './evidence-delta.js';
 import { collectMetrics } from './posthog.js';
 import { getCurrentWeek, getWeekFromArg } from './reporting-period.js';
@@ -46,9 +47,10 @@ export async function collectEvidence(opts: {
   // A dry-run is genuinely read-only: use the latest stored search rows rather
   // than invoking the GSC/Bing sync, which upserts their raw source tables.
   const searchSync = opts.dryRun || opts.skipSearchSync ? Promise.resolve() : syncSearchForInsights(log);
-  const [posthog, ga4, priorSnapshot] = await Promise.all([
+  const [posthog, ga4, stripe, priorSnapshot] = await Promise.all([
     collectMetrics(weekStart, weekEnd),
     collectGA4Metrics(weekStart, weekEnd),
+    collectStripeMetrics(weekStart, weekEnd),
     getLatestEvidenceSnapshotBefore(weekStart),
   ]);
   await searchSync;
@@ -60,6 +62,7 @@ export async function collectEvidence(opts: {
   const currentSnapshot: MetricsSnapshot = {
     ...posthog,
     ga4,
+    stripe,
     ...(searchPerformance ? { search_performance: searchPerformance } : {}),
     ...(partial ? { partial } : {}),
   };
@@ -67,6 +70,7 @@ export async function collectEvidence(opts: {
   const googleAsOf = searchPerformance?.data_as_of?.google ?? null;
   const bingAsOf = searchPerformance?.data_as_of?.bing ?? null;
   const freshness: EvidenceFreshness[] = [
+    { source: 'Stripe', status: stripe.status === 'available' ? 'fresh' : 'unavailable', data_as_of: stripe.status === 'available' ? weekEnd : null, detail: stripe.detail ?? `Payments cover the reporting period; subscription state was observed at ${stripe.subscriptions_as_of}.` },
     { source: 'PostHog', status: 'fresh', data_as_of: weekEnd, detail: current ? 'Queried through this date at collection time; the current day is incomplete.' : 'Queried through the requested historical end date.' },
     { source: 'GA4', status: 'fresh', data_as_of: weekEnd, detail: 'Queried through this date at collection time; recent GA4 data may still be processing.' },
     {
@@ -89,6 +93,8 @@ export async function collectEvidence(opts: {
     // merely to reconstruct the same weekly evidence.
     await Promise.all([
       saveEvidenceDelta(delta, currentSnapshot),
+      saveSourceSnapshot({ source: 'Stripe', periodStart: weekStart, periodEnd: weekEnd, snapshot: stripe }),
+      saveSourceSyncState({ source: 'Stripe', latestDataDate: stripe.status === 'available' ? weekEnd : null, status: stripe.status === 'available' ? 'fresh' : 'failed', detail: stripe.detail ?? null }),
       saveSourceSnapshot({ source: 'PostHog', periodStart: weekStart, periodEnd: weekEnd, snapshot: posthog }),
       saveSourceSnapshot({ source: 'GA4', periodStart: weekStart, periodEnd: weekEnd, snapshot: ga4 }),
       saveSourceSyncState({ source: 'PostHog', latestDataDate: weekEnd, status: 'fresh' }),
