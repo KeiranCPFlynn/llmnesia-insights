@@ -70,7 +70,7 @@ Insights commit `f2e143f`, plus the accompanying audit-protocol documentation:
   session's uncommitted `extension/src/background/db.ts`. Those edits were
   preserved. The isolated check establishes that they are not introduced by
   this activation commit; it does not fix or approve that separate work.
-- Local dogfood and prod-composition outputs rebuilt successfully. Their build
+- Initial local dogfood and prod-composition outputs rebuilt successfully. Their build
   metadata is explicitly dirty because the canonical checkout includes that
   other session's edits. They are not clean store-release packages. Do not
   publish those outputs as if they contain only this task.
@@ -82,8 +82,8 @@ Insights commit `f2e143f`, plus the accompanying audit-protocol documentation:
   real account or founder corpus. Screenshot: `/private/tmp/llmnesia-first-search-proof.jpg`.
   Its disposable synthetic record was removed after verification. Temporary
   fixture tabs and the localhost server were closed.
-- Full installed-extension fresh-install/import/invitation flow remains
-  unverified in this turn. Browser tooling denied access to the extension
+- At the initial checkpoint, the installed-extension fresh-install/import/invitation flow was
+  unverified. Browser tooling denied access to the extension
   management page; no alternate surface or security workaround was used.
   The local fixture is not a substitute for that release gate.
 
@@ -92,10 +92,10 @@ was performed. These changes have no measured activation uplift yet.
 
 ## Next release and measurement
 
-1. Complete a bounded installed-extension canary in an approved isolated
-   testing profile with generated synthetic history. Verify truthful readiness,
-   invitation CTA, input focus, deliberate search, result open and actual
-   diagnostic event delivery. Do not use the founder's corpus or reset a profile.
+1. Installed Brave Test 2 UI canary is now complete, as recorded below.
+   Actual diagnostic event delivery remains unverified: dogfood suppresses
+   internal telemetry by default. Verify delivery with the supported bounded
+   internal diagnostics opt-in before treating the new measurement as proven.
 2. Resolve or isolate the unrelated shared-checkout work before packaging.
    Obtain explicit approval before extension/store release or website deployment.
    Inspect outgoing commit history so another session's commits are not bundled.
@@ -125,7 +125,7 @@ suggested query returns the expected saved synthetic transcript. Together with
 the invitation-claimer, suggestion, overlay and analytics tests, all 60 focused
 checks passed. This supplements, not replaces, the prior 2,779-test run.
 
-The installed-profile test remains blocked on an isolated browser setup.
+At the integration-test checkpoint, the installed-profile test was blocked on an isolated browser setup.
 Repository records establish that Chrome Testing 1 has been used with the
 founder's real Vault (`docs/vault-r2/VR-12-runbook.md`), so its name is not evidence
 that its data is disposable. Neither it nor K2 was used for this test. The browser
@@ -137,3 +137,54 @@ Required setup for continuing the installed UI check: a fresh empty testing
 profile with the local LLMnesia build loaded. Keiran only needs to provide that
 setup; the remaining import/invitation/search/open checks are still the agent's
 responsibility, not a request for Keiran to run the test himself.
+
+## Installed Brave Test 2 canary completed
+
+On 13 October 2026, Keiran prepared Brave's Test 2 profile with the dogfood
+extension loaded. Before import, the actual Options UI showed zero conversations,
+messages and tokens, with no local AI helper connected. No founder corpus or
+Vault account was used.
+
+Dogfood build metadata: version `0.4.17`, clean commit
+`35376fea61f1d3f7b4c05a48534674ab3d271f32`, built at
+`2026-10-13T08:29:46.596Z`. This supersedes the earlier dirty-build note for
+the current dogfood output. Runtime extension ID:
+`bmpnhnhpcfchlepacelfcommjhaneeni`.
+
+Observed through native Brave UI, with no messaging stubs or manual readiness
+state injection:
+
+- Kept a logged-out Gemini tab hidden while importing one generated backup chat
+  through Options > Import backup. Import reported 1/1 successful, two messages,
+  and 17 index tokens before returning to Gemini. This was a backup-import test,
+  not a real Gemini historical backfill test.
+- Revealing Gemini showed the readiness invitation with one indexed conversation.
+  Try now opened the search overlay and focused its empty input. Opening the
+  overlay did not submit a search.
+- The first-search row offered `sourdough starter`, derived from the saved title.
+  Clicking it populated the input and returned the matching indexed conversation.
+- Opening that result displayed both saved messages in the extension Viewer,
+  including verification code `TEST2-CANARY-20261013`.
+- Reopening the overlay after the completed search showed recents and no
+  first-search suggestion row. The invitation did not reappear.
+- Removed only the generated conversation through its normal Delete control.
+  Options > Refresh then confirmed zero conversations, messages and tokens.
+  The generated backup remains available locally for restoration. Closed only
+  agent-created Viewer, Gemini and Options tabs; user-created tabs were preserved.
+
+Local screenshots:
+`/private/tmp/llmnesia-test2-suggestion.png`,
+`/private/tmp/llmnesia-test2-search-result.png`,
+`/private/tmp/llmnesia-test2-transcript.png`.
+
+Actual PostHog delivery was not verified. Internal dogfood telemetry is disabled
+by default, and no diagnostics opt-in or production analytics event was forced.
+The UI canary does not establish complete historical import, semantic-index
+readiness, cross-platform import coverage or measured customer activation uplift.
+
+Separate observations for follow-up: fresh-profile Options displayed Vault
+temporarily unavailable (no Vault sign-in or sync test was attempted). After
+deleting the canary, the already-open overlay briefly retained its old one-chat
+count although the result was gone; refreshed Options confirmed the empty index.
+Neither observation blocked the tested first-search path. No code was changed
+for these separate issues during this test.
