@@ -93,9 +93,9 @@ was performed. These changes have no measured activation uplift yet.
 ## Next release and measurement
 
 1. Installed Brave Test 2 UI canary and actual diagnostic event delivery are
-   complete, as recorded below. Fix the discovered delayed-result-open duplicate
-   before relying on search-event totals or per-search click rates. Keep internal
-   diagnostics out of customer-cohort analysis explicitly.
+   complete, as recorded below. The delayed-result-open duplicate is fixed in
+   local commit `b1f61e65`, with final installed live verification still to do.
+   Keep internal diagnostics out of customer-cohort analysis explicitly.
 2. Resolve or isolate the unrelated shared-checkout work before packaging.
    Obtain explicit approval before extension/store release or website deployment.
    Inspect outgoing commit history so another session's commits are not bundled.
@@ -267,3 +267,44 @@ conversations/messages/tokens, removed the diagnostic opt-in and observed
 diagnostic session. Closed temporary Gemini and Viewer tabs. Extension reload
 closes extension-owned pages, so the original Welcome page was reopened. The
 user's Extensions tab and main Brave profile were not modified.
+
+## Duplicate-search bug fixed locally
+
+After Keiran requested the fix, extension commit `b1f61e65` added bounded
+local search-submission receipts. Each successful nonempty query gets a random
+receipt carried with its displayed results in the overlay and toolbar popup.
+Both query settlement and early result opening use the same receipt. Delayed
+or repeated result opens cannot submit that search a second time. Concurrent
+opens await an in-flight submission so event ordering is preserved.
+
+Receipts survive service-worker restarts in session storage. The bounded ledger
+holds at most 256 receipt IDs and handled booleans, never query text, titles or
+document IDs. Unknown/evicted receipts and recents cannot invent submissions.
+Storage failures fall back to memory and do not break search. A genuinely new
+request, even with identical query text, still follows the existing 15-second
+typing-motion rules. No receipt ID is added to analytics.
+
+Verification:
+
+- All 70 focused analytics, receipt, suppression and overlay tests passed.
+- Eight new receipt cases cover the observed 16.634-second duplicate, repeated
+  opens, early opens, in-flight ordering, worker restarts, independent searches,
+  suppressed typing fragments, bounded storage and unavailable storage.
+- An additional overlay regression verifies that the response receipt reaches
+  the result-open message and is withheld for pending query edits and recents.
+- Type checking passed in the shared checkout and clean exact-commit worktree.
+- Full clean-commit extension suite: 236 files, all 2,794 tests passed.
+  Log: `/private/tmp/llmnesia-search-receipts-full-tests.log`.
+- Dogfood and prod were rebuilt through the sanctioned unpacked-build scripts
+  from a clean registered worktree at the primary checkout's exact HEAD, using
+  the required local root environment configuration. Both build-info files
+  identify clean commit `b1f61e6593e039bb94ab1e10940cb15fb15ce4df` and version
+  `0.4.17`. Both install checks passed, including baked Vault configuration.
+  Unrelated uncommitted database and prototype work was not bundled.
+
+The final installed-browser/PostHog recheck of this fix has not run. Brave was
+still focused on the main signed-in Gmail window when control resumed; the
+safety check rejected reading that unrelated private page. No diagnostic opt-in
+was enabled for this attempt, no canary was imported, and no account was changed.
+To resume, put Brave's Test 2 window in front. The prepared fix does not need
+another implementation approval. No push or store release was performed.
