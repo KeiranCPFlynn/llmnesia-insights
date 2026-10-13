@@ -109,3 +109,31 @@ was performed. These changes have no measured activation uplift yet.
 
 Rollback preparation: revert the focused commit in the affected repository and
 rebuild/test before any approved redeployment. No rollout was executed here.
+
+## Follow-up testing requested by Keiran
+
+Added `extension/tests/first_search_import_flow.test.ts` to exercise the real
+backup importer, database/index, import finalizer, invitation state and suggestion
+verification together against disposable synthetic IndexedDB data. The native
+corpus-sync scheduling call is stubbed; there is no account, Vault or network
+test data.
+
+Three new integration cases passed: keyword search succeeds before the finalizer
+arms readiness; a hidden claimant retries when visible and claims only once;
+empty, partial and duplicate imports preserve truthful invitation behavior. The
+suggested query returns the expected saved synthetic transcript. Together with
+the invitation-claimer, suggestion, overlay and analytics tests, all 60 focused
+checks passed. This supplements, not replaces, the prior 2,779-test run.
+
+The installed-profile test remains blocked on an isolated browser setup.
+Repository records establish that Chrome Testing 1 has been used with the
+founder's real Vault (`docs/vault-r2/VR-12-runbook.md`), so its name is not evidence
+that its data is disposable. Neither it nor K2 was used for this test. The browser
+tool's existing prohibition on extension-management navigation was respected.
+No profile reset, extension-management workaround, installation, live restore,
+real-corpus scan or production analytics event was performed.
+
+Required setup for continuing the installed UI check: a fresh empty testing
+profile with the local LLMnesia build loaded. Keiran only needs to provide that
+setup; the remaining import/invitation/search/open checks are still the agent's
+responsibility, not a request for Keiran to run the test himself.
