@@ -92,10 +92,10 @@ was performed. These changes have no measured activation uplift yet.
 
 ## Next release and measurement
 
-1. Installed Brave Test 2 UI canary is now complete, as recorded below.
-   Actual diagnostic event delivery remains unverified: dogfood suppresses
-   internal telemetry by default. Verify delivery with the supported bounded
-   internal diagnostics opt-in before treating the new measurement as proven.
+1. Installed Brave Test 2 UI canary and actual diagnostic event delivery are
+   complete, as recorded below. Fix the discovered delayed-result-open duplicate
+   before relying on search-event totals or per-search click rates. Keep internal
+   diagnostics out of customer-cohort analysis explicitly.
 2. Resolve or isolate the unrelated shared-checkout work before packaging.
    Obtain explicit approval before extension/store release or website deployment.
    Inspect outgoing commit history so another session's commits are not bundled.
@@ -188,3 +188,82 @@ deleting the canary, the already-open overlay briefly retained its old one-chat
 count although the result was gone; refreshed Options confirmed the empty index.
 Neither observation blocked the tested first-search path. No code was changed
 for these separate issues during this test.
+
+## Continued verification: corrected build and real analytics delivery
+
+Later on 13 October, the registered outputs had been replaced by another
+session's corrected clean build, commit
+`5969e67742cf459894e3d7fa5f7eb44c90d2b6b1`, version `0.4.17`.
+Dogfood build time: `2026-10-13T09:20:51.182Z`; prod build time:
+`2026-10-13T09:21:02.956Z`. `npm run check:installs --workspace=extension`
+passed for both outputs, including baked Vault configuration and provenance.
+
+The earlier Vault-unavailable observation was a local packaging defect, not
+evidence of a backend outage. The old temporary-checkout build lacked the
+root environment configuration. Reloaded only Test 2's extension, reopened
+Options, and observed the normal Set up Vault state and email sign-in form.
+No email code was requested, no account was signed in, and no sync or restore
+was started. MCP remained a separate, unconnected feature.
+Screenshot: `/private/tmp/llmnesia-test2-vault-ready.png`.
+
+Enabled the documented ten-minute internal diagnostics opt-in in Test 2 only.
+Removed only the two first-use flags created by the earlier synthetic test
+(`firstSearchCompleted` and `searchInvite.v1`) to repeat first use on the same
+otherwise-empty profile. This was not a profile reset. Readiness was armed by
+the real backup-import finalizer again, not manually injected. Repeated the
+import, hidden-to-visible invitation, suggestion click, result search and saved
+transcript open on the corrected build. Both saved messages and the canary code
+were present. Screenshot: `/private/tmp/llmnesia-test2-current-transcript.png`.
+
+Two small read-only PostHog queries for only the synthetic Test 2 anonymous
+install verified server receipt. Project: `132419`, timezone Asia/Bangkok.
+The property verification response was fresh as of
+`2026-10-13T11:11:51.374647Z`.
+
+| Event | Local time, 13 October | Verified properties |
+| --- | --- | --- |
+| search_ready_popup_shown | 18:08:45.775 | internal, passive |
+| search_ready_popup_cta_clicked | 18:08:52.799 | internal, intentional |
+| search_ready_palette_opened | 18:08:52.955 | internal, passive, overlay |
+| search_suggestion_shown | 18:08:53.227 | internal, passive, first_search_overlay, count 1 |
+| search_suggestion_clicked | 18:09:11.562 | internal, intentional, first_search_overlay, index 0 |
+| first_search_completed | 18:09:12.153 | internal, intentional |
+| search_submitted | 18:09:12.156 | internal, intentional, result count 1 |
+| search_submitted | 18:09:28.790 | duplicate on delayed result open, result count 1 |
+| result_opened | 18:09:28.849 | internal, intentional, overlay, from_search true |
+
+The six inspected palette/suggestion/search/result payloads contained no canary
+query, title, transcript text or document identifier, and no forbidden raw-text
+property keys. All test events carried `is_internal: true`. This marking enables
+exclusion; it does not automatically filter every report. The legacy queries in
+`src/posthog.ts` do not currently apply an internal-install exclusion, so raw
+event totals must not be described as customer-only. Use explicitly external
+cohorts when assessing uplift.
+
+### Confirmed measurement defect, not fixed during testing
+
+One deliberate query emitted `search_submitted` twice, 16.634 seconds apart.
+The result-open fallback in `service_worker.ts` calls `maybeFireSearchSubmitted`
+again. Its shared suppression rule suppresses an identical query only within
+15 seconds, so reading results for longer and then opening one counts the same
+search again. Existing tests cover a quick result open, not a delayed one.
+
+This can inflate search frequency and search-impression denominators. It does
+not duplicate unique activated installs for the same cohort and time window.
+The newly added `from_search` result attribution arrived correctly, but that is
+not proof that the older submission-counting logic is accurate.
+
+Recommended focused fix: distinguish a result-open fallback from a fresh query
+submission and remember whether that result-producing search already emitted
+its submission. Preserve genuine new searches, typing-motion suppression and
+early opens before the debounce. Test delayed and repeated opens, changed
+queries, empty recents and worker restarts. Do not merely increase the timeout
+or suppress every same-text search forever. No fix, push or release was made
+as part of this test-only continuation.
+
+Cleanup verified: deleted only the generated chat, refreshed Options to zero
+conversations/messages/tokens, removed the diagnostic opt-in and observed
+`diagnosticsDisabled: true`, then reloaded Test 2's extension to stop the active
+diagnostic session. Closed temporary Gemini and Viewer tabs. Extension reload
+closes extension-owned pages, so the original Welcome page was reopened. The
+user's Extensions tab and main Brave profile were not modified.
