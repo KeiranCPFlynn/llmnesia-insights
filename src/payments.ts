@@ -7,6 +7,7 @@ interface Subscription extends Row {
   ended_at: number | null;
   canceled_at: number | null;
   cancel_at_period_end: boolean;
+  cancel_at?: number | null;
   status: string;
 }
 interface Line extends Row {
@@ -156,7 +157,9 @@ export function summarizePayments(input: {
     renewals: { due: due.length, paid, unpaid: due.length - paid },
     cancellations: subscriptions.filter(s => inWeek(s.canceled_at)).length,
     scheduled_to_end_at_period_end: {
-      count: subscriptions.filter(s => s.cancel_at_period_end && !['canceled', 'incomplete_expired'].includes(s.status)).length,
+      // Stripe's dashboard now schedules a cancellation through cancel_at and leaves cancel_at_period_end false.
+      count: subscriptions.filter(s => (s.cancel_at_period_end || (s.cancel_at != null && s.cancel_at > Math.floor(now.getTime() / 1000))) &&
+        !['canceled', 'incomplete_expired'].includes(s.status)).length,
       observed_at: now.toISOString(),
     },
     revenue: { currency: 'gbp', collected_gbp: gbp(collectMinor), refunded_gbp: gbp(refundMinor),

@@ -173,3 +173,12 @@ test('pagination continues beyond 25 pages instead of returning partial totals',
   assert.equal(pages, 27);
   assert.equal(result.revenue.net_gbp, 270);
 });
+
+test('a cancellation scheduled through a future cancel_at counts as ending at period end', () => {
+  const result = available(summarizePayments(input({
+    subscriptions: [sub('dated', { cancel_at: ts('2026-11-10'), canceled_at: ts('2026-10-08') }),
+      sub('past', { cancel_at: ts('2026-10-01'), status: 'canceled', ended_at: ts('2026-10-01') }), sub('plain')],
+    invoices: [invoice('dated', 'dated', '2026-10-07'), invoice('plain', 'plain', '2026-10-07')],
+  })));
+  assert.equal(result.scheduled_to_end_at_period_end.count, 1);
+});
