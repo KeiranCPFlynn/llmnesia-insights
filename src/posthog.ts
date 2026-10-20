@@ -196,39 +196,43 @@ export async function getEngagement(
 }
 
 export async function getSearchQuality(weekStart: string, weekEnd: string) {
-  // Click rate and zero-result rate are now measured against search_submitted
-  // (intentional searches), with zero-results counted from zero_results_submitted
-  // so numerator and denominator share the same event definition. The keystroke
-  // events (search_performed / zero_results_returned) are never used here.
-  // popup_recents opens have no search denominator and are split out; the old
-  // all-surface numerator/rate remain explicit for historical continuity.
+  // Only versions with origin instrumentation belong in the rate denominator.
+  // Unknown origins remain separate, including missing properties on newer builds.
+  const version = "splitByChar('.', toString(properties.extension_version))";
+  const supported = `(toIntOrZero(${version}[1]) > 0
+    OR (toIntOrZero(${version}[1]) = 0 AND toIntOrZero(${version}[2]) > 4)
+    OR (toIntOrZero(${version}[1]) = 0 AND toIntOrZero(${version}[2]) = 4
+      AND toIntOrZero(${version}[3]) >= 18))`;
   const rows = await runQuery(`
     SELECT
       countIf(event = 'search_submitted') AS searches,
-      countIf(
-        event = 'result_opened'
-        AND coalesce(nullIf(properties.surface, ''), 'overlay') != 'popup_recents'
-      ) AS clicks,
+      countIf(event = 'result_opened' AND properties.from_search = true) AS clicks,
       countIf(event = 'result_opened' AND properties.surface = 'popup_recents') AS popup_recent_opens,
       countIf(event = 'result_opened') AS clicks_including_popup_recents,
-      countIf(event = 'zero_results_submitted') AS zero_results
+      countIf(event = 'zero_results_submitted') AS zero_results,
+      countIf(event = 'result_opened' AND properties.from_search = false
+        AND coalesce(nullIf(properties.surface, ''), 'overlay') != 'popup_recents') AS overlay_recent_opens,
+      countIf(event = 'result_opened'
+        AND coalesce(nullIf(properties.surface, ''), 'overlay') != 'popup_recents'
+        AND (properties.from_search IS NULL OR properties.from_search NOT IN (true, false))) AS origin_unknown_opens,
+      countIf(event = 'search_submitted' AND ${supported}) AS searches_with_origin_tracking
     FROM events
     WHERE toDate(timestamp) >= toDate('${weekStart}')
       AND toDate(timestamp) <= toDate('${weekEnd}')
       AND event IN ('search_submitted', 'result_opened', 'zero_results_submitted')
   `);
-  const searches = Number(rows[0]?.[0] ?? 0);
-  const clicks = Number(rows[0]?.[1] ?? 0);
-  const popup_recent_opens = Number(rows[0]?.[2] ?? 0);
-  const clicks_including_popup_recents = Number(rows[0]?.[3] ?? 0);
-  const zero_results = Number(rows[0]?.[4] ?? 0);
+  const [searches, clicks, popup_recent_opens, clicks_including_popup_recents, zero_results,
+    overlay_recent_opens, origin_unknown_opens, searches_with_origin_tracking] =
+    Array.from({ length: 8 }, (_, i) => Number(rows[0]?.[i] ?? 0));
   return {
-    searches,
-    clicks,
-    popup_recent_opens,
-    clicks_including_popup_recents,
-    zero_results,
-    click_rate: searches > 0 ? round(clicks / searches) : 0,
+    searches, clicks, popup_recent_opens, clicks_including_popup_recents, zero_results,
+    overlay_recent_opens,
+    recent_opens: overlay_recent_opens + popup_recent_opens,
+    origin_unknown_opens,
+    searches_with_origin_tracking,
+    click_rate_definition: 'from_search_v1' as const,
+    click_rate_coverage: 'Extension 0.4.18+ only; result_opened.from_search=true / search_submitted on 0.4.18+.',
+    click_rate: searches_with_origin_tracking > 0 ? round(clicks / searches_with_origin_tracking) : null,
     click_rate_including_popup_recents:
       searches > 0 ? round(clicks_including_popup_recents / searches) : 0,
     zero_result_rate: searches > 0 ? round(zero_results / searches) : 0,

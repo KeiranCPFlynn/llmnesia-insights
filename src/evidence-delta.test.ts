@@ -161,3 +161,25 @@ test('vault funnel counts degrade to zero when the prior snapshot predates the s
     direction: 'up',
   });
 });
+
+test('click rate refuses legacy baselines and compares only matching definitions with coverage', () => {
+  const prior = snapshot({ weekStart: '2026-10-05', weekEnd: '2026-10-11', installs: 1, activationRate: 0 });
+  const current = structuredClone(prior);
+  current.search_quality = { ...current.search_quality, click_rate_definition: 'from_search_v1', click_rate: 0.5,
+    clicks: 5, recent_opens: 10, origin_unknown_opens: 4 };
+  prior.search_quality.click_rate = 2.07;
+  const legacy = computeEvidenceDelta(current, prior);
+  assert.equal(legacy.click_rate, null);
+  assert.equal(legacy.search_opens?.clicks, null);
+  assert.match(legacy.click_rate_comparison_note!, /0.4.18/);
+  assert.equal(legacy.notable_changes.some(n => n.metric === 'Search click rate'), false);
+  const matching = structuredClone(current);
+  matching.search_quality.click_rate = 0.4;
+  matching.search_quality.recent_opens = 6;
+  const result = computeEvidenceDelta(current, matching);
+  assert.equal(result.click_rate?.prior, 0.4);
+  assert.equal(result.click_rate?.current, 0.5);
+  assert.equal(result.search_opens?.recents?.change, 4);
+  matching.search_quality.click_rate = null;
+  assert.equal(computeEvidenceDelta(current, matching).click_rate, null);
+});
