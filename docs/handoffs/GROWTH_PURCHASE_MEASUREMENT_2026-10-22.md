@@ -31,13 +31,25 @@ restricted key denied Checkout Session listing and account-name reads with
 HTTP 403. No permissions were changed and no alternate credential was tried.
 This check does not establish a real payoff-attributed purchase.
 
-Publication is still gated by the owner's explicit approval under AGENTS.md.
-Site `main` pushes deploy to the existing llmnesia.com Vercel project. After
-approval, publish only the site task commit, verify the live assets,
-and configure `vault_purchase_completed` as the GA4 completion key event in
-property `533614466`. Checkout start remains an ordinary funnel event. No
-billing, schema or permission change is needed. Source attribution is already
-deployed in the checkout function and Stripe metadata.
+Publication and GA4 configuration are complete after explicit owner approval.
+Site implementation commit `13c5147` was pushed alone to `origin/main`, and
+Vercel production deployment `dpl_6h6PJF4jzXfKQ1BB2DfvMgt4qQT4` reached READY
+with `www.llmnesia.com` and `llmnesia.com` aliases. GitHub reports deployment
+success. At 12:52 Asia/Bangkok (05:52 UTC), the Vault, pricing and account return pages all returned
+HTTP 200 and their served scripts contained the two events and verification
+guards. The apex-domain redirect preserves `src=payoff`. Rollback reference:
+`dpl_HKoE1pALnZtfBUgkrX5YG3FWVCpA` (base commit `9838a2a`).
+
+In GA4 property `533614466` (LLMnesia site), `vault_purchase_completed` is
+registered using the deployed code and visibly enabled in Key events. It has
+no default monetary value and uses once-per-event counting. Checkout start
+remains an ordinary funnel event. No Google Ads conversion, derived pageview
+event, billing, schema or permission change was made. Source attribution was
+already deployed in the checkout function and Stripe metadata.
+
+No production purchase event was manufactured. GA4 therefore shows no stream
+data for the new event yet. Configuration and deployment are complete; a future
+genuine payoff purchase supplies the real payment-attribution confirmation.
 
 This Insights change is integrated into local `main` as `bca067c` for the next
 normal review. Do not deploy the SQLite dashboard or change its Vercel
