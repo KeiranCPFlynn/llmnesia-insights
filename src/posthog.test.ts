@@ -37,7 +37,7 @@ test('platform distribution follows the intentional-search contract and preserve
 
     let results: unknown[][];
     if (query.includes("countIf(event = 'zero_results_submitted')")) {
-      results = [[10, 4, 2, 6, 1]];
+      results = [[10, 4, 2, 15, 1, 6, 3, 8]];
     } else if (query.includes("event = 'search_submitted'")) {
       results = [CANONICAL_PLATFORMS.map((_, index) => index + 1)];
     } else if (query.includes("properties.surface, ''), 'overlay') != 'popup_recents'")) {
@@ -113,14 +113,25 @@ test('platform distribution follows the intentional-search contract and preserve
     assert.ok(qualityQuery);
     assert.match(qualityQuery, /properties\.surface = 'popup_recents'/);
     assert.match(qualityQuery, /properties\.surface, ''\), 'overlay'\) != 'popup_recents'/);
+    assert.match(qualityQuery, /properties\.from_search = true/);
+    assert.match(qualityQuery, /properties\.from_search = false/);
+    assert.match(qualityQuery, /properties\.from_search IS NULL/);
+    assert.match(qualityQuery, /properties\.extension_version/);
+    assert.match(qualityQuery, />= 18/);
     assert.deepEqual(quality, {
       searches: 10,
       clicks: 4,
       popup_recent_opens: 2,
-      clicks_including_popup_recents: 6,
+      clicks_including_popup_recents: 15,
       zero_results: 1,
-      click_rate: 0.4,
-      click_rate_including_popup_recents: 0.6,
+      overlay_recent_opens: 6,
+      recent_opens: 8,
+      origin_unknown_opens: 3,
+      searches_with_origin_tracking: 8,
+      click_rate_definition: 'from_search_v1',
+      click_rate_coverage: 'Extension 0.4.18+ only; result_opened.from_search=true / search_submitted on 0.4.18+.',
+      click_rate: 0.5,
+      click_rate_including_popup_recents: 1.5,
       zero_result_rate: 0.1,
     });
   } finally {
@@ -203,6 +214,28 @@ test('vault funnel counts unique identities per vault event within the reporting
     if (originalProjectId === undefined) delete process.env.POSTHOG_PROJECT_ID;
     else process.env.POSTHOG_PROJECT_ID = originalProjectId;
     if (originalApiKey === undefined) delete process.env.POSTHOG_API_KEY;
+    else process.env.POSTHOG_API_KEY = originalApiKey;
+  }
+});
+
+test('search rate without covered searches is unavailable, preserving legacy totals', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalProjectId = process.env.POSTHOG_PROJECT_ID;
+  const originalApiKey = process.env.POSTHOG_API_KEY;
+  process.env.POSTHOG_PROJECT_ID = 'fixture-project';
+  process.env.POSTHOG_API_KEY = 'fixture-key';
+  globalThis.fetch = (async () => new Response(JSON.stringify({ results: [[100, 0, 2, 50, 1, 0, 48, 0]] }))) as typeof fetch;
+  try {
+    const quality = await getSearchQuality('2026-10-12', '2026-10-18');
+    assert.equal(quality.click_rate, null);
+    assert.equal(quality.click_rate_including_popup_recents, 0.5);
+    assert.equal(quality.origin_unknown_opens, 48);
+    assert.equal(quality.recent_opens, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalProjectId == null) delete process.env.POSTHOG_PROJECT_ID;
+    else process.env.POSTHOG_PROJECT_ID = originalProjectId;
+    if (originalApiKey == null) delete process.env.POSTHOG_API_KEY;
     else process.env.POSTHOG_API_KEY = originalApiKey;
   }
 });

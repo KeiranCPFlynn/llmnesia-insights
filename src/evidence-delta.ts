@@ -99,12 +99,22 @@ export function computeEvidenceDelta(
     p?.engagement?.searches_per_wau ?? 0,
     { threshold: 0.5 },
   );
-  const click_rate = delta(
-    'Search click rate',
-    current.search_quality?.click_rate ?? 0,
-    p?.search_quality?.click_rate ?? 0,
-    { isRate: true },
-  );
+  const cq = current.search_quality;
+  const pq = p?.search_quality;
+  const sameClickDefinition = cq?.click_rate_definition === pq?.click_rate_definition;
+  const clickComparable = sameClickDefinition && cq?.click_rate != null && pq?.click_rate != null;
+  const click_rate = clickComparable
+    ? delta('Search click rate', cq.click_rate!, pq!.click_rate!, { isRate: true }) : null;
+  const click_rate_comparison_note = clickComparable ? undefined
+    : 'Search click rate has no comparable baseline. The from_search_v1 definition covers 0.4.18+ only; missing coverage is unavailable, not zero.';
+  const openDelta = (label: string, value: number | undefined, before: number | undefined) =>
+    sameClickDefinition && value != null && before != null
+      ? delta(label, value, before, { includeInNotable: false }) : null;
+  const search_opens = {
+    clicks: openDelta('Search result opens', cq?.clicks, pq?.clicks),
+    recents: openDelta('Recents opens', cq?.recent_opens, pq?.recent_opens),
+    origin_unknown: openDelta('Origin unknown opens', cq?.origin_unknown_opens, pq?.origin_unknown_opens),
+  };
   const zero_result_rate = delta(
     'Zero-result rate',
     current.search_quality?.zero_result_rate ?? 0,
@@ -225,6 +235,23 @@ export function computeEvidenceDelta(
     }),
   } : undefined;
 
+  const cp = current.payments?.status === 'available' ? current.payments : null;
+  const pp = p?.payments?.status === 'available' ? p.payments : null;
+  const comparablePayments = cp && pp && cp.mode === pp.mode &&
+    cp.period.time_zone === pp.period.time_zone &&
+    JSON.stringify(cp.excluded_customer_ids) === JSON.stringify(pp.excluded_customer_ids);
+  const paymentDelta = (label: string, value: number, before: number | undefined) =>
+    comparablePayments && before != null ? delta(label, value, before, { includeInNotable: false }) : null;
+  const payments: EvidenceDelta['payments'] = cp ? {
+    new_paid_subscriptions: paymentDelta('New paid subscriptions', cp.new_paid_subscriptions, pp?.new_paid_subscriptions),
+    renewals_due: paymentDelta('Renewals due', cp.renewals.due, pp?.renewals.due),
+    renewals_paid: paymentDelta('Renewals paid', cp.renewals.paid, pp?.renewals.paid),
+    cancellations: paymentDelta('Cancellations', cp.cancellations, pp?.cancellations),
+    net_revenue_gbp: cp.revenue.tax_basis === pp?.revenue.tax_basis
+      ? paymentDelta('Net revenue GBP', cp.revenue.net_gbp, pp?.revenue.net_gbp) : null,
+    ...(!comparablePayments ? { comparison_note: 'No comparable payments baseline: missing data, mode, timezone, or exclusions differ.' } : {}),
+  } : undefined;
+
   // Sort notable changes by magnitude (biggest pct_change first).
   notable.sort((a, b) => {
     const parsePct = (s: string) => {
@@ -246,11 +273,14 @@ export function computeEvidenceDelta(
     wau,
     searches_per_wau,
     click_rate,
+    ...(click_rate_comparison_note ? { click_rate_comparison_note } : {}),
+    search_opens,
     zero_result_rate,
     email_capture_rate,
     website_sessions,
     store_installs,
     ...(stripe ? { stripe } : {}),
+    ...(payments ? { payments } : {}),
     vault_funnel,
     search_performance,
     notable_changes: notable.slice(0, 10),

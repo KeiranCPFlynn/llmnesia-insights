@@ -18,7 +18,7 @@ import { isAuthorized } from '../../../lib/session';
  * grounding, and keeps GPT-5.5 input cost down.
  */
 function metricsDigest(m: MetricsSnapshot) {
-  const r2 = (n?: number) => (n == null ? null : Math.round(n * 1000) / 10); // rate → %
+  const r2 = (n?: number | null) => (n == null ? null : Math.round(n * 1000) / 10); // rate → %
   const w = m.ga4?.website;
   const tc = topChannel(w);
   return {

@@ -1,3 +1,4 @@
+import type { PaymentsMetrics } from './payments.js';
 import type { StripeMetrics } from './stripe-types.js';
 
 export interface GA4PropertyMetrics {
@@ -45,13 +46,19 @@ export interface MetricsSnapshot {
   engagement: { wau: number; wau_any_event: number; total_searches: number; searches_per_wau: number };
   search_quality: {
     searches: number;
-    /** Search-result opens only; popup_recents has no search denominator. */
+    /** Only result_opened with from_search=true. */
     clicks: number;
     popup_recent_opens: number;
+    overlay_recent_opens?: number;
+    recent_opens?: number;
+    origin_unknown_opens?: number;
+    searches_with_origin_tracking?: number;
+    click_rate_definition?: 'from_search_v1';
+    click_rate_coverage?: string;
     /** Frozen former numerator for historical continuity. */
     clicks_including_popup_recents: number;
     zero_results: number;
-    click_rate: number;
+    click_rate: number | null;
     /** Frozen former rate; do not compare with the primary click_rate series. */
     click_rate_including_popup_recents: number;
     zero_result_rate: number;
@@ -118,6 +125,7 @@ export interface MetricsSnapshot {
   };
   ga4: GA4Metrics;
   stripe?: StripeMetrics;
+  payments?: PaymentsMetrics;
   /**
    * Top-of-funnel search visibility for llmnesia.com — combined Google Search
    * Console + Bing Webmaster Tools (impressions, queries, ranking). The demand
@@ -771,7 +779,13 @@ export interface EvidenceDelta {
   retention_w4: MetricDelta;
   wau: MetricDelta;
   searches_per_wau: MetricDelta;
-  click_rate: MetricDelta;
+  click_rate: MetricDelta | null;
+  click_rate_comparison_note?: string;
+  search_opens?: {
+    clicks: MetricDelta | null;
+    recents: MetricDelta | null;
+    origin_unknown: MetricDelta | null;
+  };
   zero_result_rate: MetricDelta;
   email_capture_rate: MetricDelta;
   website_sessions: MetricDelta;
@@ -790,6 +804,15 @@ export interface EvidenceDelta {
       successful_payments: MetricDelta | null;
       failed_payments: MetricDelta | null;
     }>;
+  };
+
+  payments?: {
+    new_paid_subscriptions: MetricDelta | null;
+    renewals_due: MetricDelta | null;
+    renewals_paid: MetricDelta | null;
+    cancellations: MetricDelta | null;
+    net_revenue_gbp: MetricDelta | null;
+    comparison_note?: string;
   };
 
   /** Per-step current/prior diff of the Vault monetisation funnel. */
@@ -830,7 +853,7 @@ export interface EvidenceDeltaRecord {
 // --- Agent-driven review contract ---
 
 export interface EvidenceFreshness {
-  source: 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools' | 'Stripe';
+  source: 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools' | 'Stripe' | 'Stripe payments';
   status: 'fresh' | 'unavailable';
   data_as_of: string | null;
   detail?: string;

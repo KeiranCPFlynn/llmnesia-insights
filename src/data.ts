@@ -20,7 +20,7 @@ import type {
 } from './types.js';
 import { pickStrategyGoal } from './strategy-goal.js';
 
-export type AnalyticsSource = 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools' | 'Stripe';
+export type AnalyticsSource = 'PostHog' | 'GA4' | 'Google Search Console' | 'Bing Webmaster Tools' | 'Stripe' | 'Stripe payments';
 
 export interface SourceSyncState {
   source: AnalyticsSource;

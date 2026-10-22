@@ -6,6 +6,10 @@ is collected without an analysis-model call. Codex or Claude Code researches
 the code and prior decisions, reasons over the prepared evidence, and publishes
 a validated review to the local database.
 
+The evidence pack also includes `payments`, read with the restricted Stripe key and excluding `STRIPE_EXCLUDED_CUSTOMER_IDS`. It reports paid subscription coverage at week end, monthly/annual plans, discounts, new paid subscriptions, renewal invoices and cancellations. Scheduled period-end cancellations are timestamped current observations. GBP collected less refunds states whether tax is excluded; read the section’s warnings for the precise accounting basis. Missing access produces `unavailable` without blocking the pack. The separate `stripe` dashboard section remains a current subscription observation.
+
+Search click rate uses `from_search=true` opens divided by searches from extension 0.4.18+ only. Recents and unknown-origin opens are separate. Legacy all-surface fields are preserved; weeks using the old definition have no comparable primary rate delta.
+
 Each evidence pack includes a `vault_funnel` section: unique users per Vault
 event for the reporting week (waitlist join, vault created, checkout opened,
 phone QR shown, unlocked, plus background sync/restore completion and failure
