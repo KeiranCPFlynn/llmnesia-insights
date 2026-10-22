@@ -32,7 +32,17 @@ interface Charge extends StripeObject {
   captured: boolean;
   status: string;
 }
-interface Refund extends StripeObject { amount: number; currency: string; status: string }
+interface Refund extends StripeObject {
+  amount: number;
+  currency: string;
+  status: string;
+  charge?: string | Pick<Charge, 'id' | 'customer'> | null;
+  customer?: string | null;
+}
+
+export function stripeExcludedCustomerIds(): string[] {
+  return [...new Set((process.env.STRIPE_EXCLUDED_CUSTOMER_IDS ?? '').split(',').map(id => id.trim()).filter(Boolean))].sort();
+}
 
 function dateParts(date: Date, timeZone: string) {
   return Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
@@ -77,8 +87,28 @@ export function stripeWindow(start: string, end: string, timeZone: string) {
 export function summarizeStripe(input: {
   start: string; end: string; timeZone: string; now: Date; mode: 'live' | 'test';
   charges: Charge[]; refunds: Refund[]; customers: StripeObject[]; subscriptions: Subscription[];
+  excludedCustomerIds?: readonly string[];
 }): StripeMetrics {
-  const { start, end, timeZone, now, mode, charges, refunds, customers, subscriptions } = input;
+  const { start, end, timeZone, now, mode } = input;
+  const excluded = new Set(input.excludedCustomerIds ?? []);
+  const charges = input.charges.filter(charge => !charge.customer || !excluded.has(charge.customer));
+  const customers = input.customers.filter(customer => !excluded.has(customer.id));
+  const subscriptions = input.subscriptions.filter(sub => !excluded.has(sub.customer));
+  // Refunds can belong to charges outside the selected period. Use the expanded
+  // original charge, not just the period's payments, to identify their customer.
+  const chargeCustomers = new Map(input.charges.map(charge => [charge.id, charge.customer]));
+  function refundCustomer(refund: Refund): string | null {
+    if (typeof refund.customer === 'string') return refund.customer;
+    if (refund.charge && typeof refund.charge === 'object' && 'customer' in refund.charge) return refund.charge.customer;
+    if (typeof refund.charge === 'string' && chargeCustomers.has(refund.charge)) return chargeCustomers.get(refund.charge)!;
+    if (refund.customer === null || refund.charge === null) return null;
+    if (excluded.size) throw new Error('Stripe refund customer could not be resolved. Totals are withheld to avoid including excluded test activity.');
+    return null;
+  }
+  const refunds = input.refunds.filter(refund => {
+    const customer = refundCustomer(refund);
+    return !customer || !excluded.has(customer);
+  });
   const window = stripeWindow(start, end, timeZone);
   const warnings = new Set<string>();
   const currencies = new Map<string, StripeCurrencyMetrics>();
@@ -121,7 +151,7 @@ export function summarizeStripe(input: {
       day(refund.created, refund.currency).refunded += refund.amount;
     }
     transactions.push({ id: refund.id, created: new Date(refund.created * 1000).toISOString(),
-      kind: 'refund', status: refund.status, amount: refund.amount, currency: refund.currency, customer_id: null });
+      kind: 'refund', status: refund.status, amount: refund.amount, currency: refund.currency, customer_id: refundCustomer(refund) });
   }
   const health = { active: 0, trialing: 0, past_due: 0, unpaid: 0,
     scheduled_to_cancel: 0, created_in_period: 0, current_subscribers: 0 };
@@ -172,13 +202,24 @@ export function summarizeStripe(input: {
     new_customers: customers.length, paying_customers: payers.size, subscriptions: health,
     daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)),
     transactions: transactions.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 100),
-    transaction_count: transactions.length, warnings: [...warnings],
+    transaction_count: transactions.length,
+    exclusions: {
+      customer_ids: [...excluded].sort(),
+      records: {
+        customers: input.customers.length - customers.length,
+        payments: input.charges.length - charges.length,
+        refunds: input.refunds.length - refunds.length,
+        subscriptions: input.subscriptions.length - subscriptions.length,
+      },
+    },
+    warnings: [...warnings],
   };
 }
 
 /** Read-only Stripe v1 integration. No SDK, webhook, or account changes needed. */
 export async function collectStripeMetrics(start: string, end: string, opts: {
   apiKey?: string; fetcher?: typeof fetch; now?: Date; timeZone?: string;
+  excludedCustomerIds?: readonly string[];
 } = {}): Promise<StripeMetrics> {
   const now = opts.now ?? new Date();
   const timeZone = opts.timeZone ?? (process.env.REPORTING_TIME_ZONE?.trim() || 'Asia/Bangkok');
@@ -193,6 +234,8 @@ export async function collectStripeMetrics(start: string, end: string, opts: {
   const timeout = setTimeout(() => controller.abort(), 60000);
   try {
     if (!/^(rk|sk)_(live|test)_/.test(apiKey)) throw new Error('Use a Stripe restricted API key, not a publishable key.');
+    const excludedCustomerIds = opts.excludedCustomerIds ?? stripeExcludedCustomerIds();
+    if (excludedCustomerIds.some(id => !/^cus_[A-Za-z0-9]+$/.test(id))) throw new Error('Stripe excluded customer IDs are invalid. Check STRIPE_EXCLUDED_CUSTOMER_IDS.');
     const window = stripeWindow(start, end, timeZone);
     const fetcher = opts.fetcher ?? fetch;
     async function list<T extends StripeObject>(resource: string, params: Record<string, string>): Promise<T[]> {
@@ -221,10 +264,12 @@ export async function collectStripeMetrics(start: string, end: string, opts: {
     }
     const dateFilter = { 'created[gte]': String(window.gte), 'created[lt]': String(Math.min(window.lt, Math.floor(now.getTime() / 1000) + 1)) };
     const [charges, refunds, customers, subscriptions] = await Promise.all([
-      list<Charge>('charges', dateFilter), list<Refund>('refunds', dateFilter),
+      list<Charge>('charges', dateFilter), list<Refund>('refunds', {
+        ...dateFilter, ...(excludedCustomerIds.length ? { 'expand[]': 'data.charge' } : {}),
+      }),
       list<StripeObject>('customers', dateFilter), list<Subscription>('subscriptions', { status: 'all' }),
     ]);
-    return summarizeStripe({ start, end, timeZone, now, mode, charges, refunds, customers, subscriptions });
+    return summarizeStripe({ start, end, timeZone, now, mode, charges, refunds, customers, subscriptions, excludedCustomerIds });
   } catch (error) {
     // Never propagate provider bodies, request headers, customer details, or credentials.
     const message = error instanceof Error ? error.message : '';

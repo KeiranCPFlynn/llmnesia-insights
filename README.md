@@ -200,6 +200,18 @@ To connect an existing Stripe account:
    reports retain their original snapshots. Follow the normal validated review
    workflow to publish a report.
 
+To exclude your own live-mode test accounts, set
+`STRIPE_EXCLUDED_CUSTOMER_IDS=cus_example1,cus_example2` in the local `.env`
+(or the existing server's secret configuration). Use exact customer IDs from
+Stripe, separated by commas. The collector removes those customers and all
+of their subscriptions, payment attempts, and refunds before calculating any
+metrics or saving evidence. Refunds expand the original charge, so refunds of
+older test purchases are excluded too. The dashboard and copied digest show
+that exclusions are active and how many records were omitted. Stripe records
+are never modified. If exclusions change, cross-period Stripe comparisons are
+withheld until both snapshots use the same exclusions. Existing published
+reports retain their original evidence; refresh evidence before the next review.
+
 Definitions and limits:
 
 - The view covers the entire Stripe account associated with the configured key.

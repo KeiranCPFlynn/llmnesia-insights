@@ -780,6 +780,7 @@ export interface EvidenceDelta {
   /** Only period flows are compared. Subscription state is a current observation. */
   stripe?: {
     mode: 'live' | 'test';
+    comparison_note?: string;
     new_customers: MetricDelta | null;
     paying_customers: MetricDelta | null;
     currencies: Array<{

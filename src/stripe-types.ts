@@ -44,5 +44,9 @@ export interface StripeMetrics {
   daily: Array<{ date: string; currency: string; collected: number; refunded: number; payments: number }>;
   transactions: StripeTransaction[];
   transaction_count: number;
+  exclusions?: {
+    customer_ids: string[];
+    records: { customers: number; payments: number; refunds: number; subscriptions: number };
+  };
   warnings: string[];
 }

@@ -285,6 +285,7 @@ function buildDigest(d: DataResponse): string {
   if (stripe?.status === 'available') {
     out.push(`Mode: ${stripe.mode}; payments ${stripe.period.start} to ${stripe.period.end} (${stripe.period.time_zone}); subscriptions observed ${stripe.subscriptions_as_of}`);
     out.push(`New customer records: ${stripe.new_customers}; paying customer IDs: ${stripe.paying_customers}`);
+    if (stripe.exclusions?.customer_ids.length) out.push(`${stripe.exclusions.customer_ids.length} test customer accounts excluded from all Stripe figures and transactions. Omitted records: ${JSON.stringify(stripe.exclusions.records)}`);
     for (const c of stripe.currencies) {
       out.push(`${c.currency.toUpperCase()}: MRR before discounts ${stripeMoney(c.mrr_before_discounts, c.currency)}; ARR before discounts ${stripeMoney(c.arr_before_discounts, c.currency)}; collected ${stripeMoney(c.collected, c.currency)}; refunds ${stripeMoney(c.refunded, c.currency)}; collected less refunds before fees ${stripeMoney(c.collected_less_refunds, c.currency)}; successful payments ${c.successful_payments}; failed attempts ${c.failed_payments}`);
     }

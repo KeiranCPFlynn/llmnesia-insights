@@ -28,6 +28,10 @@ export function RevenueOverview({ metrics, compact = false }: { metrics?: Stripe
         <span>Account-wide · Payments: {s.period.start} to {s.period.end} ({s.period.time_zone})</span>
         <span>· Read {new Date(s.collected_at).toLocaleString('en-GB', { timeZone: s.period.time_zone })}</span>
       </div>
+      {!!s.exclusions?.customer_ids.length && <p className="mb-4 rounded-xl border border-violet-400/20 bg-violet-400/5 p-3 text-xs leading-relaxed text-violet-200">
+        {s.exclusions.customer_ids.length} test customer accounts excluded from all figures and transactions.
+        {' '}Omitted {s.exclusions.records.payments} payment attempts, {s.exclusions.records.refunds} refunds, {s.exclusions.records.customers} new customer records, and {s.exclusions.records.subscriptions} subscriptions.
+      </p>}
       {s.currencies.length === 0 && <p className="mb-4 text-sm text-neutral-400">No payment, refund, or recurring revenue activity was found.</p>}
       {s.currencies.map(c => <div key={c.currency} className="mb-5">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-violet-300">{c.currency.toUpperCase()}</h3>

@@ -175,3 +175,48 @@ test('Stripe deltas do not invent baselines from missing data, absent currencies
   assert.equal(same.stripe?.currencies[0].collected?.change, 0);
   assert.equal('mrr' in same.stripe!, false);
 });
+
+test('test customers are excluded from payments, refunds of older purchases, subscriptions and customer counts', () => {
+  const result = summarizeStripe({ ...base, excludedCustomerIds: ['cus_test'],
+    customers: [{ id: 'cus_test', created }, { id: 'cus_real', created }],
+    charges: [charge('ch_test', 9000, 'cus_test'), charge('ch_real', 800, 'cus_real')],
+    subscriptions: [{ ...subscription('sub_test', 9000), customer: 'cus_test' },
+      { ...subscription('sub_real', 800), customer: 'cus_real' }],
+    refunds: [
+      { id: 're_test', created, currency: 'usd', amount: 9000, status: 'succeeded', charge: { id: 'ch_old_test', customer: 'cus_test' } },
+      { id: 're_real', created, currency: 'usd', amount: 200, status: 'succeeded', charge: { id: 'ch_old_real', customer: 'cus_real' } },
+    ],
+  });
+  assert.equal(result.new_customers, 1);
+  assert.equal(result.paying_customers, 1);
+  assert.equal(result.subscriptions?.active, 1);
+  assert.equal(result.currencies[0].mrr_before_discounts, 800);
+  assert.equal(result.currencies[0].collected_less_refunds, 600);
+  assert.deepEqual(result.exclusions?.records, { customers: 1, payments: 1, refunds: 1, subscriptions: 1 });
+  assert.deepEqual(result.transactions.map(t => t.id).sort(), ['ch_real', 're_real']);
+  assert.throws(() => summarizeStripe({ ...base, excludedCustomerIds: ['cus_test'],
+    customers: [], charges: [], subscriptions: [],
+    refunds: [{ id: 're_unknown', created, currency: 'usd', amount: 200, status: 'succeeded', charge: 'ch_old_unknown' }],
+  }), /refund customer could not be resolved/);
+});
+
+test('collector expands refund ownership and Stripe comparisons require matching exclusions', async () => {
+  let expanded = false;
+  const result = await collectStripeMetrics(base.start, base.end, {
+    apiKey: 'rk_live_synthetic', now, excludedCustomerIds: ['cus_test'],
+    fetcher: (async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/refunds')) expanded = url.searchParams.get('expand[]') === 'data.charge';
+      return new Response(JSON.stringify({ data: [], has_more: false }));
+    }) as typeof fetch,
+  });
+  assert.equal(result.status, 'available');
+  assert.equal(expanded, true);
+  const withTests = summarizeStripe({ ...base, charges: [charge('ch', 800)], refunds: [], customers: [], subscriptions: [] });
+  const withoutTests = summarizeStripe({ ...base, excludedCustomerIds: ['cus_test'], charges: [charge('ch', 800)], refunds: [], customers: [], subscriptions: [] });
+  const current = { week_start: base.start, week_end: base.end, stripe: withoutTests } as MetricsSnapshot;
+  const prior = { ...current, stripe: withTests };
+  const delta = computeEvidenceDelta(current, prior).stripe!;
+  assert.equal(delta.currencies[0].collected, null);
+  assert.match(delta.comparison_note!, /exclusions changed/);
+});

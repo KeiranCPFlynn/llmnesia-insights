@@ -201,11 +201,16 @@ export function computeEvidenceDelta(
   // MRR is deliberately absent: fetching old payments cannot reconstruct old
   // subscription state. Counts remain structured, with no partial-week trend claims.
   const cs = current.stripe?.status === 'available' ? current.stripe : null;
-  const ps = p?.stripe?.status === 'available' && p.stripe.mode === cs?.mode ? p.stripe : null;
+  const sameExclusions = JSON.stringify([...(cs?.exclusions?.customer_ids ?? [])].sort()) ===
+    JSON.stringify([...(p?.stripe?.exclusions?.customer_ids ?? [])].sort());
+  const ps = p?.stripe?.status === 'available' && p.stripe.mode === cs?.mode && sameExclusions ? p.stripe : null;
   const flowDelta = (label: string, value: number | null, before: number | null | undefined) =>
     value != null && before != null ? delta(label, value, before, { includeInNotable: false }) : null;
   const stripe: EvidenceDelta['stripe'] = cs && cs.mode ? {
     mode: cs.mode,
+    ...(!sameExclusions && p?.stripe?.status === 'available'
+      ? { comparison_note: 'Customer exclusions changed; prior Stripe totals are not comparable.' }
+      : {}),
     new_customers: flowDelta('New Stripe customer records', cs.new_customers, ps?.new_customers),
     paying_customers: flowDelta('Stripe paying customer IDs', cs.paying_customers, ps?.paying_customers),
     currencies: cs.currencies.map(c => {
