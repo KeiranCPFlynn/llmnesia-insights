@@ -4,6 +4,7 @@ import { calendarWeekStart } from '../lib/week';
 import { delta, formatWeek, num, pct } from '../lib/format';
 import { AppShell } from '../components/AppShell';
 import { RevenueOverview } from '../components/RevenueOverview';
+import { PaymentsOverview } from '../components/PaymentsOverview';
 import { TrendCharts } from '../components/TrendCharts';
 import { SourceBadge } from '../components/SourceBadge';
 import { LedgerOverview } from '../components/LedgerOverview';
@@ -302,6 +303,7 @@ export default async function Page({
       </section>
 
       <RevenueOverview metrics={m.stripe} compact />
+      <PaymentsOverview metrics={m.payments} />
 
       {/* Key product numbers */}
       <section id="metrics" className="scroll-mt-36 mb-10">

@@ -26,7 +26,7 @@ export interface TrendPoint {
   w4Retention: number;
   wau: number;
   searchesPerWau: number;
-  clickRate: number;
+  clickRate: number | null;
   zeroResultRate: number;
 }
 
@@ -52,7 +52,8 @@ export function toTrend(insights: WeeklyInsight[]): TrendPoint[] {
       w4Retention: pct(m.retention?.w4_rolling?.rate ?? 0),
       wau: m.engagement?.wau ?? 0,
       searchesPerWau: Math.round((m.engagement?.searches_per_wau ?? 0) * 10) / 10,
-      clickRate: pct(m.search_quality?.click_rate ?? 0),
+      clickRate: m.search_quality?.click_rate_definition === 'from_search_v1' && m.search_quality.click_rate != null
+        ? pct(m.search_quality.click_rate) : null,
       zeroResultRate: pct(m.search_quality?.zero_result_rate ?? 0),
     };
   });

@@ -1,4 +1,4 @@
-export const pct = (n: number | undefined) =>
+export const pct = (n: number | null | undefined) =>
   n == null ? '—' : `${(n * 100).toFixed(1)}%`;
 
 export const num = (n: number | undefined) =>

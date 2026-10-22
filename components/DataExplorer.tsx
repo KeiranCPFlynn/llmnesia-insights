@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RevenueOverview } from './RevenueOverview';
+import { PaymentsOverview } from './PaymentsOverview';
+import type { PaymentsMetrics } from '../src/payments';
 import { stripeMoney } from '../lib/stripe-format';
 import type { StripeMetrics } from '../src/stripe-types.js';
 import { num, pct } from '../lib/format';
@@ -21,6 +23,7 @@ interface DataResponse {
   events: Array<{ event: string; count: number }>;
   ga4: GA4Metrics;
   stripe?: StripeMetrics;
+  payments?: PaymentsMetrics;
   search: SearchPerformanceDigest | null;
 }
 
@@ -209,8 +212,7 @@ function buildDigest(d: DataResponse): string {
   const { posthog: ph, ga4, search: sp, range } = d;
   const counts = new Map(d.events.map((e) => [e.event, e.count]));
   const ev = (n: string) => counts.get(n) ?? 0;
-  const ratePct = (n: number, den: number) => (den > 0 ? `${((n / den) * 100).toFixed(1)}%` : '—');
-  const searches = ev('search_performed');
+  const searches = ph.search_quality?.searches;
   const opens = ev('result_opened');
   const hasSubmitted = ev('search_submitted') > 0;
 
@@ -221,10 +223,12 @@ function buildDigest(d: DataResponse): string {
   out.push('## PostHog (in-product)');
   out.push(line('Installs (extension_installed)', num(ph.installs?.total)));
   out.push(line('Active users (any event)', num(ph.engagement?.wau_any_event)));
-  out.push(line('Searches (search_performed)', num(searches)));
+  out.push(line('Intentional searches (search_submitted)', num(searches)));
   out.push(line('Result opens (result_opened)', num(opens)));
-  out.push(line('Click rate (opens / searches)', ratePct(opens, searches)));
-  out.push(line('Zero-result rate', ratePct(ev('zero_results_returned'), searches)));
+  out.push(line('Search opens per covered search (0.4.18+)', pct(ph.search_quality?.click_rate)));
+  out.push(line('Search opens / covered searches', `${num(ph.search_quality?.clicks)} / ${num(ph.search_quality?.searches_with_origin_tracking)}`));
+  out.push(line('Recents / unknown-origin opens', `${num(ph.search_quality?.recent_opens)} / ${num(ph.search_quality?.origin_unknown_opens)}`));
+  out.push(line('Zero-result rate (submitted searches)', pct(ph.search_quality?.zero_result_rate)));
   out.push(
     line('Email capture', `${pct(ph.email_capture?.rate)} (${num(ph.email_capture?.identified)} identified)`),
   );
@@ -292,6 +296,14 @@ function buildDigest(d: DataResponse): string {
     out.push(`Current subscription health: ${JSON.stringify(stripe.subscriptions)}`);
     out.push(...stripe.warnings);
   } else out.push(stripe?.detail ?? 'Stripe evidence unavailable.');
+
+  const payments = d.payments;
+  out.push('\nPAID SUBSCRIPTIONS AND RENEWALS');
+  if (payments?.status === 'available') {
+    out.push(`Period: ${payments.period.start} to ${payments.period.end}; ${payments.mode} mode; ${payments.excluded_customer_ids.length} test accounts excluded.`);
+    out.push(`Paid coverage at period end: ${payments.active_subscriptions_at_week_end.total}; new paid subscriptions: ${payments.new_paid_subscriptions}; renewals paid/due: ${payments.renewals.paid}/${payments.renewals.due}; net GBP: ${payments.revenue.net_gbp} (${payments.revenue.tax_basis}, before fees).`);
+    out.push(...payments.warnings);
+  } else out.push(payments?.detail ?? 'Payment evidence unavailable.');
 
   emitGA4('Website', ga4?.website);
   emitGA4('Chrome Web Store listing', ga4?.extension);
@@ -398,23 +410,15 @@ export function DataExplorer() {
   const ga4 = data?.ga4;
   const sp = data?.search;
 
-  // Ground-truth event counts. The weekly metrics key off newer events
-  // (search_submitted / user_initiated) the shipped extension isn't emitting yet,
-  // so they read 0; for a raw explorer we derive the headline numbers from the
-  // events that actually carry data (search_performed, result_opened, etc.) and
-  // mark the not-yet-instrumented ones as unavailable instead of a false 0.
+  // Raw counts remain available alongside the intentional-search metrics.
   const evCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const e of data?.events ?? []) map.set(e.event, e.count);
     return map;
   }, [data]);
   const ev = (name: string) => evCount.get(name) ?? 0;
-  const searchesPerformed = ev('search_performed');
   const resultOpens = ev('result_opened');
-  const zeroResults = ev('zero_results_returned');
-  // These metrics depend on search_submitted, which isn't in the data yet.
   const hasSubmitted = ev('search_submitted') > 0;
-  const rate = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '—');
 
   return (
     <div>
@@ -496,6 +500,7 @@ export function DataExplorer() {
       )}
 
       {data && <RevenueOverview metrics={data.stripe} />}
+      {data && <PaymentsOverview metrics={data.payments} />}
 
       {ph && (
         <Panel title="PostHog · in-product">
@@ -508,20 +513,22 @@ export function DataExplorer() {
             />
             <Stat
               label="Searches"
-              value={num(searchesPerformed)}
-              hint="search_performed"
+              value={num(ph.search_quality?.searches)}
+              hint="intentional search_submitted events"
             />
             <Stat label="Result opens" value={num(resultOpens)} hint="result_opened" />
             <Stat
-              label="Click rate"
-              value={rate(resultOpens, searchesPerformed)}
-              hint={`${num(resultOpens)} opens / ${num(searchesPerformed)} searches`}
+              label="Search opens per search"
+              value={pct(ph.search_quality?.click_rate)}
+              hint={`${num(ph.search_quality?.clicks)} search opens / ${num(ph.search_quality?.searches_with_origin_tracking)} searches on 0.4.18+`}
             />
             <Stat
               label="Zero-result rate"
-              value={rate(zeroResults, searchesPerformed)}
-              hint={`${num(zeroResults)} zero-result searches`}
+              value={pct(ph.search_quality?.zero_result_rate)}
+              hint={`${num(ph.search_quality?.zero_results)} submitted searches with no results`}
             />
+            <Stat label="Recents opens" value={num(ph.search_quality?.recent_opens)} hint="opens without a submitted search" />
+            <Stat label="Unknown-origin opens" value={num(ph.search_quality?.origin_unknown_opens)} hint="excluded from search click rate" />
             <Stat
               label="Email capture"
               value={pct(ph.email_capture?.rate)}
