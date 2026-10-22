@@ -1,5 +1,33 @@
 # Search click rate and weekly Stripe payments implementation
 
+## Integration update, 22 October 2026
+
+The measurement branch is integrated into local `main`, together with the
+Stripe dashboard's founder-test-account exclusions. Invoice access now works
+against the existing live restricted key; the earlier 403 below is historical.
+The completed-week evidence was refreshed and the review republished through
+the validator. The original review's pricing, billing and hypothesis corrections
+were retained through the publisher's safe replay.
+
+The Data page and copied digest now use intentional submitted searches and
+the corrected search-origin rate, with recents and unknown origins separate.
+The report and Data page show historical paid coverage and renewals separately
+from current subscription state. Search charts leave gaps for legacy rate
+definitions and unavailable coverage instead of drawing a false comparison.
+
+Verification: 69 tests pass, TypeScript and the production build pass, and an
+authenticated local HTTP check confirms the refreshed report and payment
+summary render. The original database and review draft were backed up locally
+before evidence collection. No new dependency or cloud resource was required.
+
+Chrome release and live checkout attribution are verified; the review now
+tracks experiments awaiting results instead of recommending completed releases.
+The only publishing decision is the old Vercel connection: the prepared
+`git.deploymentEnabled: false` change allows a GitHub backup without deploying
+this local SQLite application. It requires owner approval before pushing.
+
+## Original implementation record
+
 Implementation date: 20 October 2026 (Asia/Bangkok).
 Branch: `codex/measurement-click-rate-payments`.
 Base commit: `4615dfb` from the Insights repository's existing dashboard branch.

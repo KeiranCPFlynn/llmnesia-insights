@@ -339,7 +339,22 @@ npm run pipeline -- --week=2026-04-20     # backfill a specific Monday
 npm run pipeline -- --provider=deepseek   # use DeepSeek instead of Claude (default from LLM_PROVIDER)
 ```
 
-## Deploying to Vercel
+## GitHub backup and legacy Vercel hosting
+
+Insights now uses the SQLite database on this machine. A Vercel deployment
+does not contain that database and is not a supported way to run this version.
+Run the dashboard locally with `npm run dev` or `npm run build && npm start`.
+
+`vercel.json` sets `git.deploymentEnabled` to `false` so code can be backed up
+to GitHub without deploying the old hosted project. Applying this change to
+the connected project requires the owner's approval before the first push.
+It leaves existing deployments in place and can be reversed by removing that
+setting. It does not stop an existing deployed cron or delete cloud resources.
+
+The instructions below describe the previous cloud-backed deployment and
+must not be used with the local SQLite version without a hosting redesign.
+
+### Historical Vercel deployment
 
 1. Import the repo into Vercel.
 2. Add every variable from the table above as a Project Environment Variable. **`GOOGLE_APPLICATION_CREDENTIALS` is a local file path and won't resolve on Vercel** (no `/Users` — the error is `ENOENT … lstat '/Users'`). Instead set **`GOOGLE_CREDENTIALS_JSON`** to the entire contents of the key file; `src/ga4.ts` parses it and uses it inline (it takes precedence over the path). The *extension* property is unaffected — it's OAuth/token-based (`GA4_OAUTH_*`) and works on Vercel as-is. (`.env` override is a no-op there — there's no `.env` file, so the platform env vars stand.)
