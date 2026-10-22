@@ -1,7 +1,7 @@
 # Website purchase measurement, 22 October 2026
 
-The remaining website instrumentation is prepared locally in the site repo on
-`codex/vault-purchase-measurement`. It records `vault_checkout_started` after a
+The remaining website instrumentation is committed on the site's local `main`
+as `13c5147`. It records `vault_checkout_started` after a
 checkout URL is returned and `vault_purchase_completed` after a same-tab,
 account-matched success return is confirmed entitled. The original plan and
 allowlisted `payoff` source survive the Stripe round trip in session storage.
@@ -33,14 +33,20 @@ This check does not establish a real payoff-attributed purchase.
 
 Publication is still gated by the owner's explicit approval under AGENTS.md.
 Site `main` pushes deploy to the existing llmnesia.com Vercel project. After
-approval, integrate and publish only the site change, verify the live assets,
+approval, publish only the site task commit, verify the live assets,
 and configure `vault_purchase_completed` as the GA4 completion key event in
 property `533614466`. Checkout start remains an ordinary funnel event. No
 billing, schema or permission change is needed. Source attribution is already
 deployed in the checkout function and Stripe metadata.
 
-Integrate this Insights change into local `main` for the next normal review;
-do not deploy the SQLite dashboard or change its Vercel connection. The existing
+This Insights change is integrated into local `main` as `bca067c` for the next
+normal review. Do not deploy the SQLite dashboard or change its Vercel
+connection. The existing
 review and database were not refreshed or modified by this task. A future real
 payoff purchase can confirm payment attribution read-only through subscription
 metadata; do not create a charge merely to close this item.
+
+The updated collector was also run read-only against PostHog project `132419`
+for the last completed week (12 to 18 October). The query succeeded and the
+new website event fields were both zero, as expected before deployment.
+No prior snapshot, review or database was rewritten.
