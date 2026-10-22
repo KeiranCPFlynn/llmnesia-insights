@@ -13,10 +13,13 @@ Search click rate uses `from_search=true` opens divided by searches from extensi
 Each evidence pack includes a `vault_funnel` section: unique users per Vault
 event for the reporting week (waitlist join, vault created, checkout opened,
 phone QR shown, unlocked, plus background sync/restore completion and failure
-counts), diffed against the prior week in the computed delta. Note that the
-website purchase flow emits no analytics event today, so `checkout_opened`
-covers the in-extension paywall path only; it is not a measure of all
-checkout intent.
+counts), diffed against the prior week in the computed delta. `checkout_opened`
+still covers the in-extension paywall only. Separate `website_checkout_started`
+and `website_purchase_completed` fields collect the site's new checkout and
+verified entitled-return events when deployed. Their first collection has no
+prior-period delta. These are per-event unique identities, not a joined
+conversion cohort; absent events do not prove absent purchases. The `payments`
+section remains the source of truth for paid subscriptions and revenue.
 
 To run a review, open this repository in Codex or Claude Code and say:
 

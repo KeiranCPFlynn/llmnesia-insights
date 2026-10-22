@@ -107,9 +107,9 @@ export interface MetricsSnapshot {
   /**
    * Vault monetisation funnel: unique PostHog identities firing each Vault
    * event in the period. `waitlist_joined` arrives from both the extension
-   * and the website waitlist form; the later steps are extension-only (the
-   * site purchase flow emits no analytics event yet, so `checkout_opened`
-   * covers the in-extension paywall path only. `sync_completed` /
+   * and the website waitlist form. `checkout_opened` covers the extension
+   * paywall only; website checkout/entitled-return events are separate and
+   * are not paid invoice evidence. `sync_completed` /
    * `sync_failed` are background scheduler runs, not user progression: read
    * them as reliability signals alongside `unlocked`.
    */
@@ -122,6 +122,9 @@ export interface MetricsSnapshot {
     sync_completed: number;
     sync_failed: number;
     restore_completed: number;
+    /** Optional for compatibility with snapshots collected before rollout. */
+    website_checkout_started?: number;
+    website_purchase_completed?: number;
   };
   ga4: GA4Metrics;
   stripe?: StripeMetrics;
@@ -825,6 +828,9 @@ export interface EvidenceDelta {
     sync_completed: MetricDelta;
     sync_failed: MetricDelta;
     restore_completed: MetricDelta;
+    /** Withheld when either snapshot predates website event collection. */
+    website_checkout_started: MetricDelta | null;
+    website_purchase_completed: MetricDelta | null;
   };
 
   search_performance: {

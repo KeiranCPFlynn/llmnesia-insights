@@ -505,8 +505,8 @@ export async function getBackfillSearchCorrelation(
  * vault_waitlist_joined (which carries no anonymous_install_id property) and
  * the extension's Vault events count in one series; funnel consumers treat a
  * duplicate capture as inert. checkout_opened fires only on the
- * subscribe-in-extension paywall: the site purchase flow emits no analytics
- * event yet, so site-portal drop-off is invisible to this section. Vault and
+ * subscribe-in-extension paywall. Website starts and entitled returns use
+ * separate event names; they are not invoice-confirmed paid purchases. Vault and
  * conversion events are never sampled (see LLMnesia's
  * docs/POSTHOG_USAGE_REDUCTION.md), so these counts need no de-sampling.
  */
@@ -523,7 +523,9 @@ export async function getVaultFunnel(
       uniqIf(distinct_id, event = 'vault_unlocked') AS unlocked,
       uniqIf(distinct_id, event = 'vault_sync_completed') AS sync_completed,
       uniqIf(distinct_id, event = 'vault_sync_failed') AS sync_failed,
-      uniqIf(distinct_id, event = 'vault_restore_completed') AS restore_completed
+      uniqIf(distinct_id, event = 'vault_restore_completed') AS restore_completed,
+      uniqIf(distinct_id, event = 'vault_checkout_started') AS website_checkout_started,
+      uniqIf(distinct_id, event = 'vault_purchase_completed') AS website_purchase_completed
     FROM events
     WHERE toDate(timestamp) >= toDate('${weekStart}')
       AND toDate(timestamp) <= toDate('${weekEnd}')
@@ -535,7 +537,9 @@ export async function getVaultFunnel(
         'vault_unlocked',
         'vault_sync_completed',
         'vault_sync_failed',
-        'vault_restore_completed'
+        'vault_restore_completed',
+        'vault_checkout_started',
+        'vault_purchase_completed'
       )
   `);
   const row = rows[0] ?? [];
@@ -548,6 +552,8 @@ export async function getVaultFunnel(
     sync_completed: Number(row[5] ?? 0),
     sync_failed: Number(row[6] ?? 0),
     restore_completed: Number(row[7] ?? 0),
+    website_checkout_started: Number(row[8] ?? 0),
+    website_purchase_completed: Number(row[9] ?? 0),
   };
 }
 

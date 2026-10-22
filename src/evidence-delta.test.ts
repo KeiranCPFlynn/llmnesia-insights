@@ -86,6 +86,8 @@ test('vault funnel steps diff against the prior week with direction', () => {
       sync_completed: 9,
       sync_failed: 0,
       restore_completed: 1,
+      website_checkout_started: 10,
+      website_purchase_completed: 2,
     },
   });
   const current = snapshot({
@@ -102,6 +104,8 @@ test('vault funnel steps diff against the prior week with direction', () => {
       sync_completed: 9,
       sync_failed: 3,
       restore_completed: 1,
+      website_checkout_started: 12,
+      website_purchase_completed: 3,
     },
   });
 
@@ -119,6 +123,16 @@ test('vault funnel steps diff against the prior week with direction', () => {
   assert.equal(result.vault_funnel.unlocked.direction, 'down');
   assert.equal(result.vault_funnel.sync_failed.direction, 'up');
   assert.equal(result.vault_funnel.restore_completed.direction, 'flat');
+  assert.equal(result.vault_funnel.website_checkout_started?.change, 2);
+  assert.equal(result.vault_funnel.website_purchase_completed?.change, 1);
+
+  // Old snapshots have no website collection; never invent a zero baseline.
+  delete prior.vault_funnel.website_checkout_started;
+  delete prior.vault_funnel.website_purchase_completed;
+  const firstCollection = computeEvidenceDelta(current, prior);
+  assert.equal(firstCollection.vault_funnel.website_checkout_started, null);
+  assert.equal(firstCollection.vault_funnel.website_purchase_completed, null);
+  assert.equal(firstCollection.notable_changes.some(change => change.metric.startsWith('Website Vault')), false);
 
   const labels = result.notable_changes.map((change) => change.metric);
   assert.equal(labels.includes('Vault waitlist joins'), true);

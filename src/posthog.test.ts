@@ -154,7 +154,7 @@ test('vault funnel counts unique identities per vault event within the reporting
   globalThis.fetch = (async (_input, init) => {
     const body = JSON.parse(String(init?.body)) as { query: { query: string } };
     queries.push(body.query.query);
-    return new Response(JSON.stringify({ results: [[7, 5, 2, 2, 4, 3, 1, 2]] }), {
+    return new Response(JSON.stringify({ results: [[7, 5, 2, 2, 4, 3, 1, 2, 8, 3]] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -176,6 +176,8 @@ test('vault funnel counts unique identities per vault event within the reporting
       'vault_sync_completed',
       'vault_sync_failed',
       'vault_restore_completed',
+      'vault_checkout_started',
+      'vault_purchase_completed',
     ]) {
       assert.match(query, new RegExp(`uniqIf\\(distinct_id, event = '${step}'\\)`));
     }
@@ -190,6 +192,8 @@ test('vault funnel counts unique identities per vault event within the reporting
       sync_completed: 3,
       sync_failed: 1,
       restore_completed: 2,
+      website_checkout_started: 8,
+      website_purchase_completed: 3,
     });
 
     // An empty result degrades to zeroes, never undefined.
@@ -208,6 +212,8 @@ test('vault funnel counts unique identities per vault event within the reporting
       sync_completed: 0,
       sync_failed: 0,
       restore_completed: 0,
+      website_checkout_started: 0,
+      website_purchase_completed: 0,
     });
   } finally {
     globalThis.fetch = originalFetch;

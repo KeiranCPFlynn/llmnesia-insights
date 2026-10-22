@@ -165,6 +165,10 @@ export function computeEvidenceDelta(
     sync_completed: vaultFunnelStep('Vault syncs completed', 'sync_completed'),
     sync_failed: vaultFunnelStep('Vault sync failures', 'sync_failed'),
     restore_completed: vaultFunnelStep('Vault restores completed', 'restore_completed'),
+    website_checkout_started: curVault?.website_checkout_started != null && priorVault?.website_checkout_started != null
+      ? vaultFunnelStep('Website Vault checkout starters', 'website_checkout_started') : null,
+    website_purchase_completed: curVault?.website_purchase_completed != null && priorVault?.website_purchase_completed != null
+      ? vaultFunnelStep('Website Vault entitled returns', 'website_purchase_completed') : null,
   };
 
   // --- Search performance (optional, may be absent) ---
