@@ -24,6 +24,18 @@ test('does not match domains that merely contain an assistant name', () => {
   for (const source of ['notchatgpt.com','gemini.google.com.evil.test','my-gemini-blog','openai.com']) assert.equal(isKnownAssistantSource(source), false);
   assert.equal(isKnownAssistantSource('Gemini.Google.Com'), true);
 });
+test('counts both observed Perplexity sources across channels without changing historical channel totals', () => {
+  const result = buildReferralSeries([
+    row({source:'perplexity.ai', sessions:1}),
+    row({source:'perplexity', medium:'(not set)', channel:'Unassigned', sessions:8}),
+    row({source:'perplexity', host:'localhost', channel:'Unassigned', sessions:10}),
+    row({source:'perplexity.ai.evil.test', channel:'Referral', sessions:20}),
+  ]);
+  assert.equal(result.weeks['2026-10-05'].sessions, 1);
+  assert.equal(result.known_source_supplement.weeks['2026-10-05'].sessions, 9);
+  assert.equal(result.production_combined.weeks['2026-10-05'].sessions, 9);
+  assert.equal(result.known_source_supplement.outside_ai_channel_weeks['2026-10-05'].sessions, 8);
+});
 test('retains every landing and source-by-day row beyond the top fifteen', () => {
   const rows = Array.from({length:20}, (_, i) => row({landingPage:`/page-${i}`}));
   const week = referralWeeks(rows)['2026-10-05'];

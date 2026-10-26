@@ -10,7 +10,7 @@ export interface ReferralRow {
 
 export const KNOWN_ASSISTANT_SOURCES = [
   'gemini', 'gemini.google.com', 'bard.google.com', 'chatgpt.com',
-  'chat.openai.com', 'perplexity.ai', 'claude.ai', 'copilot.microsoft.com',
+  'chat.openai.com', 'perplexity', 'perplexity.ai', 'claude.ai', 'copilot.microsoft.com',
   'copilot.com',
 ] as const;
 

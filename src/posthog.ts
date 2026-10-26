@@ -10,7 +10,7 @@ function getConfig() {
   return { projectId, apiKey };
 }
 
-async function runQuery(query: string): Promise<unknown[][]> {
+export async function runQuery(query: string): Promise<unknown[][]> {
   const { projectId, apiKey } = getConfig();
   const res = await fetch(`${BASE_URL}/api/projects/${projectId}/query/`, {
     method: 'POST',

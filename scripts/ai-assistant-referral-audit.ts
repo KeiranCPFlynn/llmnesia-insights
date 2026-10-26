@@ -107,6 +107,11 @@ const payload = {
   calendar_timezone: report.metadata?.timeZone ?? '(not returned)',
   freshness: 'Completed calendar week, not guaranteed final. GA4 may restate recent dates.',
   channel_host_scope: 'Original all-host channel population retained for compatibility; supplements use production hosts only.',
+  source_coverage: {
+    version: 2,
+    changed_at: '2026-10-26',
+    note: 'Explicit known-source coverage now includes observed bare perplexity alongside perplexity.ai. Both comparison weeks use this same list. Historical AI Assistant channel definition is unchanged; older dated snapshots retain their as-of scope.',
+  },
   metadata: report.metadata,
   row_count: report.rowCount,
   previous_run: previousRun,

@@ -35,6 +35,46 @@ metadata and the generation timestamp. A completed week can still be restated.
 Dated citation audit snapshots remain as-of records and must not be overwritten
 merely because GA4 later reports different totals.
 
+The observed bare source `perplexity` is included alongside `perplexity.ai`.
+This is a known-source coverage correction, not additional citations. Keep the
+original channel definition and do not rewrite older dated snapshots. When
+comparing an expanded supplement with an older snapshot, recompute both weeks
+using the same source list and explain the change in coverage.
+
+## Business outcomes and interpretation
+
+Also run `npm run audit:growth-outcomes` (the same `-- --week-start=YYYY-MM-DD`
+option is supported). This read-only companion writes `.insights/growth-outcomes.json`.
+Include its results or explicit access gaps in the dated citation audit.
+It keeps website install-button events, Chrome Web Store installs, mature
+24-hour external-install search outcomes, and mature seven-day search return
+separate. Never treat button clicks as installs, import completion as index
+readiness, or a submitted search as a successful search. Do not join website
+sources to extension activation without an actual attribution link.
+
+Explain what changed and what to do, not only the totals:
+
+- Identify which sources and landing pages account for referral losses, with
+  absolute counts and a multiweek view. Explain source concentration.
+- Separate confirmed observations from hypotheses. Without assistant exposure
+  data, fewer referrals cannot distinguish fewer relevant questions, fewer
+  citations, or lower citation click-through.
+- Keep Bing separate. Use matched available dates and distinguish changes in
+  impressions from aggregate click-through. Page/query buckets may cover a
+  different period and a subset of traffic; do not sum them into site totals.
+- Explain business impact using installs, positive-result searches and search
+  return. State maturity, instrumentation gaps, small samples and the next
+  action. Report a meaningful loss or access failure honestly.
+- Record intervention dates and assess subsequent completed weeks. Do not
+  claim a content edit caused an improvement from a single answer or week.
+
+For a focused Gemini diagnosis, optionally check these additional prompts in
+fresh conversations using the same accessibility rules. Record them separately
+as `diagnostic_checks`, never add them to the fixed-set citation rate:
+
+- How do I find and search old Gemini chats on a computer or phone?
+- How long does Gemini keep chat history, and can I change auto-delete?
+
 ## Citation presence checks
 
 Test each prompt in a fresh, non-personalized conversation on ChatGPT, Claude,
