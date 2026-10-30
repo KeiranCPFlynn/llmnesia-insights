@@ -250,24 +250,33 @@ export async function getCombinedSearchDigest(
   // bing_rows has the same shape of bug: GetQueryStats (its source) only
   // surfaces a subset of queries, so summing it undercounts site-wide
   // impressions by ~12x (see getAccurateBingTotals in bing.ts). Same fix.
+  //
+  // Query rows arrive in weekly Friday buckets but these totals are daily, so
+  // the totals must not wait for a bucket: a week with no bucket yet would
+  // otherwise report no Bing data. Position has no daily source, so it falls
+  // back to the latest bucket before this week.
   let bing: SearchSourceDigest | null = null;
-  if (bingCurrent.length > 0) {
-    const localAggregate = aggregate(bingCurrent, bingPrior);
+  let bingAsOf: string | null = null;
+  if (hasBing) {
+    const localAggregate = aggregate(bingCurrent.length > 0 ? bingCurrent : bingPrior, bingPrior);
     const [current, prior] = await Promise.all([
       getAccurateBingTotals(site, weekStart, weekEnd),
       getAccurateBingTotals(site, priorStartIso, priorEndIso),
     ]);
-    bing = {
-      clicks: current.total_clicks,
-      impressions: current.total_impressions,
-      ctr:
-        current.total_impressions > 0
-          ? Number((current.total_clicks / current.total_impressions).toFixed(4))
-          : 0,
-      avg_position: localAggregate.avg_position,
-      prior_clicks: prior.total_clicks,
-      prior_impressions: prior.total_impressions,
-    };
+    bingAsOf = current.latest_date;
+    if (bingAsOf) {
+      bing = {
+        clicks: current.total_clicks,
+        impressions: current.total_impressions,
+        ctr:
+          current.total_impressions > 0
+            ? Number((current.total_clicks / current.total_impressions).toFixed(4))
+            : 0,
+        avg_position: localAggregate.avg_position,
+        prior_clicks: prior.total_clicks,
+        prior_impressions: prior.total_impressions,
+      };
+    }
   }
   let google: SearchSourceDigest | null = null;
   if (gscCurrent.length > 0) {
@@ -296,7 +305,7 @@ export async function getCombinedSearchDigest(
     site: 'llmnesia.com',
     data_as_of: {
       google: gscCurrent.map((row) => row.date).sort().at(-1) ?? null,
-      bing: bingCurrent.map((row) => row.date).sort().at(-1) ?? null,
+      bing: bingAsOf,
     },
     window: { start: weekStart, end: weekEnd },
     prior_window: { start: priorStartIso, end: priorEndIso },

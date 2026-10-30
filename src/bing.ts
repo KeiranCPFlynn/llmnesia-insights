@@ -116,20 +116,22 @@ export async function getAccurateBingTotals(
   site: Site,
   startDate: string,
   endDate: string,
-): Promise<{ total_clicks: number; total_impressions: number }> {
+): Promise<{ total_clicks: number; total_impressions: number; latest_date: string | null }> {
   const apiKey = getApiKey();
   const siteUrl = site.bing_site_url ?? site.root_url;
   const rows = await fetchRankAndTrafficStats(apiKey, siteUrl);
   let clicks = 0;
   let impressions = 0;
+  let latestDate: string | null = null;
   for (const r of rows) {
     if (!r.Date) continue;
     const date = parseWcfDate(r.Date);
     if (date < startDate || date > endDate) continue;
     clicks += r.Clicks ?? 0;
     impressions += r.Impressions ?? 0;
+    if (!latestDate || date > latestDate) latestDate = date;
   }
-  return { total_clicks: clicks, total_impressions: impressions };
+  return { total_clicks: clicks, total_impressions: impressions, latest_date: latestDate };
 }
 
 function isoDate(d: Date): string {

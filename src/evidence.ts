@@ -87,7 +87,7 @@ export async function collectEvidence(opts: {
       source: 'Bing Webmaster Tools',
       status: searchPerformance?.bing ? 'fresh' : 'unavailable',
       data_as_of: bingAsOf,
-      detail: bingAsOf ? 'Latest observed Bing query-row date; provider data may lag or be incomplete.' : 'No Bing search rows were available for this period.',
+      detail: bingAsOf ? 'Latest Bing daily traffic date; query breakdowns are weekly and provider data may lag.' : 'No Bing traffic data was available for this period.',
     },
   ];
 
@@ -115,7 +115,7 @@ export async function collectEvidence(opts: {
         source: 'Bing Webmaster Tools',
         periodStart: weekStart,
         periodEnd: weekEnd,
-        snapshot: searchPerformance?.bing ?? { unavailable: true, reason: 'No Bing search rows available for this period.' },
+        snapshot: searchPerformance?.bing ?? { unavailable: true, reason: 'No Bing traffic data available for this period.' },
       }),
       saveSourceSyncState({
         source: 'Google Search Console',
@@ -127,7 +127,7 @@ export async function collectEvidence(opts: {
         source: 'Bing Webmaster Tools',
         latestDataDate: bingAsOf,
         status: searchPerformance?.bing ? 'fresh' : 'failed',
-        detail: searchPerformance?.bing ? null : 'No Bing search rows were available for this period.',
+        detail: searchPerformance?.bing ? null : 'No Bing traffic data was available for this period.',
       }),
     ]);
     log('Evidence snapshot and delta saved.');
