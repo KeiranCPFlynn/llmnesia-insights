@@ -41,8 +41,9 @@ npm run insights:prepare
 ```
 
 By default this refreshes evidence through today. Today and the current week
-are partial, and provider processing delays still apply. Use `--completed-week`
-only for an explicitly requested historical comparison.
+are partial, and provider processing delays still apply. The agent's normal
+review uses `--completed-week` and adds this week-to-date run when you ask for
+data through today.
 
 This creates an ignored `.insights/` workspace:
 

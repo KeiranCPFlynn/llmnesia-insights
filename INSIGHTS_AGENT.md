@@ -6,7 +6,9 @@ the evidence store and dashboard; you are the strategy and execution agent.
 1. Run `npm run insights:prepare -- --completed-week --refresh-evidence`
    first. The founder's standing preference is to review the most recent
    completed week regardless of the run date; never prepare a week-to-date or
-   single-day window unless the founder explicitly asks for it. If a stored
+   single-day window unless the founder explicitly asks for it. When the
+   founder asks for data through today, also run `npm run insights:prepare`
+   and publish that week-to-date review. If a stored
    full-week record for that week already exists, the refresh may be omitted;
    never reuse a stored record whose week end is earlier than its week start
    plus six days. If the pack's stored prior snapshot is itself partial, do
@@ -30,6 +32,9 @@ the evidence store and dashboard; you are the strategy and execution agent.
    question, use a focused source follow-up query and record the tool in
    `sources.follow_up_tools`; this is drill-down, not a replacement for the
    mandatory stored analytics ingestion.
+   Stripe shows who pays, not who uses Vault, so run
+   `docs/vault-paid-activity.sql` read-only through Supabase MCP each review
+   and report paying, active, stopped and never-started subscribers.
    Keep a normal review bounded: inspect no more than 10 changed files across
    the relevant repositories, retrieve one focused set of conversations, and
    make at most three ranked recommendations. A founder can explicitly request
