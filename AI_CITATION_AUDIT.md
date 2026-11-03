@@ -75,6 +75,28 @@ as `diagnostic_checks`, never add them to the fixed-set citation rate:
 - How do I find and search old Gemini chats on a computer or phone?
 - How long does Gemini keep chat history, and can I change auto-delete?
 
+## Follow through on a weaker activation week
+
+If mature import completion or positive-result search weakens, run
+`npm run audit:activation-diagnosis -- --week-start=YYYY-MM-DD --cohort-days=6`
+using the audited week start and the same number of mature cohort days in
+both weeks. The default is six days to match Monday audits; seven is allowed
+once all seven installation days have full observation windows. Keep any
+missing-source result unverified.
+
+Inspect platform and version mix, source refusal statuses, the invitation
+click-to-palette step, and ordered first-search timestamps. Distinguish any
+completion event from complete account coverage and from actual positive
+searches. Partial imports may already be useful. Platform rows overlap;
+never sum their installation counts into a funnel denominator. Suppress
+version-cell rates below 30 installs and do not treat version correlation as
+proof of a regression.
+
+Keep computer use strictly in the background. Never use native desktop or
+browser controls, switch applications, open visible tabs/windows, or send
+mouse/keyboard input. If a focus-safe hidden interface is unavailable, mark
+assistant checks unverified. Do not retry UI actions after an activity warning.
+
 ## Citation presence checks
 
 Test each prompt in a fresh, non-personalized conversation on ChatGPT, Claude,
