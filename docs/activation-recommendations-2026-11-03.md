@@ -35,3 +35,9 @@ The Character.AI page lost much of its visibility for the ambiguous query `old c
 ## Verification
 
 The new cleared-miss regression failed on the original code and passed after the repair. All 64 focused synthetic tests passed, covering palette interactions, genuine local keyword indexing, partial/empty imports, scope restrictions, filters and delayed responses. Extension TypeScript checking passed. All UI tests use generated fixtures and mocks; no native browser, desktop focus, real local index or Vault corpus was used.
+
+## Delivery
+
+The search fix is integrated locally in LLMnesia main at `f5d1d42d`, with its isolated patch backed up to `origin/codex/activation-search-recovery-20261103` at `ca2e127e`. Both dogfood and prod 0.4.23 were rebuilt through the sanctioned scripts from a clean registered worktree at that exact main commit. Build metadata reports `dirty: false`, the recovery marker is present in both overlay bundles, and `check:installs` passed. The integrated code passed the same 64 focused tests and TypeScript check again. The temporary task worktree was removed after integration and verification.
+
+No browser was controlled or reloaded. Reload each unpacked extension in its own browser profile to run the updated code. This is local build delivery, not a Chrome Web Store release. The separate Vault Worker rollout remains outside this task. Provider access refusals remain unresolved; the diagnosis does not establish a safe way to retrieve refused history or prove a client version caused the weekly decline.
