@@ -83,3 +83,17 @@ No confirmed application defect requiring a source patch was established. No cod
 - Final October use-case search rows: `.insights/use-case-search-2026-11-03.json`.
 - [Ahrefs October 27 alert](https://mail.google.com/mail/u/0/#all/1a17c05b2811ebbe), [October 13 validation warning](https://mail.google.com/mail/u/0/#all/1a133f2f90e73d61), [Google 401 alert](https://mail.google.com/mail/u/0/#all/1a174ff628a2d63b), [Google robots alert](https://mail.google.com/mail/u/0/#all/1a177e35b1c998c9).
 - [URL Inspection API scope](https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect): observations describe Google's indexed version rather than a live test.
+
+## Implementation and production delivery
+
+After the investigation, Keiran explicitly requested the fixes and then said "push it live". Site commit `5331bf24dd5cb01a76fee3af8d6d13a6c5d23c8a` removes promotional SoftwareApplication markup from all 191 blog posts while preserving their Article, FAQ, Breadcrumb and applicable HowTo nodes. The Researchers and Writers landing pages now provide distinct worked examples and reusable decision/revision notes, shorter metadata, accurate import limits and links to their broader guides.
+
+The isolated candidate passed an optimised production build and all required static-content and localization checks. The new schema check failed against the previous generated blog output and passed for the candidate. Generated landing-page checks confirmed self-canonicals, no noindex, correct Article modification dates, 130/131-character descriptions and no broken internal links.
+
+Only this focused commit was pushed to the established `origin/main`, preserving unrelated unpublished Pro pricing changes in the shared local checkout. Vercel production deployment `dpl_BoeSsAAt6SotpCWbKZape39vHhzT` reports READY at that exact commit, with aliases assigned. The authenticated alias lookup independently confirms `www.llmnesia.com` points to that deployment.
+
+Production build events confirm successful compilation, generation of 264 pages, the export contract passing for 225 content/category routes, homepage/installation localization checks passing, and core checks passing for 15 localized pages. Those production export checks include preserving the blog schemas and excluding the software-app node.
+
+Direct post-deployment requests to the representative blog and both changed landing pages returned HTTP 429 with the existing Vercel Security Checkpoint. The Git-based deployment does not expose a source file tree through the documented deployment-files API (404). Therefore production identity, alias assignment and production-build checks are verified; direct public-page body/visual inspection remains unverified under the user's APIs-and-code-only constraint. No challenge was bypassed or security control changed. Do not describe the pages as newly indexed or the historical Ahrefs/401/robots alerts as resolved.
+
+Private receipts: `.insights/indexing-schema-live-verification-2026-11-03.json`, `.insights/indexing-schema-production-checks-2026-11-03.json`, and `.insights/indexing-schema-fix-verification-2026-11-03.json`.
