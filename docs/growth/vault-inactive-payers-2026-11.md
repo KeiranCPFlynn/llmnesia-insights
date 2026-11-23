@@ -79,7 +79,7 @@ from the week of 26 October. Four versions have shipped since (0.4.23, 0.4.24,
 |---|---|
 | Never connected (2) | Add a clear first-run path after checkout: the success page and the extension both show one "Finish setting up Vault" step until the first sync completes, and record a `vault_setup_nudge_shown` event. Check what the purchaser sees after paying |
 | Stopped long ago (3) | Add a one-time in-extension "Vault hasn't synced since [date]" message that offers sync now, and record when it is dismissed. These people have data in Vault already, so the aim is making its value visible again |
-| Old version, stopped quietly (2) | Keep updating users off 0.4.21: show Vault sync status in the extension popup (last sync time, pending changes) so a stalled sync is visible, and check why an updated client would stop registering a compatibility row. Active payers on 0.4.23 to 0.4.26 register fine, so this looks like those users stopped using Chrome or the extension rather than a version bug |
+| Old version, stopped quietly (2) | Keep updating users off 0.4.21: show Vault sync status in the extension popup (last sync time, pending changes) so a stalled sync is visible, and check why an updated client would stop registering a compatibility row. Active payers on 0.4.23 to 0.4.26 register fine, so there is no sign of a version bug; the reason these two stopped is not known |
 | Sync possibly stuck (1) | Reproduce a first sync on 0.4.21 with a test account. If it fails, ship a fix in the next release and make sure a failed first sync produces a visible message and a recorded failure category (the server recorded none) |
 
 These map to the plan's **S7 (fix the causes in S3)**: the fixes above are small
@@ -89,9 +89,8 @@ and mostly about visibility, not sync reliability.
 
 - **Whether to contact any of the 8.** This report does not draft or send anything,
   and has no customer identities.
-- The 5 monthly payers who renew within 30 days are the likeliest cancellations.
-  Use the Stripe dashboard if contact is wanted; previous customer-email
-  decisions are yours (no refunds, no churn-prompting wording).
+- The 5 monthly payers who renew within 30 days are the likeliest cancellations,
+  so any contact would be most useful before those renewals.
 
 ## Limits
 
