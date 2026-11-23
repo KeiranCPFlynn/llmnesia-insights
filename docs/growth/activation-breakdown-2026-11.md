@@ -185,3 +185,13 @@ weeks of data, not forecasts.
 - Version and week move together with the Edge surge, so no version is shown to
   be better or worse.
 - Failed-import counts repeat per install and cannot be added across weeks.
+
+## Correction, 23 November 2026
+
+0.4.26 is live, not a pre-release candidate. PostHog recorded 663 installs on
+0.4.26 on 22 November and 638 on 23 November, none marked internal. Where this
+report says 0.4.26 "is not in the store", read it as "rolled out from 21–22
+November, too new for a 24-hour-mature cohort". The 0.4.26 install with
+repeated `vault_sync_failed` events cannot be assumed to be a test build. In
+the three days to 23 November, 5 installs on 0.4.25 also logged 969 sync
+failure events, which suggests a retry loop worth checking.
