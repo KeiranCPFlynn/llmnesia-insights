@@ -101,8 +101,7 @@ import. These groups do not overlap, so they sum to the "import started" totals.
 | All other platforms | 0.4.24–0.4.25 | 62 | 30 (48%) | 16 (26%) | 11 (18%) | 40 (65%) |
 
 - **Character.AI:** almost nobody finishes the import (10–13%), yet about half
-  search and about 80% open a result. Partial imports are searchable, and
-  Character.AI starters mostly arrive from the "old character ai" guide. Every
+  search and about 80% open a result. Partial imports are searchable. Every
   Character.AI starter who searched also got results (60 of 60), which is
   unusual and not explained here. Do not read this as "Character.AI imports
   work".
