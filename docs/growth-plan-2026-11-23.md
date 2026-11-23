@@ -183,6 +183,68 @@ article's frontmatter). The job is better copy, not a new box.
 - **Correction:** 0.4.26 is live (663 installs on 22 November). The S2 and S3
   reports say otherwise; their correction notes explain.
 
+## Phase 2 briefs (approved by the founder on 23 November)
+
+Both tasks are in the extension repository. Rules for both:
+
+- Fetch, then create your own git worktree and branch from
+  `refs/remotes/origin/main` (GitHub's main). Do not use local `main` (it has
+  someone's unpushed work) or the local branch confusingly named `origin/main`.
+  Never switch branches in `/Users/Kdog/Code-Projects/LLMnesia` itself.
+- Read the repository's `CLAUDE.md`, `AGENTS.md` and `CONTEXT.md` first and
+  follow their test and build instructions.
+- No version bump, no store package, no release, no push. Add a user-facing
+  line under `CHANGELOG.md` > `[Unreleased]`.
+- Telemetry: fixed labels only. Never send chat titles, content, queries,
+  emails or account identifiers.
+- No Supabase or server writes; reads only, aggregate counts only.
+- Run tests with `nice -n 15` and one worker where the runner allows it.
+- Finish with a report at `docs/growth/<task>-2026-11.md` in your branch:
+  what you found, what you changed, test results, what is not verified, and
+  what the founder must decide.
+
+### S4. Prompt installs to start their first import (Sonnet)
+
+1. **Read-only first: where did the Edge installs come from?** Since 9
+   November, Edge installs rose from about 23 to 110 and 76 a week, and 84%
+   never start an import. Check PostHog `extension_installed` on Edge by week
+   for any source, referrer, locale or store property; any Edge store listing
+   change in `releases/` or `docs/` around 9 November; and whether the welcome
+   page or pin detection behaves differently on Edge in code (Edge installs
+   are always recorded as "not pinned"). Report what you can establish and
+   what you cannot. If the welcome page is broken on Edge, fix that first.
+2. **Build the prompt.** On a visit to a supported chat site whose importer
+   exists, if this install has never started an import, show a small,
+   dismissible in-page prompt such as "Save your <platform> chats so you can
+   search them later", with one button that starts that platform's existing
+   import flow. Show it at most once per platform and at most three times in
+   total, never after any import has started, and respect existing capture and
+   privacy settings. Record `import_prompt_shown`, `import_prompt_clicked` and
+   `import_prompt_dismissed` with the platform label only.
+3. Tests for the show/suppress rules, and a local unpacked build that loads.
+   Do not change the welcome page beyond an Edge fix from step 1.
+4. Out of scope for now: pre-filling the first search after an import (S2
+   recommendation 2). Note it in your report as the next step.
+
+### S7. Fix Vault setup gaps and the sync retry loop (Sonnet)
+
+1. **Retry loop first (read-only, then fix).** In the three days to 23
+   November, 5 installs on 0.4.25 logged 969 `vault_sync_failed` events and
+   one 0.4.26 install logged many more. Find the failure reasons (PostHog
+   `error_name` or similar), find the retry and telemetry code, and confirm
+   whether retries back off and whether failure telemetry is de-duplicated.
+   If not, add capped exponential backoff and send at most one failure event
+   per reason per hour, with tests.
+2. **"Finish setting up Vault".** For an entitled account whose first sync has
+   never completed, show one persistent step in the popup or settings until it
+   does, with a button that starts setup. Record `vault_setup_nudge_shown` and
+   `vault_setup_nudge_clicked`.
+3. **"Vault hasn't synced since <date>".** For an entitled account whose last
+   successful sync is over 7 days old, show a one-time message with "Sync now".
+   Record shown, clicked and dismissed.
+4. Reproduce a first sync on 0.4.21-era code paths only if it is cheap with a
+   test account; otherwise note it as not verified. Do not contact customers.
+
 ## Phase 2: after Phase 1 reports and founder decisions
 
 | Task | Model | Starts when | What it does |
