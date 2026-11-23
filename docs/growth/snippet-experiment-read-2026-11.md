@@ -60,10 +60,9 @@ control's change, on at least two of three pairs.
   its position slipped 0.8. Treat C as noise, not a win.
 - **Sample size:** pair A's change is about −10% on roughly 300 clicks per period
   (standard error about 8%), so none of these gaps is distinguishable from noise.
-- **Weekly CTRs** move together for changed and control pages from the week of
-  2 November (for example 0.29% to 0.22% on recover-deleted-chatgpt, 0.37% to 0.30%
-  on recover-deleted-claude), so something site-wide or Google-side, not the snippet,
-  explains most of the movement.
+- **Weekly CTRs** in pair A fell together from the week of 2 November (0.29% to 0.22%
+  on the changed page, 0.37% to 0.30% on its control), which points away from the
+  snippet as the cause of that drop.
 - **Reading a longer window** (21 October to 21 November, the latest final day)
   gives the same picture for all three pairs.
 
