@@ -399,12 +399,12 @@ export default async function Page({
               <StatCard
                 label="Impressions (combined)"
                 value={num(sp.combined.impressions)}
-                d={delta(sp.combined.impressions, psp?.combined.impressions)}
+                d={delta(sp.combined.impressions, sp.combined.prior_impressions ?? psp?.combined.impressions)}
               />
               <StatCard
                 label="Clicks from search"
                 value={num(sp.combined.clicks)}
-                d={delta(sp.combined.clicks, psp?.combined.clicks)}
+                d={delta(sp.combined.clicks, sp.combined.prior_clicks ?? psp?.combined.clicks)}
               />
               {sp.google && (
                 <StatCard
@@ -443,9 +443,9 @@ export default async function Page({
                     <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-sky-500/70" />
                     <span className="text-neutral-300">Google</span>{' '}
                     <span className="text-neutral-500">{num(sp.google.impressions)} impr · {num(sp.google.clicks)} clicks · pos {sp.google.avg_position}</span>
-                    {psp?.google && (
+                    {(sp.google.compared_window || psp?.google) && (
                       <span className="ml-2 text-neutral-600">
-                        (prev: {num(psp.google.impressions)} impr)
+                        (prev: {num(sp.google.compared_window ? sp.google.prior_impressions : psp!.google!.impressions)} impr)
                       </span>
                     )}
                   </span>
@@ -453,9 +453,9 @@ export default async function Page({
                     <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-orange-400/70" />
                     <span className="text-neutral-300">Bing</span>{' '}
                     <span className="text-neutral-500">{num(sp.bing.impressions)} impr · {num(sp.bing.clicks)} clicks · pos {sp.bing.avg_position}</span>
-                    {psp?.bing && (
+                    {(sp.bing.compared_window || psp?.bing) && (
                       <span className="ml-2 text-neutral-600">
-                        (prev: {num(psp.bing.impressions)} impr)
+                        (prev: {num(sp.bing.compared_window ? sp.bing.prior_impressions : psp!.bing!.impressions)} impr)
                       </span>
                     )}
                   </span>

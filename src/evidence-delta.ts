@@ -174,6 +174,14 @@ export function computeEvidenceDelta(
   // --- Search performance (optional, may be absent) ---
   const curSearch = current.search_performance;
   const priorSearch = p?.search_performance;
+  // A matched-day digest carries its own prior totals over the same number of
+  // complete days; the stored prior snapshot covers a full week and must not
+  // be compared with a week whose last days are incomplete.
+  const priorOf = (source: 'google' | 'bing', field: 'clicks' | 'impressions') => {
+    const cur = curSearch?.[source];
+    if (cur?.compared_window) return field === 'clicks' ? cur.prior_clicks : cur.prior_impressions;
+    return priorSearch?.[source]?.[field] ?? 0;
+  };
   const search_performance: EvidenceDelta['search_performance'] = {
     google:
       curSearch?.google
@@ -181,13 +189,13 @@ export function computeEvidenceDelta(
             impressions: delta(
               'Google impressions',
               curSearch.google.impressions,
-              priorSearch?.google?.impressions ?? 0,
+              priorOf('google', 'impressions'),
               { includeInNotable: includeCountChanges },
             ),
             clicks: delta(
               'Google clicks',
               curSearch.google.clicks,
-              priorSearch?.google?.clicks ?? 0,
+              priorOf('google', 'clicks'),
               { includeInNotable: includeCountChanges },
             ),
           }
@@ -198,13 +206,13 @@ export function computeEvidenceDelta(
             impressions: delta(
               'Bing impressions',
               curSearch.bing.impressions,
-              priorSearch?.bing?.impressions ?? 0,
+              priorOf('bing', 'impressions'),
               { includeInNotable: includeCountChanges },
             ),
             clicks: delta(
               'Bing clicks',
               curSearch.bing.clicks,
-              priorSearch?.bing?.clicks ?? 0,
+              priorOf('bing', 'clicks'),
               { includeInNotable: includeCountChanges },
             ),
           }

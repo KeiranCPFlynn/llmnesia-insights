@@ -2,6 +2,7 @@ import './env.js';
 import { OAuth2Client } from 'google-auth-library';
 import { getClient } from './db/query.js';
 import type { GSCRow, Site } from './types.js';
+import type { DailySearchTotal } from './search-window.js';
 
 /**
  * Google Search Console (`searchAnalytics.query`) sync for the Growth Planner.
@@ -154,6 +155,30 @@ export async function getAccurateSiteTotals(
     impressions += r.impressions ?? 0;
   }
   return { total_clicks: clicks, total_impressions: impressions, unique_pages: pages.size };
+}
+
+/**
+ * Site-wide daily totals (no `query` dimension, so no anonymization loss) plus
+ * Search Console's own marker for the first day that is still incomplete.
+ * With `dataState: 'all'` the API returns `metadata.firstIncompleteDate` for
+ * date-dimensioned requests; weekly comparisons must stop the day before it.
+ */
+export async function getDailySiteTotals(
+  site: Site,
+  startDate: string,
+  endDate: string,
+): Promise<{ days: DailySearchTotal[]; first_incomplete_date: string | null }> {
+  const oauth = getOAuthClient();
+  const { data } = await oauth.request<{ rows?: GSCApiRow[]; metadata?: { firstIncompleteDate?: string } }>({
+    method: 'POST',
+    url: `${GSC_BASE}/sites/${encodeURIComponent(site.gsc_property)}/searchAnalytics/query`,
+    data: { startDate, endDate, dimensions: ['date'], rowLimit: 25000, dataState: 'all' },
+  });
+  const days = (data.rows ?? []).flatMap((r) => {
+    const [date] = r.keys ?? [];
+    return date ? [{ date, clicks: r.clicks ?? 0, impressions: r.impressions ?? 0 }] : [];
+  });
+  return { days, first_incomplete_date: data.metadata?.firstIncompleteDate ?? null };
 }
 
 function chunk<T>(arr: T[], n: number): T[][] {

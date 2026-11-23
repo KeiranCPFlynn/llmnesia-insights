@@ -1,6 +1,7 @@
 import './env.js';
 import { getClient } from './db/query.js';
 import type { BingRow, Site } from './types.js';
+import type { DailySearchTotal } from './search-window.js';
 
 /**
  * Bing Webmaster Tools (`GetKeywordStats`) sync for the Growth Planner.
@@ -109,29 +110,41 @@ async function fetchRankAndTrafficStats(apiKey: string, siteUrl: string): Promis
 }
 
 /**
- * Site-wide Bing totals for a date window, queried live (no persistence) —
+ * Site-wide Bing totals per day for a date window, queried live (no persistence) —
  * see `fetchRankAndTrafficStats` for why this doesn't come from `bing_rows`.
  */
+export async function getDailyBingTotals(
+  site: Site,
+  startDate: string,
+  endDate: string,
+): Promise<{ days: DailySearchTotal[]; latest_date: string | null }> {
+  const rows = await fetchRankAndTrafficStats(getApiKey(), site.bing_site_url ?? site.root_url);
+  const byDate = new Map<string, DailySearchTotal>();
+  for (const r of rows) {
+    if (!r.Date) continue;
+    const date = parseWcfDate(r.Date);
+    if (date < startDate || date > endDate) continue;
+    const day = byDate.get(date) ?? { date, clicks: 0, impressions: 0 };
+    day.clicks += r.Clicks ?? 0;
+    day.impressions += r.Impressions ?? 0;
+    byDate.set(date, day);
+  }
+  const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return { days, latest_date: days.at(-1)?.date ?? null };
+}
+
+/** Site-wide Bing totals summed over a date window. */
 export async function getAccurateBingTotals(
   site: Site,
   startDate: string,
   endDate: string,
 ): Promise<{ total_clicks: number; total_impressions: number; latest_date: string | null }> {
-  const apiKey = getApiKey();
-  const siteUrl = site.bing_site_url ?? site.root_url;
-  const rows = await fetchRankAndTrafficStats(apiKey, siteUrl);
-  let clicks = 0;
-  let impressions = 0;
-  let latestDate: string | null = null;
-  for (const r of rows) {
-    if (!r.Date) continue;
-    const date = parseWcfDate(r.Date);
-    if (date < startDate || date > endDate) continue;
-    clicks += r.Clicks ?? 0;
-    impressions += r.Impressions ?? 0;
-    if (!latestDate || date > latestDate) latestDate = date;
-  }
-  return { total_clicks: clicks, total_impressions: impressions, latest_date: latestDate };
+  const { days, latest_date } = await getDailyBingTotals(site, startDate, endDate);
+  return {
+    total_clicks: days.reduce((sum, day) => sum + day.clicks, 0),
+    total_impressions: days.reduce((sum, day) => sum + day.impressions, 0),
+    latest_date,
+  };
 }
 
 function isoDate(d: Date): string {

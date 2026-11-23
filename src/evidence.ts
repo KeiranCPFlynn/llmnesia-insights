@@ -13,7 +13,7 @@ import {
   saveSourceSyncState,
   getLatestEvidenceSnapshotBefore,
 } from './data.js';
-import type { EvidenceDelta, EvidenceFreshness, MetricsSnapshot } from './types.js';
+import type { EvidenceDelta, EvidenceFreshness, MetricsSnapshot, SearchSourceDigest } from './types.js';
 
 export interface EvidenceCollectionResult {
   weekStart: string;
@@ -30,6 +30,17 @@ export interface EvidenceCollectionResult {
  * Collect and persist analytics evidence. This module deliberately imports no
  * LLM, prompt, Git, MCP, or strategy code; cron and prepare both stop here.
  */
+function searchWindowDetail(
+  engine: string,
+  window: SearchSourceDigest['compared_window'],
+): string {
+  if (!window) return `Latest observed ${engine} date; provider data may lag or be incomplete.`;
+  const { current, prior, excluded_from } = window;
+  return excluded_from
+    ? `${engine} totals cover complete days ${current.start} to ${current.end}, compared with ${prior.start} to ${prior.end}; ${excluded_from} onward was incomplete and left out.`
+    : `${engine} totals cover the full week ${current.start} to ${current.end}, compared with ${prior.start} to ${prior.end}.`;
+}
+
 export async function collectEvidence(opts: {
   weekStart?: string | null;
   dryRun?: boolean;
@@ -81,13 +92,13 @@ export async function collectEvidence(opts: {
       source: 'Google Search Console',
       status: searchPerformance?.google ? 'fresh' : 'unavailable',
       data_as_of: googleAsOf,
-      detail: googleAsOf ? 'Latest observed Google query-row date; provider data may lag or be incomplete.' : 'No Google search rows were available for this period.',
+      detail: googleAsOf ? searchWindowDetail('Google', searchPerformance?.google?.compared_window) : 'No Google search rows were available for this period.',
     },
     {
       source: 'Bing Webmaster Tools',
       status: searchPerformance?.bing ? 'fresh' : 'unavailable',
       data_as_of: bingAsOf,
-      detail: bingAsOf ? 'Latest Bing daily traffic date; query breakdowns are weekly and provider data may lag.' : 'No Bing traffic data was available for this period.',
+      detail: bingAsOf ? `${searchWindowDetail('Bing', searchPerformance?.bing?.compared_window)} Query breakdowns are weekly.` : 'No Bing traffic data was available for this period.',
     },
   ];
 

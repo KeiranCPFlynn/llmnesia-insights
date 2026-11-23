@@ -156,6 +156,12 @@ export interface SearchSourceDigest {
   avg_position: number;
   prior_clicks: number;
   prior_impressions: number;
+  /** Complete days compared. Absent on snapshots stored before matched-day comparison. */
+  compared_window?: {
+    current: { start: string; end: string };
+    prior: { start: string; end: string };
+    excluded_from: string | null;
+  };
 }
 
 /** One query's combined clicks/impressions across the contributing engines. */
@@ -168,7 +174,7 @@ export interface SearchQueryRow {
 }
 
 export interface SearchPerformanceDigest {
-  /** Latest observed query-row dates, not assumed provider completeness. */
+  /** Last complete day each engine's totals cover (older snapshots: latest observed query-row date). */
   data_as_of?: { google: string | null; bing: string | null };
   site: string;
   window: { start: string; end: string };
@@ -176,7 +182,7 @@ export interface SearchPerformanceDigest {
   /** Null when that engine had no rows this week. */
   google: SearchSourceDigest | null;
   bing: SearchSourceDigest | null;
-  combined: { clicks: number; impressions: number; ctr: number };
+  combined: { clicks: number; impressions: number; ctr: number; prior_clicks?: number; prior_impressions?: number };
   top_queries_by_impressions: SearchQueryRow[];
   top_queries_by_clicks: SearchQueryRow[];
 }

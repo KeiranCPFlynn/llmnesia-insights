@@ -2,15 +2,16 @@ import './env.js';
 import { getClient } from './db/query.js';
 import {
   autoSyncRange as gscAutoSyncRange,
-  getAccurateSiteTotals,
+  getDailySiteTotals,
   syncSite as gscSyncSite,
 } from './gsc.js';
 import {
   autoSyncRange as bingAutoSyncRange,
-  getAccurateBingTotals,
+  getDailyBingTotals,
   syncSite as bingSyncSite,
 } from './bing.js';
 import type { SearchPerformanceDigest, SearchQueryRow, SearchSourceDigest, Site } from './types.js';
+import { addDays, compareCompleteDays, type CompleteDayComparison } from './search-window.js';
 
 /**
  * Combined Google Search Console + Bing Webmaster Tools digest for the weekly
@@ -249,53 +250,47 @@ export async function getCombinedSearchDigest(
   //
   // bing_rows has the same shape of bug: GetQueryStats (its source) only
   // surfaces a subset of queries, so summing it undercounts site-wide
-  // impressions by ~12x (see getAccurateBingTotals in bing.ts). Same fix.
+  // impressions by ~12x (see getDailyBingTotals in bing.ts). Same fix.
   //
-  // Query rows arrive in weekly Friday buckets but these totals are daily, so
-  // the totals must not wait for a bucket: a week with no bucket yet would
-  // otherwise report no Bing data. Position has no daily source, so it falls
-  // back to the latest bucket before this week.
+  // Both engines are compared on complete days only (see search-window.ts):
+  // Search Console marks its first incomplete day, and Bing's daily stats end
+  // at their latest date. The prior window is cut to the same number of days.
+  // Bing query rows arrive in weekly Friday buckets but these totals are daily,
+  // so they must not wait for a bucket. Position has no daily source, so it
+  // falls back to the latest bucket before this week.
+  const window = { weekStart, weekEnd, priorStart: priorStartIso };
+  const toDigest = (totals: CompleteDayComparison, avgPosition: number): SearchSourceDigest => ({
+    clicks: totals.clicks,
+    impressions: totals.impressions,
+    ctr: totals.impressions > 0 ? Number((totals.clicks / totals.impressions).toFixed(4)) : 0,
+    avg_position: avgPosition,
+    prior_clicks: totals.prior_clicks,
+    prior_impressions: totals.prior_impressions,
+    compared_window: totals.compared_window,
+  });
+
   let bing: SearchSourceDigest | null = null;
   let bingAsOf: string | null = null;
   if (hasBing) {
     const localAggregate = aggregate(bingCurrent.length > 0 ? bingCurrent : bingPrior, bingPrior);
-    const [current, prior] = await Promise.all([
-      getAccurateBingTotals(site, weekStart, weekEnd),
-      getAccurateBingTotals(site, priorStartIso, priorEndIso),
-    ]);
-    bingAsOf = current.latest_date;
-    if (bingAsOf) {
-      bing = {
-        clicks: current.total_clicks,
-        impressions: current.total_impressions,
-        ctr:
-          current.total_impressions > 0
-            ? Number((current.total_clicks / current.total_impressions).toFixed(4))
-            : 0,
-        avg_position: localAggregate.avg_position,
-        prior_clicks: prior.total_clicks,
-        prior_impressions: prior.total_impressions,
-      };
+    const daily = await getDailyBingTotals(site, priorStartIso, weekEnd);
+    const totals = daily.latest_date ? compareCompleteDays(daily.days, window, daily.latest_date) : null;
+    if (totals) {
+      bing = toDigest(totals, localAggregate.avg_position);
+      bingAsOf = totals.compared_window.current.end;
     }
   }
   let google: SearchSourceDigest | null = null;
+  let googleAsOf: string | null = null;
   if (gscCurrent.length > 0) {
     const localAggregate = aggregate(gscCurrent, gscPrior);
-    const [current, prior] = await Promise.all([
-      getAccurateSiteTotals(site, weekStart, weekEnd),
-      getAccurateSiteTotals(site, priorStartIso, priorEndIso),
-    ]);
-    google = {
-      clicks: current.total_clicks,
-      impressions: current.total_impressions,
-      ctr:
-        current.total_impressions > 0
-          ? Number((current.total_clicks / current.total_impressions).toFixed(4))
-          : 0,
-      avg_position: localAggregate.avg_position,
-      prior_clicks: prior.total_clicks,
-      prior_impressions: prior.total_impressions,
-    };
+    const daily = await getDailySiteTotals(site, priorStartIso, weekEnd);
+    const completeThrough = daily.first_incomplete_date ? addDays(daily.first_incomplete_date, -1) : null;
+    const totals = compareCompleteDays(daily.days, window, completeThrough);
+    if (totals) {
+      google = toDigest(totals, localAggregate.avg_position);
+      googleAsOf = totals.compared_window.current.end;
+    }
   }
 
   const combinedClicks = (google?.clicks ?? 0) + (bing?.clicks ?? 0);
@@ -304,7 +299,7 @@ export async function getCombinedSearchDigest(
   return {
     site: 'llmnesia.com',
     data_as_of: {
-      google: gscCurrent.map((row) => row.date).sort().at(-1) ?? null,
+      google: googleAsOf,
       bing: bingAsOf,
     },
     window: { start: weekStart, end: weekEnd },
@@ -314,6 +309,8 @@ export async function getCombinedSearchDigest(
     combined: {
       clicks: combinedClicks,
       impressions: combinedImpressions,
+      prior_clicks: (google?.prior_clicks ?? 0) + (bing?.prior_clicks ?? 0),
+      prior_impressions: (google?.prior_impressions ?? 0) + (bing?.prior_impressions ?? 0),
       ctr: combinedImpressions > 0 ? Number((combinedClicks / combinedImpressions).toFixed(4)) : 0,
     },
     top_queries_by_impressions: topQueries(gscCurrent, bingCurrent, 'impressions', 12),
