@@ -161,6 +161,28 @@ article's frontmatter). The job is better copy, not a new box.
   new title and description with character counts. The founder deploys; the
   measurement clock starts on the deploy date.
 
+## Phase 1 results (23 November)
+
+- **S1:** `DECISION: INCONCLUSIVE`. No pair lifted. **G2 is cancelled**; do not
+  roll the snippet style out to the control pages.
+- **S2:** the biggest leak is installs that never start an import (48%; 3% of
+  them ever search). Edge installs jumped to 110 and 76 a week from about 23,
+  and 84% of them never start an import. Completers who don't search are the
+  second leak (34% search). S4 should build S2's recommendation 1, a prompt to
+  start an import on the first visit to a supported chat site, after checking
+  where the Edge installs come from.
+- **S3:** sync failures are not the main cause. 2 payers never set Vault up,
+  3 stopped long ago, 3 went quiet on 0.4.21. 5 monthly payers renew within
+  30 days. S7 should build the "Finish setting up Vault" step and a "Vault
+  hasn't synced since…" message, and check the sync retry loop (969 failure
+  events from 5 installs on 0.4.25 in three days).
+- **G1:** 7 pages rewritten (2 skipped as recently changed). Deploy from the
+  site branch `growth/snippets-wave1-clean`, never `growth/snippets-wave1`: the
+  latter was cut from a stale local `main` and carries four held Pro-pricing
+  commits.
+- **Correction:** 0.4.26 is live (663 installs on 22 November). The S2 and S3
+  reports say otherwise; their correction notes explain.
+
 ## Phase 2: after Phase 1 reports and founder decisions
 
 | Task | Model | Starts when | What it does |
